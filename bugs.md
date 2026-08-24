@@ -4,7 +4,7 @@ One entry per bug, newest at the top. Fill in **every** field before touching
 code — the point of this file is to reason about a fix rather than guess at one.
 Delete an entry once its fix is verified by the matching `testing.md` row.
 
-Open bugs: 1 (B1, fixed — see entry).
+Open bugs: 1 deferred (RISK-001). 1 closed (B1).
 
 ---
 
@@ -23,6 +23,35 @@ Open bugs: 1 (B1, fixed — see entry).
 ---
 
 <!-- Add entries below this line. -->
+
+### RISK-001 — ip_concentration is scored with the wrong sign
+
+- **Status:** DEFERRED to Tier 1 feature validation. Not touched during Tier 0.
+- **Symptom:** `ip_concentration` separates the classes in the *inverted*
+  direction — low values indicate abuse, high values indicate legitimacy. Its
+  best achievable single-signal F1 on train+validation is **0.9697**, reached at
+  `ip_concentration <= 0.234`. Raw distributions: positives mean 0.161, negatives
+  mean 0.540 — 3.3x higher on the legitimate clusters.
+- **Expected:** a signal carrying positive weight in the scorer should be higher
+  on positives than on negatives. This one is the reverse.
+- **Error:** no exception. Surfaced by the both-directions fix to
+  `single_signal_f1`; a `>=`-only sweep reported it as 0.3765 and hid it.
+- **Files involved:** `riskmesh/score.py` (signal definition and weight),
+  `riskmesh/config.py` (`weights["ip_concentration"] = 0.10`).
+- **Reproduce:** `python -m riskmesh`, seed 20260824; read
+  `out/integrity_report.json` -> `non_triviality.single_signal_detail`.
+- **Suspected cause:** Tier 0 injects shared-*device* rings while the family hard
+  negatives share a home *IP*. So IP concentration is a property of the
+  legitimate clusters in this slice, not the abusive ones. The signal is not
+  wrong in general — shared-IP concentration is a real production risk signal —
+  but with only one ring type present it points the wrong way.
+- **Current scorer weight:** **+0.10**, unchanged. The signal actively pushes
+  negatives up and positives down at that weight.
+- **Fix:** deferred. Tier 1 feature validation should decide between inverting
+  the sign, dropping the weight to zero, or leaving it and letting the
+  shared-IP ring type (which Tier 1 introduces) restore the intended direction.
+  Changing it during Tier 0 would mean re-tuning the generator against the
+  non-triviality panel, which the Tier 0 time cap explicitly forbids.
 
 ### B1 — background components all land in the train split
 

@@ -154,13 +154,35 @@ def _f1_of(flags: list[tuple[bool, bool]]) -> float:
     return prf(confusion(flags))["f1"]
 
 
-def best_f1_over_thresholds(values: list[float], actual: list[bool]) -> float:
-    """Best F1 any single threshold on `values` can reach. Used for the
-    single-signal and shared-device baselines in the non-triviality panel."""
-    best = 0.0
+def best_f1_with_direction(
+    values: list[float], actual: list[bool]
+) -> tuple[float, str, float]:
+    """Best F1 any single threshold on `values` can reach, sweeping BOTH
+    directions, and the direction and threshold that achieve it.
+
+    Both directions is not a refinement, it is the difference between a working
+    check and a broken one. A `>=`-only sweep is blind to signals where the LOW
+    values are the suspicious ones -- `ip_concentration` and `account_newness`
+    are both inverted in this benchmark, and a `>=`-only sweep reported them at
+    F1 0.38 when they actually reach 0.97 and 0.94. A signal that separated the
+    classes *perfectly* in the inverted direction would have passed the
+    "no single signal separates perfectly" guard untouched, which is precisely
+    the case that guard exists to catch. See bugs.md RISK-001.
+    """
+    best_f1, best_dir, best_t = 0.0, ">=", 0.0
     for t in sorted(set(values)):
-        best = max(best, _f1_of([(v >= t, a) for v, a in zip(values, actual)]))
-    return round(best, 4)
+        up = _f1_of([(v >= t, a) for v, a in zip(values, actual)])
+        if up > best_f1:
+            best_f1, best_dir, best_t = up, ">=", t
+        down = _f1_of([(v <= t, a) for v, a in zip(values, actual)])
+        if down > best_f1:
+            best_f1, best_dir, best_t = down, "<=", t
+    return round(best_f1, 4), best_dir, best_t
+
+
+def best_f1_over_thresholds(values: list[float], actual: list[bool]) -> float:
+    """Best F1 any single threshold on `values` can reach, either direction."""
+    return best_f1_with_direction(values, actual)[0]
 
 
 # --------------------------------------------------------------------------
@@ -296,8 +318,20 @@ def shared_device_baseline_f1(cands: list[Candidate]) -> float:
 
 
 def single_signal_f1(cands: list[Candidate]) -> dict[str, float]:
+    return {name: d["f1"] for name, d in single_signal_detail(cands).items()}
+
+
+def single_signal_detail(cands: list[Candidate]) -> dict[str, dict]:
+    """Per signal: best achievable F1, and which direction/threshold achieves it.
+
+    The direction is reported because an inverted signal is a finding in its own
+    right -- it means the signal is scored with the wrong sign.
+    """
     actual = [c.is_positive for c in cands]
-    return {
-        name: best_f1_over_thresholds([c.raw_signals[name] for c in cands], actual)
-        for name in SIGNALS
-    }
+    out: dict[str, dict] = {}
+    for name in SIGNALS:
+        f1, direction, t = best_f1_with_direction(
+            [c.raw_signals[name] for c in cands], actual
+        )
+        out[name] = {"f1": f1, "direction": direction, "threshold": round(t, 4)}
+    return out

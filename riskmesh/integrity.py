@@ -27,9 +27,8 @@ from .config import SIGNALS, Config
 from .evaluate import (
     GROUND_TRUTH_RULE,
     Candidate,
-    best_f1_over_thresholds,
     shared_device_baseline_f1,
-    single_signal_f1,
+    single_signal_detail,
 )
 from .generate import Label, Txn, accounts_per_attribute
 from .graph import Graph
@@ -87,11 +86,13 @@ def non_triviality_panel(cfg: Config, candidates: list[Candidate]) -> dict[str, 
     min_pos = min(pos_scores) if pos_scores else 1.0
     families_in_pos_range = [s for s in family_neg if s >= min_pos]
 
-    per_signal = single_signal_f1(fit)
+    detail = single_signal_detail(fit)
+    per_signal = {k: d["f1"] for k, d in detail.items()}
     perfect = sorted(k for k, v in per_signal.items() if v >= 1.0)
     flagged = sorted(
         k for k, v in per_signal.items() if cfg.single_signal_flag_f1 <= v < 1.0
     )
+    inverted = sorted(k for k, d in detail.items() if d["direction"] == "<=")
     device_f1 = shared_device_baseline_f1(fit)
 
     checks = {
@@ -129,6 +130,13 @@ def non_triviality_panel(cfg: Config, candidates: list[Candidate]) -> dict[str, 
         "hard_negative_scores": _spread(family_neg),
         "hard_negatives_inside_positive_range": len(families_in_pos_range),
         "single_signal_max_f1": per_signal,
+        "single_signal_detail": detail,
+        "inverted_signals": inverted,
+        "inverted_signals_note": (
+            "Signals whose LOW values indicate abuse. F1 here is the best over "
+            "both threshold directions; a >=-only sweep understates them and "
+            "would miss perfect separation in the inverted direction."
+        ),
         "flagged_signals": {
             k: per_signal[k] for k in flagged
         } or "none -- no signal in [%.2f, 1.0)" % cfg.single_signal_flag_f1,

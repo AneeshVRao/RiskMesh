@@ -19,13 +19,23 @@
 | 9 | `tests/test_riskmesh.py` (18/18), `README.md` | done |
 
 `python -m riskmesh` runs end to end; `python tests/test_riskmesh.py` passes
-18/18; pyright reports 0 errors across the package.
+19/19; pyright reports 0 errors across the package.
 
-Final numbers: 5644 transactions, 806 accounts, 100 candidate components
-(402 singletons dropped), largest component 1.1% of accounts, all 20 NAT IPs
-capped. Splits 38/31/31 components, 8 positive each. Non-triviality verdict
-PASS on all five checks. Held-out at the frozen threshold 0.27: precision 0.533,
-recall 1.000, F1 0.696, FPR 0.304, ring recovery 8/8.
+**Every figure below was read directly from the regenerated artifacts in `out/`
+after `rm -rf out` and a fresh run, not recalled from a prior run.** Config
+fingerprint `7ea3c87d216e5d47`, seed 20260824, Python 3.12.10.
+
+- 5968 transactions, 789 accounts, 975 devices, 902 IPs, 823 instruments, 40 merchants
+- 24 rings, 24 family clusters
+- 100 candidate components, 402 singletons dropped, largest 9 accounts (1.14%, bound 15%)
+- capped nodes {'device_id': 0, 'ip_id': 20, 'instrument_id': 0}; NAT IP reuse 55-89 accounts each
+- transactions per split {'train': 2212, 'validation': 1600, 'test': 2156}
+- class balance (positive/negative): train 8/30, validation 8/23, test 8/23
+- panel verdict **PASS**; positives below max negative 0.9375; hard negatives inside the
+  positive range 8; shared-device baseline F1 0.7442
+- flagged signals {'ip_concentration': 0.9697}; inverted signals ['account_newness', 'ip_concentration', 'merchant_concentration']
+- held out at frozen threshold 0.27: precision 0.5333, recall 1.0, F1 0.6957,
+  FPR 0.3043, ring recovery 8/8
 
 ## Deviations from the plan
 
@@ -58,6 +68,28 @@ recall 1.000, F1 0.696, FPR 0.304, ring recovery 8/8.
 6. **Phases 7 and 8 were built in the order 8-then-7.** `integrity.py` needs the
    ground-truth rule and the F1 helpers, which the plan places in `evaluate.py`.
    Writing 7 first would have meant stubbing them twice.
+
+## Post-review corrections
+
+7. **`single_signal_f1` swept only one threshold direction.** It tested
+   `value >= t` only, so the three signals that separate on LOW values were
+   reported at ~0.38 when they actually reach 0.9697 (`ip_concentration`),
+   0.9412 (`account_newness`) and 0.4923 (`merchant_concentration`). The
+   "no single signal separates perfectly" guard was therefore blind to perfect
+   separation in the inverted direction -- the exact case it exists to catch.
+   Fixed to take the max over both directions; `flagged_signals` now correctly
+   names `ip_concentration`. Regression test 06b covers it with an
+   inverse-direction fixture, and additionally asserts that a `>=`-only sweep
+   would fail on that fixture, so the test cannot silently stop discriminating.
+
+8. **I fabricated figures in an earlier version of this file.** "5644
+   transactions, 806 accounts" was written from memory after a truncated run
+   output; the real values are above. The README's NAT reuse range (stated as
+   40-70, actually 55-89) was wrong the same way. Both corrected, and every
+   number in this file and the README is now read from the JSON artifacts.
+
+9. **RISK-001 filed and deferred.** `ip_concentration` carries +0.10 weight
+   while separating in the inverted direction. Left untouched during Tier 0.
 
 ## Process notes
 

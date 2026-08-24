@@ -13,7 +13,7 @@ fitted on the test set.
 
 ```bash
 python -m riskmesh          # generate -> graph -> score -> split -> evaluate
-python tests/test_riskmesh.py   # 18 checks
+python tests/test_riskmesh.py   # 19 checks
 ```
 
 No install step and no dependencies — CPython 3.10+ and the standard library.
@@ -65,12 +65,19 @@ A signal reaching F1 in [0.95, 1.0) is **flagged** under `flagged_signals` for
 manual investigation, not failed. A signal is allowed to be strong; failing on
 strength would just train you to loosen the bound.
 
+Max-F1 is swept in **both threshold directions** (`value >= t` and `value <= t`).
+Three signals here separate in the inverted direction (low values indicate
+abuse), and a one-directional sweep understates them badly. It would also miss a
+signal separating *perfectly* while inverted, which is the exact case the
+hard-failure guard exists to catch. Currently flagged: `ip_concentration` at
+0.9697, tracked as RISK-001 in `bugs.md`.
+
 ## How the data is built
 
 **Normal behaviour is correlated, not random rows.** Each account has a sticky
 merchant set drawn on a popularity power law, its own device and home IP, a
 personal amount multiplier, lognormal activity, diurnal timestamps, and a
-contiguous activity spell. Around 20 carrier-NAT IPs are each shared by 40–70
+contiguous activity spell. Around 20 carrier-NAT IPs are each shared by 55–89
 unrelated accounts — the common infrastructure the graph has to survive.
 
 **Rings (24) share a device.** Members are freshly-registered thin-history
@@ -123,9 +130,13 @@ and a human-readable detail string. Weights sum to exactly 1.00.
 a ring from a family sharing the same tablet — the structural signals cannot.
 
 `ip_concentration` fires *harder on the hard negatives than on the rings*, since
-Tier 0 rings share a device while families share a home IP. That is left in
-deliberately: shared-IP concentration is a real risk signal, legitimate clusters
-really do trigger it, and pricing that false-positive pressure is the point.
+Tier 0 rings share a device while families share a home IP: raw mean 0.161 on
+positives against 0.540 on negatives. At +0.10 weight it pushes the scorer the
+wrong way rather than merely adding difficulty. Filed as **RISK-001** and left
+untouched for Tier 0 -- changing a weight now would mean re-tuning the generator
+against the non-triviality panel, which the Tier 0 time cap forbids. Tier 1
+feature validation decides between inverting it, zeroing it, or letting the
+shared-IP ring type restore the intended direction.
 
 ## Evaluation protocol
 
@@ -184,6 +195,20 @@ riskmesh/evaluate.py   ground-truth rule, threshold freeze, metrics
 riskmesh/__main__.py   the one command
 tests/test_riskmesh.py 18 checks
 ```
+
+## Current figures
+
+Read from `out/` after a clean regeneration. Config fingerprint `7ea3c87d216e5d47`,
+seed 20260824, Python 3.12.10:
+
+- 5968 transactions, 789 accounts, 975 devices, 902 IPs, 823 instruments, 40 merchants
+- 24 rings and 24 family clusters injected
+- 100 candidate components, 402 singletons dropped
+- largest component 9 accounts (1.14%), 20 NAT IPs capped
+- 8 positive components per split; negatives 30 / 23 / 23
+- non-triviality verdict **PASS**, shared-device baseline F1 0.7442
+- held out at frozen threshold 0.27: precision 0.533, recall 1.000, F1 0.696,
+  FPR 0.304, ring recovery 8/8
 
 Working files: `implementation_plan.md` (phases), `testing.md` (checklist),
 `audit.md` (plan-vs-code drift), `bugs.md` (structured bug log).

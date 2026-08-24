@@ -24,9 +24,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from riskmesh.config import SIGNALS, Config
 from riskmesh.evaluate import (
     build_candidates,
-    evaluate,
+    best_f1_with_direction,
+    confusion,
+    prf,
     select_threshold,
     shared_device_baseline_f1,
+    single_signal_detail,
     single_signal_f1,
 )
 from riskmesh.generate import Label, accounts_per_attribute, generate
@@ -147,6 +150,45 @@ def test_06_hard_negatives_are_hard(txns, labels) -> None:
             "-- an easy negative, not a hard one"
         )
     check(f"06 hard negatives: all {len(fams)} families share {sorted(ring_attrs)} with rings")
+
+
+def test_06b_inverse_direction_signals(cfg: Config, cands) -> None:
+    """Regression: the max-F1 check must sweep BOTH threshold directions.
+
+    A synthetic signal where only LOW values are suspicious. A `>=`-only sweep
+    cannot separate it and reports a poor F1; the correct check finds perfect
+    separation in the `<=` direction. This test fails if the evaluator is ever
+    reverted to a one-directional sweep. See bugs.md RISK-001.
+    """
+    # low value == suspicious; perfectly separable at t=4 in the <= direction
+    values = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
+    actual = [True, True, True, True, False, False, False, False]
+
+    f1, direction, threshold = best_f1_with_direction(values, actual)
+    assert f1 == 1.0, f"inverse-direction separation missed: got F1 {f1}"
+    assert direction == "<=", f"expected the <= direction to win, got {direction}"
+    assert threshold == 4.0, f"expected threshold 4.0, got {threshold}"
+
+    # Prove the test discriminates: a >=-only sweep must NOT find this. If this
+    # assertion ever fails, the fixture stopped being inverse-direction and the
+    # test above would pass even with a broken evaluator.
+    up_only = max(
+        prf(confusion([(v >= t, a) for v, a in zip(values, actual)]))["f1"]
+        for t in sorted(set(values))
+    )
+    assert up_only < 0.95, (
+        f">=-only sweep reaches F1 {up_only} on the inverse fixture -- the "
+        "fixture no longer discriminates and this test proves nothing"
+    )
+
+    # And the real benchmark must actually contain inverted signals, otherwise
+    # this whole class of bug is untested against live data.
+    fit = [c for c in cands if c.split in ("train", "validation")]
+    detail = single_signal_detail(fit)
+    inverted = sorted(k for k, d in detail.items() if d["direction"] == "<=")
+    assert inverted, "no inverted signals in the benchmark -- fixture-only coverage"
+    check(f"06b inverse-direction: <= sweep finds F1 1.0 where >=-only gets "
+          f"{up_only:.3f}; live inverted signals {inverted}")
 
 
 # --------------------------------------------------------------------------
@@ -285,6 +327,7 @@ def main() -> int:
         test_04_split_assignment_agrees(splits)
         test_05_hygiene(cfg, txns, graph)
         test_06_hard_negatives_are_hard(txns, labels)
+        test_06b_inverse_direction_signals(cfg, cands)
 
         print("\nnon-triviality (train + validation only)")
         test_07_to_11_non_triviality(cfg, cands)
@@ -293,7 +336,7 @@ def main() -> int:
         test_12_to_17_pipeline(cfg, run_a, cands, labels)
         test_18_reproducible_outputs(run_a, run_b)
 
-        print(f"\n{len(PASSED)}/18 checks passed")
+        print(f"\n{len(PASSED)}/19 checks passed")
         return 0
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
