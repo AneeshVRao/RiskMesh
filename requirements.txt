@@ -1,0 +1,9 @@
+# Tier 0 has zero runtime dependencies on purpose.
+#
+# "Reproducible from a clean environment" is a graded PRD criterion, and the
+# cheapest way to guarantee it is to need nothing but CPython >= 3.10. Union-find
+# is ~15 lines (cheaper than networkx) and the CSVs written to out/ are
+# pandas-readable whenever Tier 2 actually needs pandas.
+#
+# Do not add a dependency here without moving the decision in
+# implementation_plan.md first. numpy/pandas/xgboost arrive with Tier 2.
