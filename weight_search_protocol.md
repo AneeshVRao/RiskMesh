@@ -310,7 +310,38 @@ threshold, or a ring type the scorer misses — but on this data the FN cost is
 doing no work, and any claim that the operating point is FN-cost-driven would be
 false.
 
-### Not done
+### Step 5 — the single held-out read (done, once)
 
-Step 5, the single held-out read, has **not** been performed. The policy is
-frozen and `evaluate_frozen_policy()` will permit exactly one read when approved.
+Taken through `evaluate_frozen_policy()` after the policy was frozen. A_baseline
+at the frozen threshold 0.23, on 31 test components:
+
+| | validation (selection) | held out |
+|---|---|---|
+| precision | — | **0.6667** |
+| recall | — | **1.0000** |
+| F1 | — | **0.8000** |
+| FPR | — | **0.1739** |
+| ring recovery | — | **8/8 (100%)** |
+| confusion | tp 8, fp 1, fn 0, tn 22 | tp 8, **fp 4**, fn 0, tn 19 |
+| expected loss | 5,348.23 | **9,392.92** |
+| review rate | 0.2903 | 0.3871 |
+
+Account level: precision 0.6709, recall 1.0000, F1 0.8030, FPR 0.3562.
+
+**Held-out expected loss is 76% higher than the validation figure the policy was
+selected on**, and that gap is the honest headline rather than the F1. It is not
+leakage — the threshold was frozen before this read — it is small-sample
+variance: one false positive on 23 validation negatives against four on 23 test
+negatives, and each false positive costs 848.23 plus a 500.00 review. On 31
+components a single component moves the total by ~4%. **The validation expected
+loss should not be quoted as the system's cost.**
+
+**All four held-out false positives are family components. Zero are background.**
+The residual error is entirely the hard negatives the benchmark was built to
+produce, which is the intended failure mode and the argument for the abstention
+band rather than for more weight tuning.
+
+Against flag-everything on test (35,009.29 at a 100% review rate), A improves by
+**73.2%** — lower than validation's 84.7%, for the same reason.
+
+**No further read is permitted.** Any future comparison needs a new frozen record.

@@ -272,5 +272,33 @@
       "A_baseline"
     ],
     "winner_stable": true
+  },
+  "held_out": {
+    "note": "The single permitted read, taken after the policy was frozen.",
+    "n_components": 31,
+    "threshold": 0.23,
+    "precision": 0.6667,
+    "recall": 1.0,
+    "f1": 0.8,
+    "false_positive_rate": 0.1739,
+    "tp": 8,
+    "fp": 4,
+    "tn": 19,
+    "fn": 0,
+    "rings_recovered": 8,
+    "rings_in_test": 8,
+    "expected_loss": 9392.92,
+    "review_rate": 0.3871,
+    "review_cost": 6000.0,
+    "flag_everything_expected_loss": 35009.29,
+    "false_positives_family": 4,
+    "false_positives_background": 0,
+    "account_level": {
+      "precision": 0.6709,
+      "recall": 1.0,
+      "f1": 0.803,
+      "false_positive_rate": 0.3562
+    },
+    "design_panel_verdict_at_selection": "PASS"
   }
 }

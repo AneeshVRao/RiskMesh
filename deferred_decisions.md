@@ -13,6 +13,15 @@ decision — not when someone decides it looks fine.
 
 **Owner: the cost-model / weight-optimisation stage. Not optional cleanup.**
 
+**Still open after weight selection, and now with a third measurement behind
+it.** Policy E (`temporal_burst` zeroed, the other five renormalised) cleared all
+three feasibility gates and tied A_baseline at *exactly* 5,348.23 validation
+expected loss, differing only in the threshold that reaches it — 0.26 against
+0.23. So removing the signal changes no held-out metric (the ablation), and no
+expected-loss figure either. A was retained on the incumbent tie-break, which
+means **the weight survived because nothing beat it, not because it was
+validated.** That is the same status as before, held more firmly.
+
 **What was measured.** The Tier 1 ablation gate
 (`experiments/ablation_temporal_burst.json`) removed `temporal_burst` and
 renormalised the remaining six signals to 1.0, with the ablated scorer given its

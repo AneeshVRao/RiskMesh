@@ -265,6 +265,19 @@ Read from `out/` after `rm -rf out` and a clean regeneration. Config fingerprint
 - held out at frozen threshold 0.23: precision 0.6667, recall 1.0, F1 0.800,
   FPR 0.1739, ring recovery 8/8
 
+### Operating point (Tier 1 weight selection, closed)
+
+Weight policy `A_baseline` retained after five pre-declared candidates were run
+behind three hard feasibility gates; three were refused, and the two that were
+feasible tied exactly. Frozen record: `out/weight_policy.json`, protocol in
+`weight_search_protocol.md`.
+
+Held out at the frozen threshold 0.23, one read: precision 0.6667, recall 1.0000,
+F1 0.8000, FPR 0.1739, ring recovery 8/8, **expected loss 9,392.92** at a 38.71%
+review rate. All four false positives are family components, none background.
+Validation expected loss was 5,348.23; the held-out figure is 76% higher and is
+the one to quote.
+
 Working files: `implementation_plan.md` (phases), `testing.md` (checklist),
 `deferred_decisions.md` (knowingly-deferred decisions and who owns each),
 `weight_search_protocol.md` (frozen, not yet run),
