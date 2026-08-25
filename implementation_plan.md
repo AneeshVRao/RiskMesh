@@ -602,11 +602,176 @@ blocked is the general one; the measurement is specific.
 Recording the expectation up front is deliberate: it stops the ablation being
 read backwards to justify whatever the numbers turn out to be.
 
-## Deferred to Tier 1 and beyond
+## RISK-004 — closed, `instrument_sharing` rejected as a production signal
 
-Not built here, listed so the omission is explicit: SQLite persistence, FastAPI
-service and its endpoints, the React investigator console, the LLM explanation
-layer, XGBoost (Tier 2), GraphSAGE (Tier 3), the false-positive cost model and
-expected-loss thresholding, ablation analysis, bootstrap confidence intervals, the
-full baseline suite, and the four remaining ring types and three remaining
-hard-negative types.
+Filed by the seven-signal audit alongside RISK-003: `instrument_sharing` scored
+ring 0.2031 against family **0.2969** on train+validation — a ring-minus-family
+delta of **-0.0938** at weight 0.1444, a weighted signal pushing the hard
+negatives *toward* the positive band.
+
+Three pre-registered fixes were run and rejected, each frozen before the held-out
+split was read. Records in `experiments/`:
+
+| | change | ring-family | outcome |
+|---|---|---|---|
+| **E4** | ring instrument overlap scales with ring size | -0.0391 | rejected — sign never inverts |
+| **E5** | feature normalised by component size | **-0.2263** | rejected — worse, plus 78% background saturation |
+| **E6** | rings funded through a card pool, scored as accounts-per-instrument | +0.1576 | rejected — over-separates, panel FAILS |
+
+The zero-weight fallback was then run and **also** rejected: removing the signal
+takes `positives_below_max_negative` from 0.5625 to 0.1250 and the panel verdict
+to FAIL. Its negative delta is a large part of what holds the hard negatives up.
+
+**Status: closed — rejected as a production scoring signal for the current
+benchmark and ring type.** The weight stays at 0.1444 because every alternative
+measured worse, and the open weight question is tracked as D2 in
+`deferred_decisions.md`.
+
+**Scope caveat, preserved deliberately.** What was rejected is instrument sharing
+*as a discriminative signal against a household hard negative, for Tier 0's
+single shared-device ring type*. It is **not** a finding that instrument
+intelligence is useless for coordinated-abuse detection, and must not be quoted
+that way. The reason it cannot work here is a property of the generator: Tier 0's
+ring shares one card across a subset of members and its hard negative shares one
+card across all of them — two mechanisms differing only in what fraction of a
+similarly-sized group shares. E6 is the evidence that a **multi-card ring type**
+breaks that symmetry: accounts-per-instrument separated the classes immediately
+and in the right direction (family fell to exactly 0.0000). E6 was rejected for
+over-separating *this* benchmark, not because the feature failed. A future
+funding-network ring type should restart from `experiments/experiment_e6.json`.
+
+Two standing lessons came out of this sequence and are filed separately in
+`bugs.md`, because neither is about instruments: **L1** (size-based normalisation
+degenerates at small component sizes) and **L2** (held-out F1 is not a safe
+objective — see below).
+
+## Tier 1 — cost model and weight selection (DONE)
+
+Protocol frozen in `weight_search_protocol.md` before any candidate was scored;
+code in `riskmesh/costmodel.py`; record in `out/weight_policy.json`.
+
+**Five pre-declared candidates, no search space.** A continuous search over seven
+weights on 16 design positives would fit noise with no honest way to report how
+many configurations were tried. A_baseline (control), B_equal,
+C_separation_proportional, D_drop_flagged, E_drop_temporal.
+
+**Three hard feasibility gates, all structural.** `gated_expected_loss()` raises
+rather than returning a number, the same way `held_out_view()` raises rather than
+returning test rows. An infeasible candidate gets no expected loss at all — not a
+number that is later discarded.
+
+| gate | bound |
+|---|---|
+| non-triviality panel | verdict `PASS` |
+| `hard_negatives_inside_positive_range` | `>= 4` |
+| `positives_below_max_negative` | `>= 0.45` |
+
+The two difficulty gates were added **before `select_weights()` was implemented**,
+for the measured reason recorded as **L2**: held-out F1 rose 0.8000 → 0.8889
+twice, by two unrelated mechanisms, and the panel went PASS → FAIL both times. A
+higher score on this benchmark can mean a better scorer *or* an easier benchmark
+and the metric cannot tell them apart, so difficulty is constrained before
+expected loss is allowed to matter. The bounds are absolute rather than a margin
+from the incumbent, so a run of individually reasonable changes cannot ratchet
+difficulty down one accepted step at a time.
+
+**Costs derived from the dataset** (PRD "Cost Inputs", no round numbers):
+`C_review` 500.00 (20 analyst-minutes at INR 1500/hour — the one assumed input),
+`C_fn` 74,645.29 (median ring-component exposure), `C_fp` 848.23 (one review plus
+2% of median negative exposure).
+
+### Result — A_baseline retained
+
+| policy | panel | pbmn | hard-neg | feasible | threshold | expected loss |
+|---|---|---|---|---|---|---|
+| **A_baseline** | PASS | 0.5625 | 4 | **yes** | 0.23 | **5,348.23** |
+| B_equal | PASS | 0.3125 | 1 | no | — | — |
+| C_separation_proportional | FAIL | 0.0000 | 0 | no | — | — |
+| D_drop_flagged | FAIL | 0.1250 | 1 | no | — | — |
+| E_drop_temporal | PASS | 0.5625 | 4 | yes | 0.26 | 5,348.23 |
+
+Three of five refused. B is the case the tightening was for — it passes the panel
+and still loses three of four hard negatives from the positive range. A and E tie
+at *exactly* 5,348.23; the tie breaks to A on incumbent-over-change. **Nothing
+beat A**, and nothing was relaxed to produce a different winner.
+
+E tying A exactly is the third independent confirmation that `temporal_burst` is
+redundant — it changes no held-out metric and no expected-loss figure, only the
+threshold that reaches it. This strengthens D1 rather than resolving it.
+
+Sensitivity over `FN_ABSORBED_FRACTION` × `FP_FRICTION_RATE` is stable: A wins all
+nine cells. `FN_ABSORBED_FRACTION` has no effect at all, because A's optimum has
+**fn = 0** and `C_fn` is multiplied by zero — so the cost model is currently
+insensitive to the input it was mainly derived from. Recorded, not glossed.
+
+### The single permitted held-out read
+
+| | validation (selection) | held out |
+|---|---|---|
+| precision | — | **0.6667** |
+| recall | — | **1.0000** |
+| F1 | — | **0.8000** |
+| FPR | — | **0.1739** |
+| ring recovery | — | **8/8 (100%)** |
+| confusion | tp 8, fp 1, fn 0, tn 22 | tp 8, **fp 4**, fn 0, tn 19 |
+| expected loss | 5,348.23 | **9,392.92** |
+| review rate | 0.2903 | 0.3871 |
+
+**The cost gap is the headline, not the F1.** Held-out expected loss is 76%
+higher than the figure the policy was selected on — not leakage (the threshold was
+frozen first) but small-sample variance, one false positive on 23 validation
+negatives against four on 23 test negatives. **The validation expected loss must
+not be quoted as the system's cost.**
+
+**All four held-out false positives are family components; none are background.**
+The residual error is entirely the hard negatives the benchmark exists to
+produce, which argues for the abstention band rather than more weight tuning.
+
+**No further held-out read is permitted under this record.** Same rule already
+stated for the ablation: any future comparison — XGBoost included — needs its own
+protocol frozen before the read, or the 0.8000 / 9,392.92 baseline stops meaning
+anything.
+
+## Tier 1 remaining
+
+What is actually left, so this file can be read top to bottom without the build
+history. Everything above this line is done and committed.
+
+**Done:** Tier 0 generator and benchmark (tagged `tier0-baseline`); RISK-001 and
+RISK-003 closed (tagged); RISK-004 closed as above; the temporal ablation gate;
+the false-positive cost model, expected-loss thresholding and weight selection,
+with one held-out read taken.
+
+**Remaining, roughly in order:**
+
+1. **Abstention / manual-review band.** A PRD must-have and the direct
+   consequence of the held-out result — all four false positives are hard
+   negatives, and a three-way allow/review/block policy is the right response to
+   that rather than further weight tuning. Needs its own cost treatment, since
+   the current model already charges review on every flag.
+2. **SQLite persistence and the FastAPI service.** Endpoints over the existing
+   artifacts; no modelling change.
+3. **React investigator console.** The `detail` strings in `score.py` were built
+   for this and are produced by the same computation as the score, so the
+   evidence view does not need reconstructing.
+4. **LLM explanation layer**, reading those same `detail` strings.
+5. **XGBoost (Tier 2)** — and it does **not** start by training a model. It
+   starts by freezing a comparison protocol, exactly as the weight search did:
+   candidate set, feasibility gates (the same three), what beating the baseline
+   means, and a single held-out read. The Tier 1 baseline it must beat is F1
+   0.8000 / expected loss 9,392.92 at threshold 0.23. Ring-level splits already
+   prevent the obvious leakage; the non-obvious risk is a stronger model
+   improving F1 by exploiting the same difficulty erosion L2 describes.
+6. **RISK-002** (`merchant_concentration` mis-signed, +0.0103 at weight 0.0889)
+   — **stays deprioritised.** It is FLAG-level, the smallest weight in the
+   scorer, and the weight search found no feasible candidate that improved on
+   leaving it alone.
+7. **Additional ring and hard-negative types**, which is also what would let
+   RISK-004's instrument work be revisited from E6.
+
+**Still deferred beyond Tier 1:** GraphSAGE (Tier 3), bootstrap confidence
+intervals, the full baseline suite.
+
+**Open decisions carried forward:** D1 and D2 in `deferred_decisions.md`. They are
+coupled — removing weight from one signal raises the other's share — and neither
+was resolved by the weight search.
