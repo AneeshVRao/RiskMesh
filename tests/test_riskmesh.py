@@ -297,6 +297,44 @@ def test_18_reproducible_outputs(run_a: dict, run_b: dict) -> None:
     check(f"18 all {len(files)} output files reproduce byte-for-byte at the same seed")
 
 
+def test_19_panel_gate_refuses_a_failing_weight_vector(cfg, cands) -> None:
+    """The weight-search gate must REFUSE, not just report.
+
+    bugs.md L2: held-out F1 rose to 0.8889 twice while the panel failed both
+    times, so a panel-failing weight vector must be structurally unable to
+    receive an expected-loss figure. This test fails if anyone relaxes
+    gated_expected_loss() into a warning.
+    """
+    from riskmesh.costmodel import (CANDIDATES, PanelGateFailure, derive_costs,
+                                    gated_expected_loss, panel_verdict, rescore)
+
+    design = [c for c in cands if c.split in ("train", "validation")]
+    costs = derive_costs(design)
+    assert costs["false_negative"] > costs["false_positive"] > costs["manual_review"], (
+        "derived costs are not ordered as a fraud cost model requires"
+    )
+
+    refused, scored = [], []
+    for name, policy in CANDIDATES.items():
+        view = [c for c in rescore(cfg, policy(cfg, design))
+                if c.split in ("train", "validation")]
+        verdict = panel_verdict(cfg, view)["verdict"]
+        try:
+            gated_expected_loss(cfg, view, 0.25, costs)
+            scored.append(name)
+            assert verdict == "PASS", f"{name} was scored despite panel {verdict}"
+        except PanelGateFailure:
+            refused.append(name)
+            assert verdict != "PASS", f"{name} was refused despite panel PASS"
+
+    assert refused, (
+        "no candidate was refused -- a gate that never fires has not been shown "
+        "to work, and D_drop_flagged is on the candidate list precisely to fire it"
+    )
+    assert "D_drop_flagged" in refused, "the known-bad candidate was not refused"
+    check(f"19 weight gate refuses {sorted(refused)}, scores {sorted(scored)}")
+
+
 # --------------------------------------------------------------------------
 
 
@@ -336,7 +374,10 @@ def main() -> int:
         test_12_to_17_pipeline(cfg, run_a, cands, labels)
         test_18_reproducible_outputs(run_a, run_b)
 
-        print(f"\n{len(PASSED)}/19 checks passed")
+        print("\nweight-search protocol (frozen, not run)")
+        test_19_panel_gate_refuses_a_failing_weight_vector(cfg, cands)
+
+        print(f"\n{len(PASSED)}/20 checks passed")
         return 0
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

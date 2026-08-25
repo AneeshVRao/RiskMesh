@@ -245,7 +245,7 @@ riskmesh/split.py      chronological ring-level split
 riskmesh/integrity.py  integrity report + non-triviality panel
 riskmesh/evaluate.py   ground-truth rule, threshold freeze, metrics
 riskmesh/__main__.py   the one command
-tests/test_riskmesh.py 19 checks
+tests/test_riskmesh.py 20 checks
 ```
 
 ## Current figures
@@ -267,4 +267,5 @@ Read from `out/` after `rm -rf out` and a clean regeneration. Config fingerprint
 
 Working files: `implementation_plan.md` (phases), `testing.md` (checklist),
 `deferred_decisions.md` (knowingly-deferred decisions and who owns each),
+`weight_search_protocol.md` (frozen, not yet run),
 `audit.md` (plan-vs-code drift), `bugs.md` (structured bug log).
