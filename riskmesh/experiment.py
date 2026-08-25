@@ -40,8 +40,9 @@ from pathlib import Path
 from typing import Any
 
 from .config import SIGNALS, Config
-from .evaluate import Candidate, build_candidates
-from .generate import generate
+from .evaluate import (Candidate, _f1_of, best_f1_with_direction,
+                       build_candidates, evaluate, select_threshold)
+from .generate import Label, generate
 from .graph import build_graph
 from .integrity import non_triviality_panel
 from .score import score_all
@@ -505,15 +506,271 @@ def run_e4(out: Path, base: Config | None = None) -> dict[str, Any]:
             "record_path": record_path}
 
 
+# --------------------------------------------------------------------------
+# Tier 1 ablation gate: temporal_burst
+# --------------------------------------------------------------------------
+
+ABLATION_NAME = "ablation-temporal_burst"
+
+ABLATION_PURPOSE = (
+    "The PRD requires an ablation per signal group; this is the temporal one, "
+    "and implementation_plan.md makes it a gate on the pitch claim that "
+    "temporal concentration is what separates a ring from legitimate shared "
+    "infrastructure. RISK-003 raised temporal_burst's ring-minus-family "
+    "separation from +0.0000 to +0.1953, but a healthy per-signal mean gap does "
+    "not prove the signal carries information the other six lack. Only removing "
+    "it and re-measuring does."
+)
+
+ABLATION_NOT_AN_EXPERIMENT = (
+    "This is a single measurement, not a hypothesis with an acceptance band. "
+    "There is no pass/fail bound to freeze against post-hoc reinterpretation -- "
+    "the record exists so the method is auditable, not to police the result. "
+    "The three possible readings are stated up front so that whichever one the "
+    "numbers land in is reported as-is: the signal contributes independently, "
+    "it is redundant with the other six, or it actively hurts."
+)
+
+ABLATION_WEIGHT_POLICY = (
+    "The six surviving signals are RENORMALISED to sum to 1.0, in proportion to "
+    "their current weights. Two reasons, one principled and one structural. "
+    "Principled: the alternative -- hold the six weights fixed and let the total "
+    "fall below 1.0 -- multiplies every component's score by the same positive "
+    "constant. That is a change of units, not an ablation. It cannot change any "
+    "ranking, so precision, recall, F1 and FPR are unchanged and only the "
+    "numeric threshold moves, by the same factor. Renormalising instead changes "
+    "the relative mix of the surviving signals, which is what 'how does the "
+    "detector do without this signal' actually asks. Both variants are computed "
+    "below and the equivalence is reported rather than assumed, because the "
+    "threshold grid is a fixed 0.01 step and discretisation can make the two "
+    "differ slightly in practice even though the ranking is identical. "
+    "Structural: Config.__post_init__ rejects any weight vector that does not "
+    "sum to 1.0, so the fixed-weight variant is not expressible as a Config at "
+    "all. It is computed here directly from the normalised signal values."
+)
+
+ABLATION_THRESHOLD_POLICY = (
+    "The ablated scorer gets its OWN threshold, re-selected by select_threshold() "
+    "on validation only and frozen to disk before any test row is read -- the "
+    "same mechanism the full scorer uses. Reusing the seven-signal threshold "
+    "would conflate two different effects: the information lost by removing the "
+    "signal, and the miscalibration of a threshold chosen for a differently "
+    "scaled score. A different scorer is a different model and is entitled to "
+    "its own operating point. Both thresholds are reported so the reader can see "
+    "whether they differ."
+)
+
+ABLATION_DATA_NOTE = (
+    "The generator is not touched. Weights affect scoring only, so both arms run "
+    "on byte-identical transactions from one generate() call -- there is no RNG "
+    "stream to perturb and no isolation check to run. Per-signal normalised "
+    "values are likewise identical between arms; only the weighted total differs."
+)
+
+
+def _reweight(signals: dict[str, float], weights: dict[str, float]) -> float:
+    return min(1.0, max(0.0, sum(weights[k] * v for k, v in signals.items())))
+
+
+def _arm_metrics(cfg: Config, cands: list[Candidate], labels: list[Label],
+                 threshold: float) -> dict[str, Any]:
+    """Held-out metrics, plus the hard-negative-only view that matters most."""
+    test = [c for c in cands if c.split == "test"]
+    full = evaluate(cfg, test, labels, threshold)["primary"]
+    hard = [c for c in test if c.is_positive or c.has_family]
+    hard_f1 = _f1_of([(c.score >= threshold, c.is_positive) for c in hard])
+    return {
+        "threshold": threshold,
+        "precision": round(float(full["precision"]), 4),
+        "recall": round(float(full["recall"]), 4),
+        "f1": round(float(full["f1"]), 4),
+        "false_positive_rate": round(float(full["false_positive_rate"]), 4),
+        "tp": full["tp"], "fp": full["fp"], "tn": full["tn"], "fn": full["fn"],
+        "rings_recovered": full["rings_recovered"],
+        "rings_in_test": full["rings_in_test"],
+        "hard_negatives_only_f1": round(hard_f1, 4),
+        "hard_negatives_only_n": len(hard),
+    }
+
+
+def _separation(view: list[Candidate]) -> dict[str, float]:
+    """Mean total score by group, on the design splits."""
+    pos = [c.score for c in view if c.is_positive]
+    fam = [c.score for c in view if not c.is_positive and c.has_family]
+    bg = [c.score for c in view if not c.is_positive and not c.has_family]
+    r, f, b = (statistics.fmean(x) if x else 0.0 for x in (pos, fam, bg))
+    return {
+        "ring": round(r, 4), "family": round(f, 4), "background": round(b, 4),
+        "ring_minus_family": round(r - f, 4),
+        "ring_minus_background": round(r - b, 4),
+    }
+
+
+def run_ablation(out: Path, signal: str = "temporal_burst",
+                 base: Config | None = None) -> dict[str, Any]:
+    cfg = base or Config()
+    record_path = out / f"ablation_{signal}.json"
+
+    txns, labels = generate(cfg)
+    graph = build_graph(cfg, txns)
+    scores = score_all(cfg, txns, graph)
+    splits = assign_splits(cfg, graph, labels)
+    full_cands = build_candidates(cfg, graph, scores, splits, labels)
+
+    kept = {k: v for k, v in cfg.weights.items() if k != signal}
+    total = sum(kept.values())
+    renorm = {**{k: v / total for k, v in kept.items()}, signal: 0.0}
+    fixed = {**kept, signal: 0.0}
+
+    ablated = [replace(c, score=round(_reweight(c.signals, renorm), 4))
+               for c in full_cands]
+    fixed_arm = [replace(c, score=round(_reweight(c.signals, fixed), 4))
+                 for c in full_cands]
+
+    # Self-check: recomputing from the stored normalised values must reproduce
+    # the scorer's own output, or the two arms are not comparable.
+    recomputed = max(abs(_reweight(c.signals, cfg.weights) - c.score)
+                     for c in full_cands)
+
+    full_thr, full_meta = select_threshold(
+        cfg, [c for c in design_view(full_cands) if c.split == "validation"])
+    abl_thr, abl_meta = select_threshold(
+        cfg, [c for c in design_view(ablated) if c.split == "validation"])
+    fix_thr, _ = select_threshold(
+        cfg, [c for c in design_view(fixed_arm) if c.split == "validation"])
+
+    meta: dict[str, Any] = {
+        "measurement": ABLATION_NAME,
+        "ablated_signal": signal,
+        "ablated_signal_weight": round(cfg.weights[signal], 4),
+        "purpose": ABLATION_PURPOSE,
+        "not_an_experiment": ABLATION_NOT_AN_EXPERIMENT,
+        "weight_policy": ABLATION_WEIGHT_POLICY,
+        "threshold_policy": ABLATION_THRESHOLD_POLICY,
+        "data_note": ABLATION_DATA_NOTE,
+        "weights_full": {k: round(v, 4) for k, v in cfg.weights.items()},
+        "weights_ablated_renormalised": {k: round(v, 4) for k, v in renorm.items()},
+        "weights_ablated_fixed_total": round(sum(fixed.values()), 4),
+        "score_recomputation_max_error": round(recomputed, 6),
+        "designed_on": list(DESIGN_SPLITS),
+        "seed": cfg.seed,
+        "config_fingerprint": cfg.fingerprint(),
+        "python_version": sys.version.split()[0],
+        "design_split_separation": {
+            "full": _separation(design_view(full_cands)),
+            "ablated": _separation(design_view(ablated)),
+        },
+        "validation_threshold": {
+            "full": full_meta,
+            "ablated": abl_meta,
+            "ablated_fixed_weight_variant": fix_thr,
+        },
+    }
+    freeze_experiment(record_path, meta)
+
+    held_out_view(full_cands, record_path)  # gate: record must exist first
+    meta["held_out"] = {
+        "full": _arm_metrics(cfg, full_cands, labels, full_thr),
+        "ablated": _arm_metrics(cfg, ablated, labels, abl_thr),
+        "ablated_fixed_weight_variant": _arm_metrics(
+            cfg, fixed_arm, labels, fix_thr),
+    }
+
+    fmap = {c.component_id: c for c in full_cands}
+    amap = {c.component_id: c for c in ablated}
+    test = [c for c in full_cands if c.split == "test"]
+    ff = {c.component_id for c in test if fmap[c.component_id].score >= full_thr}
+    af = {c.component_id for c in test if amap[c.component_id].score >= abl_thr}
+    fps = [c for c in test if c.component_id in ff and not c.is_positive]
+    ids = [c.component_id for c in test]
+    disc = sum(
+        1
+        for i in range(len(ids))
+        for j in range(i + 1, len(ids))
+        if (fmap[ids[i]].score > fmap[ids[j]].score)
+        != (amap[ids[i]].score > amap[ids[j]].score)
+    )
+    act = [c.is_positive for c in test]
+    bf, _, _ = best_f1_with_direction([fmap[i].score for i in ids], act)
+    ba, _, _ = best_f1_with_direction([amap[i].score for i in ids], act)
+    meta["supplementary"] = {
+        "note": (
+            "Diagnostics computed on the held-out split AFTER the record was "
+            "first frozen. They are reported, never fed back into any threshold "
+            "or weight -- the operating points above were already fixed on "
+            "validation before these were computed."
+        ),
+        "held_out_flagged_sets_identical": ff == af,
+        "flagged_by_full_only": sorted(ff - af),
+        "flagged_by_ablated_only": sorted(af - ff),
+        "false_positives_total": len(fps),
+        "false_positives_that_are_family_components":
+            sum(1 for c in fps if c.has_family),
+        "false_positives_that_are_background":
+            sum(1 for c in fps if not c.has_family),
+        "discordant_ranking_pairs": disc,
+        "ranking_pairs_total": len(ids) * (len(ids) - 1) // 2,
+        "best_achievable_held_out_f1_full": round(bf, 4),
+        "best_achievable_held_out_f1_ablated": round(ba, 4),
+    }
+    freeze_experiment(record_path, meta)
+    return {"cfg": cfg, "record": meta, "record_path": record_path}
+
+
 if __name__ == "__main__":
     import argparse
 
     ap = argparse.ArgumentParser()
     ap.add_argument("experiment", nargs="?", default="e1",
-                    choices=["e1", "e2", "e3", "e4"])
+                    choices=["e1", "e2", "e3", "e4", "ablation"])
     which = ap.parse_args().experiment
 
     out = Path(__file__).resolve().parent.parent / "out"
+
+    if which == "ablation":
+        rec = run_ablation(out)["record"]
+        sep, thr, ho = (rec["design_split_separation"],
+                        rec["validation_threshold"], rec["held_out"])
+        print(f'{rec["measurement"]}  (weight removed {rec["ablated_signal_weight"]})')
+        print(f'score recomputation max error {rec["score_recomputation_max_error"]}\n')
+        print(f"{'':28}{'full':>10}{'ablated':>10}{'change':>10}")
+        print("-" * 58)
+        rows = [
+            ("design ring score", sep["full"]["ring"], sep["ablated"]["ring"]),
+            ("design family score", sep["full"]["family"], sep["ablated"]["family"]),
+            ("design ring - family", sep["full"]["ring_minus_family"],
+             sep["ablated"]["ring_minus_family"]),
+            ("design ring - background", sep["full"]["ring_minus_background"],
+             sep["ablated"]["ring_minus_background"]),
+            ("validation threshold", thr["full"]["threshold"],
+             thr["ablated"]["threshold"]),
+            ("held-out precision", ho["full"]["precision"], ho["ablated"]["precision"]),
+            ("held-out recall", ho["full"]["recall"], ho["ablated"]["recall"]),
+            ("held-out F1", ho["full"]["f1"], ho["ablated"]["f1"]),
+            ("held-out FPR", ho["full"]["false_positive_rate"],
+             ho["ablated"]["false_positive_rate"]),
+            ("hard-negatives-only F1", ho["full"]["hard_negatives_only_f1"],
+             ho["ablated"]["hard_negatives_only_f1"]),
+        ]
+        for name, a, b in rows:
+            print(f"{name:28}{a:>10.4f}{b:>10.4f}{b - a:>+10.4f}")
+        sup = rec["supplementary"]
+        print(f'\nflagged sets identical: {sup["held_out_flagged_sets_identical"]}'
+              f'  |  discordant ranking pairs '
+              f'{sup["discordant_ranking_pairs"]}/{sup["ranking_pairs_total"]}')
+        print(f'false positives {sup["false_positives_total"]}: '
+              f'{sup["false_positives_that_are_family_components"]} family, '
+              f'{sup["false_positives_that_are_background"]} background')
+        print(f'best achievable held-out F1 (diagnostic): '
+              f'full {sup["best_achievable_held_out_f1_full"]:.4f}, '
+              f'ablated {sup["best_achievable_held_out_f1_ablated"]:.4f}')
+        fx = ho["ablated_fixed_weight_variant"]
+        print(f'\nfixed-weight variant (total {rec["weights_ablated_fixed_total"]}): '
+              f'threshold {fx["threshold"]:.2f}, F1 {fx["f1"]:.4f} -- '
+              f'{"identical to renormalised" if fx["f1"] == ho["ablated"]["f1"] else "DIFFERS"}')
+        print(f'record frozen at {out / "ablation_temporal_burst.json"}')
+        raise SystemExit(0)
+
     result = {"e1": run_e1, "e2": run_e2,
               "e3": run_e3, "e4": run_e4}[which](out)
     rvf = result["record"]["design_split_ring_vs_family"]

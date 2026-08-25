@@ -1,0 +1,136 @@
+{
+  "measurement": "ablation-temporal_burst",
+  "ablated_signal": "temporal_burst",
+  "ablated_signal_weight": 0.2778,
+  "purpose": "The PRD requires an ablation per signal group; this is the temporal one, and implementation_plan.md makes it a gate on the pitch claim that temporal concentration is what separates a ring from legitimate shared infrastructure. RISK-003 raised temporal_burst's ring-minus-family separation from +0.0000 to +0.1953, but a healthy per-signal mean gap does not prove the signal carries information the other six lack. Only removing it and re-measuring does.",
+  "not_an_experiment": "This is a single measurement, not a hypothesis with an acceptance band. There is no pass/fail bound to freeze against post-hoc reinterpretation -- the record exists so the method is auditable, not to police the result. The three possible readings are stated up front so that whichever one the numbers land in is reported as-is: the signal contributes independently, it is redundant with the other six, or it actively hurts.",
+  "weight_policy": "The six surviving signals are RENORMALISED to sum to 1.0, in proportion to their current weights. Two reasons, one principled and one structural. Principled: the alternative -- hold the six weights fixed and let the total fall below 1.0 -- multiplies every component's score by the same positive constant. That is a change of units, not an ablation. It cannot change any ranking, so precision, recall, F1 and FPR are unchanged and only the numeric threshold moves, by the same factor. Renormalising instead changes the relative mix of the surviving signals, which is what 'how does the detector do without this signal' actually asks. Both variants are computed below and the equivalence is reported rather than assumed, because the threshold grid is a fixed 0.01 step and discretisation can make the two differ slightly in practice even though the ranking is identical. Structural: Config.__post_init__ rejects any weight vector that does not sum to 1.0, so the fixed-weight variant is not expressible as a Config at all. It is computed here directly from the normalised signal values.",
+  "threshold_policy": "The ablated scorer gets its OWN threshold, re-selected by select_threshold() on validation only and frozen to disk before any test row is read -- the same mechanism the full scorer uses. Reusing the seven-signal threshold would conflate two different effects: the information lost by removing the signal, and the miscalibration of a threshold chosen for a differently scaled score. A different scorer is a different model and is entitled to its own operating point. Both thresholds are reported so the reader can see whether they differ.",
+  "data_note": "The generator is not touched. Weights affect scoring only, so both arms run on byte-identical transactions from one generate() call -- there is no RNG stream to perturb and no isolation check to run. Per-signal normalised values are likewise identical between arms; only the weighted total differs.",
+  "weights_full": {
+    "device_sharing": 0.2444,
+    "temporal_burst": 0.2778,
+    "instrument_sharing": 0.1444,
+    "failure_refund_rate": 0.1333,
+    "account_newness": 0.1111,
+    "merchant_concentration": 0.0889,
+    "ip_sharing": 0.0
+  },
+  "weights_ablated_renormalised": {
+    "device_sharing": 0.3385,
+    "instrument_sharing": 0.2,
+    "failure_refund_rate": 0.1846,
+    "account_newness": 0.1538,
+    "merchant_concentration": 0.1231,
+    "ip_sharing": 0.0,
+    "temporal_burst": 0.0
+  },
+  "weights_ablated_fixed_total": 0.7222,
+  "score_recomputation_max_error": 2e-06,
+  "designed_on": [
+    "train",
+    "validation"
+  ],
+  "seed": 20260824,
+  "config_fingerprint": "6ebb043b3c1954b1",
+  "python_version": "3.12.10",
+  "design_split_separation": {
+    "full": {
+      "ring": 0.3866,
+      "family": 0.2008,
+      "background": 0.0721,
+      "ring_minus_family": 0.1858,
+      "ring_minus_background": 0.3145
+    },
+    "ablated": {
+      "ring": 0.4211,
+      "family": 0.2389,
+      "background": 0.0985,
+      "ring_minus_family": 0.1822,
+      "ring_minus_background": 0.3226
+    }
+  },
+  "validation_threshold": {
+    "full": {
+      "threshold": 0.23,
+      "selection_metric": "f1",
+      "selected_on": "validation",
+      "validation_components": 31,
+      "validation_f1_at_threshold": 0.9412,
+      "seed": 20260824,
+      "config_fingerprint": "6ebb043b3c1954b1",
+      "python_version": "3.12.10"
+    },
+    "ablated": {
+      "threshold": 0.26,
+      "selection_metric": "f1",
+      "selected_on": "validation",
+      "validation_components": 31,
+      "validation_f1_at_threshold": 0.9412,
+      "seed": 20260824,
+      "config_fingerprint": "6ebb043b3c1954b1",
+      "python_version": "3.12.10"
+    },
+    "ablated_fixed_weight_variant": 0.19
+  },
+  "held_out": {
+    "full": {
+      "threshold": 0.23,
+      "precision": 0.6667,
+      "recall": 1.0,
+      "f1": 0.8,
+      "false_positive_rate": 0.1739,
+      "tp": 8,
+      "fp": 4,
+      "tn": 19,
+      "fn": 0,
+      "rings_recovered": 8,
+      "rings_in_test": 8,
+      "hard_negatives_only_f1": 0.8,
+      "hard_negatives_only_n": 16
+    },
+    "ablated": {
+      "threshold": 0.26,
+      "precision": 0.6667,
+      "recall": 1.0,
+      "f1": 0.8,
+      "false_positive_rate": 0.1739,
+      "tp": 8,
+      "fp": 4,
+      "tn": 19,
+      "fn": 0,
+      "rings_recovered": 8,
+      "rings_in_test": 8,
+      "hard_negatives_only_f1": 0.8,
+      "hard_negatives_only_n": 16
+    },
+    "ablated_fixed_weight_variant": {
+      "threshold": 0.19,
+      "precision": 0.6667,
+      "recall": 1.0,
+      "f1": 0.8,
+      "false_positive_rate": 0.1739,
+      "tp": 8,
+      "fp": 4,
+      "tn": 19,
+      "fn": 0,
+      "rings_recovered": 8,
+      "rings_in_test": 8,
+      "hard_negatives_only_f1": 0.8,
+      "hard_negatives_only_n": 16
+    }
+  },
+  "supplementary": {
+    "note": "Diagnostics computed on the held-out split AFTER the record was first frozen. They are reported, never fed back into any threshold or weight -- the operating points above were already fixed on validation before these were computed.",
+    "held_out_flagged_sets_identical": true,
+    "flagged_by_full_only": [],
+    "flagged_by_ablated_only": [],
+    "false_positives_total": 4,
+    "false_positives_that_are_family_components": 4,
+    "false_positives_that_are_background": 0,
+    "discordant_ranking_pairs": 12,
+    "ranking_pairs_total": 465,
+    "best_achievable_held_out_f1_full": 0.8889,
+    "best_achievable_held_out_f1_ablated": 0.9412
+  }
+}

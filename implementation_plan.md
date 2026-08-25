@@ -556,12 +556,42 @@ Write `out/ablation_report.json` and a table in the benchmark view:
 
 The claim "temporal_burst distinguishes rings from legitimate shared
 infrastructure" may be made **only if** removing it produces a material drop in
-hard-negative-only F1 or in ring-vs-family separation. Before RISK-003 closed the
-expected result was that it does not; with the signal now at +0.1953 the outcome
-is genuinely open, which is exactly why the ablation has to be run rather than
-assumed in either direction. If it fails, the honest pitch line credits
-`account_newness` (+0.8819), `failure_refund_rate` (+0.1383) and `device_sharing`
-(+0.1136), which measurably do this work regardless.
+hard-negative-only F1 or in ring-vs-family separation.
+
+### Result: RUN, and the claim is NOT supported
+
+Measured, record at `experiments/ablation_temporal_burst.json`. Removing
+`temporal_burst` (weight 0.2778) and renormalising the remaining six changes
+nothing that matters:
+
+| | full | minus temporal_burst | change |
+|---|---|---|---|
+| design ring - family (total score) | 0.1858 | 0.1822 | **-0.0036** |
+| design ring - background | 0.3145 | 0.3226 | +0.0081 |
+| validation threshold | 0.23 | 0.26 | +0.03 |
+| held-out precision | 0.6667 | 0.6667 | 0.0000 |
+| held-out recall | 1.0000 | 1.0000 | 0.0000 |
+| held-out F1 | 0.8000 | 0.8000 | **0.0000** |
+| held-out FPR | 0.1739 | 0.1739 | 0.0000 |
+| hard-negatives-only F1 | 0.8000 | 0.8000 | **0.0000** |
+
+The two scorers flag the **identical set** of 12 held-out components, disagreeing
+on only 12 of 465 ranking pairs. The verdict is **redundant**, not "contributes
+independently" -- and the threshold-free diagnostic points mildly the other way
+still: the best achievable held-out F1 is **higher** without the signal (0.9412
+against 0.8889).
+
+So the honest pitch line credits `account_newness` (+0.8819),
+`failure_refund_rate` (+0.1383) and `device_sharing` (+0.1136), which measurably
+do this work. `temporal_burst` is kept at its current weight because removing it
+costs nothing either, and because RISK-003's semantic fix made it *measure* what
+its name claims even though the information turns out to be duplicated elsewhere.
+Reweighting is a separate decision and belongs with the cost model.
+
+**A note on what the ablation does not say.** It shows the signal is redundant
+*on this generator, at this scale, with these six companions*. A second ring type
+that bursts without sharing devices would likely change that. The claim being
+blocked is the general one; the measurement is specific.
 
 Recording the expectation up front is deliberate: it stops the ablation being
 read backwards to justify whatever the numbers turn out to be.
