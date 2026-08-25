@@ -99,8 +99,8 @@ Open bugs: 3 deferred (RISK-002, RISK-003, RISK-004). 2 closed (RISK-001, B1).
   are small (mean 2.17 accounts), so their top merchant naturally carries a
   larger share of few transactions. Same shape of defect as RISK-001 but an
   order of magnitude weaker.
-- **Fix:** deferred. The magnitude is small (-0.0041 of a +0.2652 total
-  separation, ~1.5%) and resolving it means deciding whether ring cash-out
+- **Fix:** deferred. The magnitude is small (-0.0046 of a +0.2653 total
+  separation, ~1.7%) and resolving it means deciding whether ring cash-out
   concentration should be injected at all — a generator scope question for
   Tier 1, not a weight tweak. Not touched while closing RISK-001, to keep
   that change's before/after comparison attributable to one cause.
@@ -126,8 +126,9 @@ Open bugs: 3 deferred (RISK-002, RISK-003, RISK-004). 2 closed (RISK-001, B1).
   legitimate clusters in this slice, not the abusive ones. The signal is not
   wrong in general — shared-IP concentration is a real production risk signal —
   but with only one ring type present it points the wrong way.
-- **Current scorer weight:** **+0.10**, unchanged. The signal actively pushes
-  negatives up and positives down at that weight.
+- **Scorer weight:** was +0.10, now **0.00** — see Fix. At the old weight it
+  subtracted 0.0378 from a total positive-vs-negative score separation of 0.2009,
+  degrading the scorer by roughly 19%.
 - **Root cause (investigated, not assumed):** two separable things.
   1. *Real structural difference.* `_inject_rings` never touches `home_ip`;
      ring members keep per-account IPs. Max accounts on one non-common IP is
