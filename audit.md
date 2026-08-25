@@ -1,4 +1,4 @@
-# Audit — Phase 9 (Tier 0 complete) · 2026-08-25
+# Audit — RISK-001 closed (Tier 1 entry) · 2026-08-25
 
 > Compare what is actually built against `implementation_plan.md`. What is
 > missing? What was built wrong? Are there any orphaned files?
@@ -68,6 +68,51 @@ fingerprint `7ea3c87d216e5d47`, seed 20260824, Python 3.12.10.
 6. **Phases 7 and 8 were built in the order 8-then-7.** `integrity.py` needs the
    ground-truth rule and the F1 helpers, which the plan places in `evaluate.py`.
    Writing 7 first would have meant stubbing them twice.
+
+## RISK-001 resolution (first Tier 1 task)
+
+Tagged `tier0-baseline` at 342b1bb before any change.
+
+**Investigated before changing anything.** Two separable causes, both measured on
+train+validation only:
+
+1. *Real structural difference.* `_inject_rings` never touches `home_ip` — max
+   accounts on one non-common IP is exactly 1.00 for all 24 ring components
+   against 4.94 for families. Tier 0 places no ring information in the IP
+   dimension. Not the `ring_shared_device_share` mechanism, which governs devices
+   only.
+2. *Definitional defect.* The signal measured transaction share, not accounts
+   sharing an IP, unlike its device and instrument siblings — making it a
+   back-door ring detector keyed on the absence of a household (rings 0.162,
+   background 0.462, families 0.701 = p_home_ip). Not a size proxy: the gap is
+   flat at every size 4-8 and pure 1/size reaches only F1 0.727 vs 0.970.
+
+**Chose redefinition plus zero weight**, rejecting inversion (it would encode
+"not sharing infrastructure is suspicious", a fit to this generator config that
+flips when Tier 1 adds shared-IP rings) and rejecting outright removal (the
+redefinition is correct and Tier 1 will make it discriminative).
+
+**Comparison against tier0-baseline** — identical data, scorer only; the
+threshold was re-frozen on validation before test was read:
+
+| | tier0-baseline | RISK-001 fixed |
+|---|---|---|
+| positives below max negative | 0.9375 | 0.9375 |
+| shared-device-only baseline F1 | 0.7442 | 0.7442 |
+| hard negatives in positive range | 8 | 5 |
+| test precision | 0.5333 | 0.6154 |
+| test F1 | 0.6957 | 0.7619 |
+| test FPR | 0.3043 | 0.2174 |
+| test recall / ring recovery | 1.0 / 8-8 | 1.0 / 8-8 |
+| panel verdict | PASS | PASS |
+
+**New standing check.** `signal_sign_check` computes each signal's direction on
+the *normalised* values that enter the score, which is the only view that
+separates a correct inversion (`account_newness`, +0.801) from a mis-signed one.
+Added as a FLAG-level row, `no_weighted_signal_mis_signed`. It immediately
+surfaced **RISK-002** (`merchant_concentration`, delta -0.051, contribution
+-0.0046 of a +0.2652 total), filed and deferred rather than fixed, so this
+change's before/after stays attributable to one cause.
 
 ## Post-review corrections
 

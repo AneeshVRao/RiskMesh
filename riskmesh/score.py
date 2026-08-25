@@ -13,12 +13,24 @@ same computation as the score instead of being reconstructed later from a float.
 signature is (config, component, context). Leakage is prevented by the shape of
 the function, not only by a test asserting good behaviour.
 
-A note on `ip_concentration`. In Tier 0 the rings share a *device*, while the
-family hard negatives share a *home IP*, so this signal fires harder on the
-legitimate clusters than on the abusive ones. That is deliberate and left in
-place: shared-IP concentration is a real risk signal in production, hard
-negatives really do trigger it, and the whole point of the exercise is to price
-that false-positive pressure rather than to define it away.
+A note on `ip_sharing` (formerly `ip_concentration`, see bugs.md RISK-001).
+
+The original signal measured the *share of transactions* on a component's top
+non-common IP. That was the wrong quantity: `device_sharing` and
+`instrument_sharing` both count *accounts* sharing an attribute, and the IP
+signal should too. Measuring transaction share made it a back-door ring
+detector -- rings scored ~0.16 because each member has a private IP so the top
+IP holds roughly 1/n of the traffic, background scored ~0.46 because those
+components are small, and families scored ~0.70 which is just `p_home_ip`. So
+"low IP concentration" meant "large component whose members share no IP", which
+is exactly Tier 0's ring definition, arrived at through the *absence* of a
+family marker rather than through any risk concept.
+
+Redefined here as max distinct accounts on one non-common IP, symmetric with
+its siblings. Its weight is 0.00 in Tier 0: the ring injector assigns no shared
+IP, so this measures 1.00 for every ring and every background component and
+separates nothing. It is kept computed as investigator evidence and because it
+becomes genuinely discriminative once a shared-IP ring type exists.
 """
 
 from __future__ import annotations
@@ -73,10 +85,21 @@ def _clip(x: float) -> float:
     return 0.0 if x < 0.0 else 1.0 if x > 1.0 else x
 
 
-def _max_accounts_per(comp: Component, attr: str) -> tuple[str, int]:
+def _max_accounts_per(
+    comp: Component, attr: str, exclude: set[str] | None = None
+) -> tuple[str, int]:
+    """Value of `attr` shared by the most distinct accounts, and that count.
+
+    `exclude` drops common infrastructure, so a carrier NAT IP cannot masquerade
+    as a shared attribute the way it would if raw counts were used.
+    """
+    skip = exclude or set()
     holders: dict[str, set[str]] = defaultdict(set)
     for t in comp.txns:
-        holders[getattr(t, attr)].add(t.account_id)
+        value = getattr(t, attr)
+        if value in skip:
+            continue
+        holders[value].add(t.account_id)
     if not holders:
         return "", 0
     value, accounts = max(holders.items(), key=lambda kv: (len(kv[1]), kv[0]))
@@ -147,10 +170,11 @@ def score_component(cfg: Config, comp: Component, ctx: ScoringContext) -> Compon
     add("failure_refund_rate", round(rate, 4), (rate - base) / max(1e-9, 3 * base),
         f"{rate:.0%} refund/failure vs {base:.0%} baseline")
 
-    # 5. IP concentration, ignoring common infrastructure (NAT and friends)
-    ip, share_ip, n_ip = _top_share(comp, "ip_id", ctx.common_infra)
-    add("ip_concentration", round(share_ip, 4), share_ip,
-        f"{n_ip}/{n_txns} transactions from {ip or 'no shared IP'}")
+    # 5. IP sharing -- accounts on one non-common IP, not transaction share.
+    #    Weight 0.00 in Tier 0 (RISK-001); computed for evidence and for Tier 1.
+    ip, k_ip = _max_accounts_per(comp, "ip_id", ctx.common_infra)
+    add("ip_sharing", k_ip, (k_ip - 1) / max(1, cfg.max_ip_degree - 1),
+        f"{k_ip} accounts share IP {ip}" if k_ip else "no non-common IP")
 
     # 6. account newness -- mule accounts are young, households are not
     ages = [t.account_age_days for t in comp.txns]

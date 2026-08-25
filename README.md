@@ -118,25 +118,33 @@ and a human-readable detail string. Weights sum to exactly 1.00.
 
 | Signal | Weight | Measures |
 |---|---|---|
-| `temporal_burst` | 0.25 | Most distinct accounts active in any 30-minute window |
-| `device_sharing` | 0.22 | Most accounts on one device |
-| `instrument_sharing` | 0.13 | Most accounts on one payment instrument |
-| `failure_refund_rate` | 0.12 | Refund + failure rate vs the population baseline |
-| `ip_concentration` | 0.10 | Share of traffic from one non-common IP |
-| `account_newness` | 0.10 | Inverted median account age |
-| `merchant_concentration` | 0.08 | Share of traffic at one merchant |
+| `temporal_burst` | 0.278 | Most distinct accounts active in any 30-minute window |
+| `device_sharing` | 0.244 | Most accounts on one device |
+| `instrument_sharing` | 0.144 | Most accounts on one payment instrument |
+| `failure_refund_rate` | 0.133 | Refund + failure rate vs the population baseline |
+| `ip_sharing` | 0.00 | Most accounts on one non-common IP (see RISK-001) |
+| `account_newness` | 0.111 | Inverted median account age |
+| `merchant_concentration` | 0.089 | Share of traffic at one merchant |
 
 `temporal_burst` carries the most weight because it is the signal that separates
 a ring from a family sharing the same tablet — the structural signals cannot.
 
-`ip_concentration` fires *harder on the hard negatives than on the rings*, since
-Tier 0 rings share a device while families share a home IP: raw mean 0.161 on
-positives against 0.540 on negatives. At +0.10 weight it pushes the scorer the
-wrong way rather than merely adding difficulty. Filed as **RISK-001** and left
-untouched for Tier 0 -- changing a weight now would mean re-tuning the generator
-against the non-triviality panel, which the Tier 0 time cap forbids. Tier 1
-feature validation decides between inverting it, zeroing it, or letting the
-shared-IP ring type restore the intended direction.
+`ip_sharing` carries **zero weight**. It was `ip_concentration`, measuring the
+share of traffic on a component's top IP, and it was mis-signed: families ran
+0.701 against rings' 0.162, so it pushed legitimate clusters up and rings down.
+Investigation (RISK-001, closed) found two causes — the ring injector assigns no
+shared IP at all, so Tier 0 carries no ring information in the IP dimension; and
+the signal counted transactions rather than accounts, unlike its siblings, which
+turned it into a back-door ring detector keyed on the *absence* of a household.
+It is now defined as max accounts on one non-common IP and weighted 0.00, kept
+computed as evidence and ready for Tier 1's shared-IP ring type. The other six
+weights are the Tier 0 ratios renormalised to 1.00.
+
+The panel now carries a `signal_sign_check` computed on the **normalised**
+values that actually enter the score. This matters: a raw `<=` direction is not
+itself a fault — `account_newness` inverts during normalisation by design and
+contributes +0.801, the strongest correct signal. Only the normalised view
+distinguishes a correct inversion from a mis-signed one.
 
 ## Evaluation protocol
 
@@ -198,7 +206,7 @@ tests/test_riskmesh.py 18 checks
 
 ## Current figures
 
-Read from `out/` after a clean regeneration. Config fingerprint `7ea3c87d216e5d47`,
+Read from `out/` after a clean regeneration. Config fingerprint `605e71743ebe6a64`,
 seed 20260824, Python 3.12.10:
 
 - 5968 transactions, 789 accounts, 975 devices, 902 IPs, 823 instruments, 40 merchants
@@ -206,9 +214,10 @@ seed 20260824, Python 3.12.10:
 - 100 candidate components, 402 singletons dropped
 - largest component 9 accounts (1.14%), 20 NAT IPs capped
 - 8 positive components per split; negatives 30 / 23 / 23
-- non-triviality verdict **PASS**, shared-device baseline F1 0.7442
-- held out at frozen threshold 0.27: precision 0.533, recall 1.000, F1 0.696,
-  FPR 0.304, ring recovery 8/8
+- non-triviality verdict **PASS**, shared-device baseline F1 0.7442, total weighted score separation +0.2652
+- flagged: `none` (raw single-signal F1); mis-signed weighted signals ['merchant_concentration'] (RISK-002)
+- held out at frozen threshold 0.25: precision 0.6154, recall 1.0, F1 0.7619,
+  FPR 0.2174, ring recovery 8/8
 
 Working files: `implementation_plan.md` (phases), `testing.md` (checklist),
 `audit.md` (plan-vs-code drift), `bugs.md` (structured bug log).

@@ -27,22 +27,40 @@ SIGNALS: tuple[str, ...] = (
     "temporal_burst",
     "instrument_sharing",
     "failure_refund_rate",
-    "ip_concentration",
+    "ip_sharing",
     "account_newness",
     "merchant_concentration",
 )
 
 
 def _default_weights() -> dict[str, float]:
-    return {
+    """Tier 0 weights, renormalised after RISK-001 zeroed `ip_sharing`.
+
+    `ip_sharing` carries 0.00 because the Tier 0 generator places no ring
+    information in the IP dimension at all: max-accounts-on-one-non-common-IP is
+    exactly 1.00 for every ring component AND every background component, while
+    family clusters average 4.94. The signal cannot separate positives from the
+    bulk of negatives here, and at its old +0.10 it subtracted 0.0378 from a
+    total positive-vs-negative score separation of 0.2009 -- degrading the
+    scorer by ~19%. It stays computed, as investigator evidence and because it
+    is the right definition once Tier 1 adds a shared-IP ring type; it simply
+    contributes nothing until it has something to say. See bugs.md RISK-001.
+
+    The remaining six keep their Tier 0 baseline ratios, renormalised to 1.00,
+    so zeroing one signal does not silently re-rank the others.
+    """
+    active = {
         "device_sharing": 0.22,
         "temporal_burst": 0.25,
         "instrument_sharing": 0.13,
         "failure_refund_rate": 0.12,
-        "ip_concentration": 0.10,
         "account_newness": 0.10,
         "merchant_concentration": 0.08,
     }
+    total = sum(active.values())
+    weights = {name: value / total for name, value in active.items()}
+    weights["ip_sharing"] = 0.0
+    return weights
 
 
 @dataclass(frozen=True)
@@ -156,6 +174,10 @@ class Config:
     max_shared_device_baseline_f1: float = 0.85
     single_signal_flag_f1: float = 0.95
     max_largest_component_share: float = 0.15
+    # A weighted signal whose normalised mean is this much LOWER on positives
+    # than on negatives is contributing in the wrong direction -- it is helping
+    # the negatives. Reported as FLAG, not FAIL: see RISK-002.
+    mis_signed_delta_tolerance: float = 0.02
 
     # --- evaluation ------------------------------------------------------
     # Tier 0 benchmark ground-truth rule: a component is positive iff this

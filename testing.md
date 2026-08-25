@@ -82,6 +82,10 @@ Bounds come from `config.py`; the panel is computed on train+val only.
 - [x] **scripted** — shared-device-only baseline F1 <
       `max_shared_device_baseline_f1` (0.85) *(test 11)*
 - [x] **manual** — per-feature positive/negative ranges visibly overlap
+- [x] **scripted** — no weighted signal is mis-signed, i.e. no signal with
+      weight > 0 has a normalised mean lower on positives than negatives
+      *(test 19; FLAG-level — currently flags `merchant_concentration`,
+      tracked as RISK-002)*
 
 ## Phase 8 — Evaluation runner
 

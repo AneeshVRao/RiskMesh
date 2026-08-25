@@ -95,6 +95,39 @@ def non_triviality_panel(cfg: Config, candidates: list[Candidate]) -> dict[str, 
     inverted = sorted(k for k, d in detail.items() if d["direction"] == "<=")
     device_f1 = shared_device_baseline_f1(fit)
 
+    # Sign check on the NORMALISED values -- the numbers that actually enter the
+    # weighted score. A raw "<=" direction is not itself a fault: account_newness
+    # inverts during normalisation by design, so its raw direction is "<=" while
+    # its contribution is strongly correct. Only this table can tell the two
+    # apart, and mis-signing one weighted signal is what RISK-001 was.
+    sign_check: dict[str, Any] = {}
+    for name in SIGNALS:
+        mean_pos = statistics.fmean([c.signals[name] for c in pos]) if pos else 0.0
+        mean_neg = statistics.fmean([c.signals[name] for c in neg]) if neg else 0.0
+        delta = mean_pos - mean_neg
+        weight = cfg.weights[name]
+        if delta < -cfg.mis_signed_delta_tolerance:
+            status = "MIS-SIGNED"
+        elif delta > cfg.mis_signed_delta_tolerance:
+            status = "ok"
+        else:
+            status = "no separation"
+        sign_check[name] = {
+            "weight": round(weight, 4),
+            "normalised_mean_positive": round(mean_pos, 4),
+            "normalised_mean_negative": round(mean_neg, 4),
+            "delta": round(delta, 4),
+            "weighted_contribution": round(weight * delta, 4),
+            "status": status,
+        }
+    mis_signed = sorted(
+        k for k, v in sign_check.items()
+        if v["status"] == "MIS-SIGNED" and v["weight"] > 0
+    )
+    total_separation = round(
+        sum(v["weighted_contribution"] for v in sign_check.values()), 4
+    )
+
     checks = {
         "score_distributions_overlap": {
             "value": overlap["overlaps"], "bound": True,
@@ -118,6 +151,13 @@ def non_triviality_panel(cfg: Config, candidates: list[Candidate]) -> dict[str, 
             "value": device_f1, "bound": f"< {cfg.max_shared_device_baseline_f1}",
             "status": "PASS" if device_f1 < cfg.max_shared_device_baseline_f1 else "FAIL",
         },
+        # FLAG, not FAIL. A mis-signed weighted signal is a real defect, but
+        # deciding what to do about it is a judgement call that belongs to
+        # feature validation, not to a gate that blocks the benchmark running.
+        "no_weighted_signal_mis_signed": {
+            "value": mis_signed or None, "bound": "no weighted signal helps negatives",
+            "status": "FLAG" if mis_signed else "PASS",
+        },
     }
 
     return {
@@ -131,11 +171,16 @@ def non_triviality_panel(cfg: Config, candidates: list[Candidate]) -> dict[str, 
         "hard_negatives_inside_positive_range": len(families_in_pos_range),
         "single_signal_max_f1": per_signal,
         "single_signal_detail": detail,
+        "signal_sign_check": sign_check,
+        "mis_signed_weighted_signals": mis_signed,
+        "total_weighted_score_separation": total_separation,
         "inverted_signals": inverted,
         "inverted_signals_note": (
-            "Signals whose LOW values indicate abuse. F1 here is the best over "
-            "both threshold directions; a >=-only sweep understates them and "
-            "would miss perfect separation in the inverted direction."
+            "RAW-value direction only. A <= direction is not by itself a fault: "
+            "account_newness inverts during normalisation by design. Use "
+            "signal_sign_check, which is computed on the normalised values that "
+            "actually enter the score, to tell a correct inversion from a "
+            "mis-signed one."
         ),
         "flagged_signals": {
             k: per_signal[k] for k in flagged
@@ -291,6 +336,11 @@ def print_report(report: dict[str, Any]) -> None:
         print(f"  [{mark}] {name:42s} {str(chk['value']):>10s}  bound {chk['bound']}")
     if isinstance(p["flagged_signals"], dict) and p["flagged_signals"]:
         print(f"  note: signals to investigate by hand -> {p['flagged_signals']}")
+    if p["mis_signed_weighted_signals"]:
+        print(f"  note: weighted signals contributing the WRONG way -> "
+              f"{p['mis_signed_weighted_signals']}")
+    print(f"  total weighted score separation (positive - negative): "
+          f"{p['total_weighted_score_separation']:+.4f}")
     print(f"  positive scores {p['score_overlap']['positive_range']}   "
           f"negative scores {p['score_overlap']['negative_range']}   "
           f"overlap {p['score_overlap']['intersection']}")
