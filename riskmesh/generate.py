@@ -383,8 +383,8 @@ def _inject_families(
         # (instrument_sharing by +0.070). An experiment that perturbs the shared
         # random stream is not isolated, whatever its headline number says.
         household_pool: list[str] = []
+        pool_rng = random.Random(cfg.seed * 1_000_003 + f)
         if cfg.family_merchant_overlap > 0:
-            pool_rng = random.Random(cfg.seed * 1_000_003 + f)
             for m in pool_rng.choices(merchants, weights=pop_weights,
                                       k=cfg.family_merchant_pool_size * 3):
                 if m.merchant_id not in household_pool:
