@@ -298,14 +298,18 @@ def test_18_reproducible_outputs(run_a: dict, run_b: dict) -> None:
 
 
 def test_19_panel_gate_refuses_a_failing_weight_vector(cfg, cands) -> None:
-    """The weight-search gate must REFUSE, not just report.
+    """The weight-search gates must REFUSE, not just report.
 
     bugs.md L2: held-out F1 rose to 0.8889 twice while the panel failed both
-    times, so a panel-failing weight vector must be structurally unable to
-    receive an expected-loss figure. This test fails if anyone relaxes
-    gated_expected_loss() into a warning.
+    times, so an infeasible weight vector must be structurally unable to receive
+    an expected-loss figure. Three gates, all hard: panel PASS, hard negatives in
+    the positive range >= 4, positives below the top negative >= 0.45. Panel PASS
+    alone is necessary and not sufficient -- B_equal clears the panel and is
+    still refused. This test fails if anyone relaxes any of them into a warning.
     """
-    from riskmesh.costmodel import (CANDIDATES, PanelGateFailure, derive_costs,
+    from riskmesh.costmodel import (CANDIDATES, MIN_HARD_NEGATIVES_IN_RANGE,
+                                    MIN_POSITIVES_BELOW_MAX_NEGATIVE,
+                                    PanelGateFailure, derive_costs,
                                     gated_expected_loss, panel_verdict, rescore)
 
     design = [c for c in cands if c.split in ("train", "validation")]
@@ -314,25 +318,38 @@ def test_19_panel_gate_refuses_a_failing_weight_vector(cfg, cands) -> None:
         "derived costs are not ordered as a fraud cost model requires"
     )
 
+    def feasible(v: dict) -> bool:
+        return (v["verdict"] == "PASS"
+                and v["hard_negatives_inside_positive_range"]
+                >= MIN_HARD_NEGATIVES_IN_RANGE
+                and v["positives_below_max_negative"]
+                >= MIN_POSITIVES_BELOW_MAX_NEGATIVE)
+
     refused, scored = [], []
     for name, policy in CANDIDATES.items():
         view = [c for c in rescore(cfg, policy(cfg, design))
                 if c.split in ("train", "validation")]
-        verdict = panel_verdict(cfg, view)["verdict"]
+        v = panel_verdict(cfg, view)
         try:
             gated_expected_loss(cfg, view, 0.25, costs)
             scored.append(name)
-            assert verdict == "PASS", f"{name} was scored despite panel {verdict}"
+            assert feasible(v), f"{name} was scored despite failing a gate: {v}"
         except PanelGateFailure:
             refused.append(name)
-            assert verdict != "PASS", f"{name} was refused despite panel PASS"
+            assert not feasible(v), f"{name} was refused despite passing every gate"
 
     assert refused, (
         "no candidate was refused -- a gate that never fires has not been shown "
         "to work, and D_drop_flagged is on the candidate list precisely to fire it"
     )
     assert "D_drop_flagged" in refused, "the known-bad candidate was not refused"
-    check(f"19 weight gate refuses {sorted(refused)}, scores {sorted(scored)}")
+    assert "B_equal" in refused, (
+        "B_equal passes the non-triviality panel but drops hard negatives in the "
+        "positive range from 4 to 1 -- the difficulty gate exists to refuse it, "
+        "and if it no longer does, panel PASS has silently become sufficient"
+    )
+    assert "A_baseline" in scored, "the incumbent must remain feasible"
+    check(f"19 weight gates refuse {sorted(refused)}, score {sorted(scored)}")
 
 
 # --------------------------------------------------------------------------

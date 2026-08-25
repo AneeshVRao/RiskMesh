@@ -1,8 +1,9 @@
 """Expected-loss weight selection, with the non-triviality panel as a hard gate.
 
-Nothing in this module has been run against a candidate. It is the frozen
-protocol described in `weight_search_protocol.md`, written before the search so
-the rules cannot be adjusted once the numbers are visible.
+The protocol is described in `weight_search_protocol.md`, and every gate in this
+module was defined before any candidate was selected -- the two difficulty gates
+were added before `select_weights()` was implemented at all, so the rules could
+not be adjusted once the numbers were visible.
 
 The gate is the point of this module. bugs.md L2 records that held-out F1 rose
 from 0.8000 to 0.8889 twice, by two unrelated mechanisms, and that the
@@ -11,16 +12,19 @@ benchmark improves when the model gets better AND when the benchmark gets
 easier, and it does not distinguish them. An optimiser will find the second kind
 of solution preferentially, because it is cheaper.
 
-So a weight vector that fails the panel is not a worse candidate. It is not a
-candidate. `gated_expected_loss()` raises `PanelGateFailure` instead of
-returning a number, in the same way `held_out_view()` raises `TestSetLeak`
-instead of returning test rows: the protocol is enforced by what the function
-can do, not by remembering to check afterwards.
+So a weight vector that fails any gate is not a worse candidate. It is not a
+candidate. `gated_expected_loss()` raises `PanelGateFailure` or
+`DifficultyGateFailure` instead of returning a number, in the same way
+`held_out_view()` raises `TestSetLeak` instead of returning test rows: the
+protocol is enforced by what the function can do, not by remembering to check
+afterwards. Panel PASS is necessary and not sufficient -- two absolute
+difficulty bounds sit on top of it.
 
 Two further guarantees, both structural rather than remembered:
 
-* `select_weights()` takes validation candidates and asserts it received nothing
-  else, exactly as `select_threshold()` does.
+* `select_weights()` takes design candidates and asserts it received nothing
+  else, exactly as `select_threshold()` does; the threshold sweep inside it uses
+  validation rows only.
 * `evaluate_frozen_policy()` refuses to touch the test split until the winning
   policy has been written to disk.
 """
@@ -42,6 +46,7 @@ from .score import score_all
 from .split import assign_splits
 
 DESIGN_SPLIT = "validation"
+DESIGN_SPLITS = ("train", "validation")
 
 
 class PanelGateFailure(AssertionError):
@@ -53,8 +58,44 @@ class PanelGateFailure(AssertionError):
     """
 
 
+class DifficultyGateFailure(PanelGateFailure):
+    """Raised when a candidate passes the panel but erodes the benchmark anyway.
+
+    The panel's own bounds are the Tier 0 minimums for a dataset to be worth
+    evaluating on at all (`positives_below_max_negative >= 0.20`,
+    `hard_negative_in_positive_range >= 1`). They are necessary and, as the gate
+    demonstration showed, not sufficient: policy B cleared the panel while taking
+    positives-below-max-negative from 0.5625 to 0.3125 and hard negatives in the
+    positive range from 4 to 1 -- most of the benchmark's difficulty, spent
+    without the panel objecting.
+
+    Subclasses PanelGateFailure so anything catching the gate catches both.
+    """
+
+
 class PolicyNotFrozen(AssertionError):
     """Raised when the held-out split is read before a policy is on disk."""
+
+
+# --------------------------------------------------------------------------
+# feasibility constraints
+# --------------------------------------------------------------------------
+
+# Two absolute bounds, on top of the panel verdict. Absolute rather than a
+# relative margin from the incumbent on purpose: a margin from A would move
+# whenever A moved, so a future weight change could ratchet the benchmark's
+# difficulty down one accepted step at a time with every individual step looking
+# reasonable. These numbers do not move with the incumbent.
+#
+# DECLARED BEFORE ANY CANDIDATE WAS SELECTED, and for a specific measured reason
+# rather than as a tidy default -- see bugs.md L2. Held-out F1 rose from 0.8000
+# to 0.8889 twice, by two unrelated mechanisms, and the non-triviality panel went
+# PASS -> FAIL both times. A higher score on this benchmark can mean a better
+# scorer or an easier benchmark, and the metric cannot tell them apart. So the
+# difficulty is constrained separately, before expected loss is allowed to
+# matter, instead of being reported next to it afterwards.
+MIN_HARD_NEGATIVES_IN_RANGE = 4
+MIN_POSITIVES_BELOW_MAX_NEGATIVE = 0.45
 
 
 # --------------------------------------------------------------------------
@@ -166,11 +207,19 @@ def panel_verdict(cfg: Config, design: list[Candidate]) -> dict[str, Any]:
 
 
 def gated_expected_loss(cfg: Config, design: list[Candidate],
-                        threshold: float, costs: dict[str, Any]) -> dict[str, float]:
-    """Expected loss, but only for a candidate the panel accepts.
+                        threshold: float, costs: dict[str, Any],
+                        score_on: list[Candidate] | None = None) -> dict[str, float]:
+    """Expected loss, but only for a candidate that clears all three gates.
 
-    A candidate that fails the panel cannot be scored at all. It does not get a
-    number that is later discarded -- there is no number. See bugs.md L2.
+    Panel PASS is necessary and not sufficient. A candidate that fails any gate
+    cannot be scored at all: it does not get a number that is later discarded --
+    there is no number. See bugs.md L2.
+
+    `design` is what the gates are evaluated on (train+validation, so the
+    difficulty measurement uses all 16 design positives). `score_on` is what the
+    loss is computed on, and defaults to `design`; the selection passes the
+    validation rows there, because a threshold must be chosen on validation
+    alone. Both arguments are design-split views -- neither can carry test rows.
     """
     v = panel_verdict(cfg, design)
     if v["verdict"] != "PASS":
@@ -181,7 +230,24 @@ def gated_expected_loss(cfg: Config, design: list[Candidate],
             "benchmark easier rather than the scorer better, so it has no "
             "expected loss to report. bugs.md L2."
         )
-    return expected_loss(design, threshold, costs)
+    if v["hard_negatives_inside_positive_range"] < MIN_HARD_NEGATIVES_IN_RANGE:
+        raise DifficultyGateFailure(
+            f"hard negatives inside the positive range "
+            f"{v['hard_negatives_inside_positive_range']} < "
+            f"{MIN_HARD_NEGATIVES_IN_RANGE}. The panel passed, but the hard "
+            "negatives are the benchmark; a candidate that pushes them out of "
+            "the positive range has made the task easier. bugs.md L2."
+        )
+    if v["positives_below_max_negative"] < MIN_POSITIVES_BELOW_MAX_NEGATIVE:
+        raise DifficultyGateFailure(
+            f"positives below the top negative "
+            f"{v['positives_below_max_negative']:.4f} < "
+            f"{MIN_POSITIVES_BELOW_MAX_NEGATIVE}. The panel passed, but the "
+            "classes have pulled apart far enough that the benchmark is no "
+            "longer measuring what it was built to measure. bugs.md L2."
+        )
+    return expected_loss(design if score_on is None else score_on,
+                         threshold, costs)
 
 
 # --------------------------------------------------------------------------
@@ -274,22 +340,107 @@ def rescore(cfg: Config, weights: dict[str, float]) -> list[Candidate]:
     return build_candidates(cfg2, graph, scores, splits, labels)
 
 
-def select_weights(cfg: Config, validation: list[Candidate],
-                   costs: dict[str, Any]) -> dict[str, Any]:
-    """Score every candidate on VALIDATION only, gated by the panel.
+def _design_only(cands: list[Candidate]) -> list[Candidate]:
+    """Train+validation rows. Raises if a test row would slip through."""
+    view = [c for c in cands if c.split in DESIGN_SPLITS]
+    if any(c.split == "test" for c in view):  # pragma: no cover - belt and braces
+        raise AssertionError("design view contains test rows")
+    return view
 
-    Takes validation candidates as its whole input, exactly as
-    `select_threshold()` does. There is no parameter through which test data
-    could reach it.
+
+def select_weights(cfg: Config, design: list[Candidate],
+                   costs: dict[str, Any]) -> dict[str, Any]:
+    """Score every candidate on train+validation only, behind all three gates.
+
+    Takes design candidates as its whole input and asserts it received nothing
+    else, in the same shape as `select_threshold()`. Gates are evaluated on
+    train+validation; the threshold sweep uses validation rows only. No path
+    through this function reaches the test split.
+
+    Feasibility is checked before expected loss, not alongside it: an infeasible
+    candidate never receives a number to be compared against.
     """
-    assert all(c.split == DESIGN_SPLIT for c in validation), (
-        "select_weights received non-validation candidates -- "
+    assert all(c.split in DESIGN_SPLITS for c in design), (
+        "select_weights received non-design candidates -- "
         "this would be weight fitting on held-out data"
     )
-    raise NotImplementedError(
-        "Not run. The protocol is frozen in weight_search_protocol.md and "
-        "awaiting confirmation before any candidate is scored."
-    )
+
+    results: list[dict[str, Any]] = []
+    for name, policy in CANDIDATES.items():
+        weights = policy(cfg, design)
+        rescored = _design_only(rescore(cfg, weights))
+        validation = [c for c in rescored if c.split == DESIGN_SPLIT]
+        v = panel_verdict(cfg, rescored)
+        row: dict[str, Any] = {
+            "policy": name,
+            "weights": {k: round(x, 4) for k, x in weights.items()},
+            "panel_verdict": v["verdict"],
+            "panel_failing_checks": v["failing_checks"],
+            "positives_below_max_negative": v["positives_below_max_negative"],
+            "hard_negatives_inside_positive_range":
+                v["hard_negatives_inside_positive_range"],
+        }
+        best: dict[str, Any] | None = None
+        try:
+            for i in range(101):
+                t = i / 100.0
+                loss = gated_expected_loss(cfg, rescored, t, costs,
+                                           score_on=validation)
+                if best is None or loss["expected_loss"] < best["expected_loss"]:
+                    best = {**loss, "threshold": t}
+        except PanelGateFailure as exc:
+            row["feasible"] = False
+            row["refused_by"] = type(exc).__name__
+            row["reason"] = str(exc)
+        else:
+            assert best is not None
+            row["feasible"] = True
+            row.update(best)
+        results.append(row)
+
+    feasible = [r for r in results if r["feasible"]]
+    winner = min(
+        feasible,
+        key=lambda r: (r["expected_loss"],
+                       -r["positives_below_max_negative"],
+                       r["policy"] != "A_baseline"),
+    ) if feasible else None
+
+    return {
+        "protocol": "weight_search_protocol.md",
+        "gates": {
+            "panel_verdict": "PASS",
+            "hard_negatives_inside_positive_range":
+                f">= {MIN_HARD_NEGATIVES_IN_RANGE}",
+            "positives_below_max_negative":
+                f">= {MIN_POSITIVES_BELOW_MAX_NEGATIVE}",
+            "declared": (
+                "All three gates were defined BEFORE any candidate was selected, "
+                "and the two difficulty gates were added before select_weights() "
+                "was implemented at all. The reason is bugs.md L2: held-out F1 "
+                "rose 0.8000 -> 0.8889 twice, by unrelated mechanisms, while the "
+                "non-triviality panel went PASS -> FAIL both times. A higher "
+                "score on this benchmark can mean a better scorer or an easier "
+                "benchmark and the metric cannot distinguish them, so difficulty "
+                "is constrained structurally rather than reported after the fact."
+            ),
+            "enforcement": (
+                "gated_expected_loss() raises PanelGateFailure or "
+                "DifficultyGateFailure instead of returning a number. An "
+                "infeasible candidate has no expected loss at all."
+            ),
+        },
+        "costs": costs,
+        "selected_on": "validation (threshold sweep); gates on train+validation",
+        "candidates": results,
+        "feasible": [r["policy"] for r in feasible],
+        "infeasible": [r["policy"] for r in results if not r["feasible"]],
+        "winner": winner["policy"] if winner else None,
+        "winner_threshold": winner["threshold"] if winner else None,
+        "winner_expected_loss": winner["expected_loss"] if winner else None,
+        "seed": cfg.seed,
+        "config_fingerprint": cfg.fingerprint(),
+    }
 
 
 def evaluate_frozen_policy(candidates: list[Candidate],

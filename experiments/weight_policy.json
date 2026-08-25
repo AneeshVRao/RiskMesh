@@ -1,0 +1,276 @@
+{
+  "protocol": "weight_search_protocol.md",
+  "gates": {
+    "panel_verdict": "PASS",
+    "hard_negatives_inside_positive_range": ">= 4",
+    "positives_below_max_negative": ">= 0.45",
+    "declared": "All three gates were defined BEFORE any candidate was selected, and the two difficulty gates were added before select_weights() was implemented at all. The reason is bugs.md L2: held-out F1 rose 0.8000 -> 0.8889 twice, by unrelated mechanisms, while the non-triviality panel went PASS -> FAIL both times. A higher score on this benchmark can mean a better scorer or an easier benchmark and the metric cannot distinguish them, so difficulty is constrained structurally rather than reported after the fact.",
+    "enforcement": "gated_expected_loss() raises PanelGateFailure or DifficultyGateFailure instead of returning a number. An infeasible candidate has no expected loss at all."
+  },
+  "costs": {
+    "manual_review": 500.0,
+    "false_negative": 74645.29,
+    "false_positive": 848.23,
+    "derivation": {
+      "manual_review": "20 analyst-minutes per component at INR 1500/hour fully loaded. ASSUMPTION -- the dataset carries no analyst-effort figure.",
+      "false_negative": "median ring-component exposure INR 74,645.29 on train+validation, times FN_ABSORBED_FRACTION 1.00",
+      "false_positive": "one manual review (INR 500.00) plus FP_FRICTION_RATE 0.02 of median negative-component exposure INR 17,411.63",
+      "ratio_fn_to_fp": 88.0
+    },
+    "inputs_from_data": {
+      "median_ring_exposure": 74645.29,
+      "median_negative_exposure": 17411.63,
+      "n_positive": 16,
+      "n_negative": 53
+    }
+  },
+  "selected_on": "validation (threshold sweep); gates on train+validation",
+  "candidates": [
+    {
+      "policy": "A_baseline",
+      "weights": {
+        "device_sharing": 0.2444,
+        "temporal_burst": 0.2778,
+        "instrument_sharing": 0.1444,
+        "failure_refund_rate": 0.1333,
+        "account_newness": 0.1111,
+        "merchant_concentration": 0.0889,
+        "ip_sharing": 0.0
+      },
+      "panel_verdict": "PASS",
+      "panel_failing_checks": [],
+      "positives_below_max_negative": 0.5625,
+      "hard_negatives_inside_positive_range": 4,
+      "feasible": true,
+      "expected_loss": 5348.23,
+      "loss_per_component": 172.52,
+      "review_cost": 4500.0,
+      "review_rate": 0.2903,
+      "tp": 8,
+      "fp": 1,
+      "fn": 0,
+      "tn": 22,
+      "threshold": 0.23
+    },
+    {
+      "policy": "B_equal",
+      "weights": {
+        "device_sharing": 0.1667,
+        "temporal_burst": 0.1667,
+        "instrument_sharing": 0.1667,
+        "failure_refund_rate": 0.1667,
+        "ip_sharing": 0.0,
+        "account_newness": 0.1667,
+        "merchant_concentration": 0.1667
+      },
+      "panel_verdict": "PASS",
+      "panel_failing_checks": [],
+      "positives_below_max_negative": 0.3125,
+      "hard_negatives_inside_positive_range": 1,
+      "feasible": false,
+      "refused_by": "DifficultyGateFailure",
+      "reason": "hard negatives inside the positive range 1 < 4. The panel passed, but the hard negatives are the benchmark; a candidate that pushes them out of the positive range has made the task easier. bugs.md L2."
+    },
+    {
+      "policy": "C_separation_proportional",
+      "weights": {
+        "device_sharing": 0.0848,
+        "temporal_burst": 0.1458,
+        "instrument_sharing": 0.0,
+        "failure_refund_rate": 0.1032,
+        "ip_sharing": 0.0,
+        "account_newness": 0.6584,
+        "merchant_concentration": 0.0077
+      },
+      "panel_verdict": "FAIL",
+      "panel_failing_checks": [
+        "score_distributions_overlap",
+        "positives_below_max_negative",
+        "hard_negative_in_positive_range"
+      ],
+      "positives_below_max_negative": 0.0,
+      "hard_negatives_inside_positive_range": 0,
+      "feasible": false,
+      "refused_by": "PanelGateFailure",
+      "reason": "non-triviality panel returned FAIL (failing: ['score_distributions_overlap', 'positives_below_max_negative', 'hard_negative_in_positive_range'], positives below max negative 0.0). This weight vector makes the benchmark easier rather than the scorer better, so it has no expected loss to report. bugs.md L2."
+    },
+    {
+      "policy": "D_drop_flagged",
+      "weights": {
+        "device_sharing": 0.3188,
+        "temporal_burst": 0.3623,
+        "instrument_sharing": 0.0,
+        "failure_refund_rate": 0.1739,
+        "ip_sharing": 0.0,
+        "account_newness": 0.1449,
+        "merchant_concentration": 0.0
+      },
+      "panel_verdict": "FAIL",
+      "panel_failing_checks": [
+        "positives_below_max_negative"
+      ],
+      "positives_below_max_negative": 0.125,
+      "hard_negatives_inside_positive_range": 1,
+      "feasible": false,
+      "refused_by": "PanelGateFailure",
+      "reason": "non-triviality panel returned FAIL (failing: ['positives_below_max_negative'], positives below max negative 0.125). This weight vector makes the benchmark easier rather than the scorer better, so it has no expected loss to report. bugs.md L2."
+    },
+    {
+      "policy": "E_drop_temporal",
+      "weights": {
+        "device_sharing": 0.3385,
+        "temporal_burst": 0.0,
+        "instrument_sharing": 0.2,
+        "failure_refund_rate": 0.1846,
+        "ip_sharing": 0.0,
+        "account_newness": 0.1538,
+        "merchant_concentration": 0.1231
+      },
+      "panel_verdict": "PASS",
+      "panel_failing_checks": [],
+      "positives_below_max_negative": 0.5625,
+      "hard_negatives_inside_positive_range": 4,
+      "feasible": true,
+      "expected_loss": 5348.23,
+      "loss_per_component": 172.52,
+      "review_cost": 4500.0,
+      "review_rate": 0.2903,
+      "tp": 8,
+      "fp": 1,
+      "fn": 0,
+      "tn": 22,
+      "threshold": 0.26
+    }
+  ],
+  "feasible": [
+    "A_baseline",
+    "E_drop_temporal"
+  ],
+  "infeasible": [
+    "B_equal",
+    "C_separation_proportional",
+    "D_drop_flagged"
+  ],
+  "winner": "A_baseline",
+  "winner_threshold": 0.23,
+  "winner_expected_loss": 5348.23,
+  "seed": 20260824,
+  "config_fingerprint": "7c1e4fb2b329796c",
+  "sensitivity": {
+    "grid": "FN_ABSORBED_FRACTION x FP_FRICTION_RATE, as required by the protocol",
+    "rows": [
+      {
+        "fn_absorbed_fraction": 0.5,
+        "fp_friction_rate": 0.01,
+        "winner": "A_baseline",
+        "expected_loss": 5174.12,
+        "threshold": 0.23,
+        "feasible": [
+          "A_baseline",
+          "E_drop_temporal"
+        ],
+        "exact_tie_with": "E_drop_temporal"
+      },
+      {
+        "fn_absorbed_fraction": 0.5,
+        "fp_friction_rate": 0.02,
+        "winner": "A_baseline",
+        "expected_loss": 5348.23,
+        "threshold": 0.23,
+        "feasible": [
+          "A_baseline",
+          "E_drop_temporal"
+        ],
+        "exact_tie_with": "E_drop_temporal"
+      },
+      {
+        "fn_absorbed_fraction": 0.5,
+        "fp_friction_rate": 0.05,
+        "winner": "A_baseline",
+        "expected_loss": 5870.58,
+        "threshold": 0.23,
+        "feasible": [
+          "A_baseline",
+          "E_drop_temporal"
+        ],
+        "exact_tie_with": "E_drop_temporal"
+      },
+      {
+        "fn_absorbed_fraction": 0.75,
+        "fp_friction_rate": 0.01,
+        "winner": "A_baseline",
+        "expected_loss": 5174.12,
+        "threshold": 0.23,
+        "feasible": [
+          "A_baseline",
+          "E_drop_temporal"
+        ],
+        "exact_tie_with": "E_drop_temporal"
+      },
+      {
+        "fn_absorbed_fraction": 0.75,
+        "fp_friction_rate": 0.02,
+        "winner": "A_baseline",
+        "expected_loss": 5348.23,
+        "threshold": 0.23,
+        "feasible": [
+          "A_baseline",
+          "E_drop_temporal"
+        ],
+        "exact_tie_with": "E_drop_temporal"
+      },
+      {
+        "fn_absorbed_fraction": 0.75,
+        "fp_friction_rate": 0.05,
+        "winner": "A_baseline",
+        "expected_loss": 5870.58,
+        "threshold": 0.23,
+        "feasible": [
+          "A_baseline",
+          "E_drop_temporal"
+        ],
+        "exact_tie_with": "E_drop_temporal"
+      },
+      {
+        "fn_absorbed_fraction": 1.0,
+        "fp_friction_rate": 0.01,
+        "winner": "A_baseline",
+        "expected_loss": 5174.12,
+        "threshold": 0.23,
+        "feasible": [
+          "A_baseline",
+          "E_drop_temporal"
+        ],
+        "exact_tie_with": "E_drop_temporal"
+      },
+      {
+        "fn_absorbed_fraction": 1.0,
+        "fp_friction_rate": 0.02,
+        "winner": "A_baseline",
+        "expected_loss": 5348.23,
+        "threshold": 0.23,
+        "feasible": [
+          "A_baseline",
+          "E_drop_temporal"
+        ],
+        "exact_tie_with": "E_drop_temporal"
+      },
+      {
+        "fn_absorbed_fraction": 1.0,
+        "fp_friction_rate": 0.05,
+        "winner": "A_baseline",
+        "expected_loss": 5870.58,
+        "threshold": 0.23,
+        "feasible": [
+          "A_baseline",
+          "E_drop_temporal"
+        ],
+        "exact_tie_with": "E_drop_temporal"
+      }
+    ],
+    "distinct_winners": [
+      "A_baseline"
+    ],
+    "winner_stable": true
+  }
+}
