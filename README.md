@@ -266,4 +266,5 @@ Read from `out/` after `rm -rf out` and a clean regeneration. Config fingerprint
   FPR 0.1739, ring recovery 8/8
 
 Working files: `implementation_plan.md` (phases), `testing.md` (checklist),
+`deferred_decisions.md` (knowingly-deferred decisions and who owns each),
 `audit.md` (plan-vs-code drift), `bugs.md` (structured bug log).

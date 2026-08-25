@@ -6,6 +6,11 @@ Delete an entry once its fix is verified by the matching `testing.md` row.
 
 Open bugs: 2 deferred (RISK-002, RISK-004). 3 closed (RISK-001, RISK-003, B1).
 
+Knowingly-deferred *decisions* (as opposed to bugs) live in
+`deferred_decisions.md`. D1 there records that `temporal_burst` is still carried
+at weight 0.2778 even though the ablation showed it costs ~0.05 of achievable
+ceiling F1 — a deliberate deferral the cost-model stage owns, not an oversight.
+
 ---
 
 ## Entry template

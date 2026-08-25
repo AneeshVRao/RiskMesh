@@ -588,6 +588,12 @@ costs nothing either, and because RISK-003's semantic fix made it *measure* what
 its name claims even though the information turns out to be duplicated elsewhere.
 Reweighting is a separate decision and belongs with the cost model.
 
+**The weight was NOT changed as a result of this, and that is a logged
+decision, not an omission.** `temporal_burst` still carries 0.2778 even though
+the ablation shows that weight costs ~0.05 of achievable ceiling F1 (0.9412 ->
+0.8889). See `deferred_decisions.md` D1, which the cost-model stage owns. Do not
+read the surviving weight as evidence anyone has judged it correct.
+
 **A note on what the ablation does not say.** It shows the signal is redundant
 *on this generator, at this scale, with these six companions*. A second ring type
 that bursts without sharing devices would likely change that. The claim being
