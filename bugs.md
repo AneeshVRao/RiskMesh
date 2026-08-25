@@ -4,7 +4,7 @@ One entry per bug, newest at the top. Fill in **every** field before touching
 code — the point of this file is to reason about a fix rather than guess at one.
 Delete an entry once its fix is verified by the matching `testing.md` row.
 
-Open bugs: 1 deferred (RISK-002). 2 closed (RISK-001, B1).
+Open bugs: 3 deferred (RISK-002, RISK-003, RISK-004). 2 closed (RISK-001, B1).
 
 ---
 
@@ -23,6 +23,62 @@ Open bugs: 1 deferred (RISK-002). 2 closed (RISK-001, B1).
 ---
 
 <!-- Add entries below this line. -->
+
+### RISK-003 — temporal_burst carries the top weight on a false premise
+
+- **Status:** OPEN, deferred. Found by the full seven-signal audit run before
+  starting Tier 1 feature work.
+- **Symptom:** `temporal_burst` holds the largest scorer weight (0.278) and is
+  documented as "the signal that separates an abuse ring from a family sharing
+  the same device". Measured on normalised values, train+validation only:
+  ring 0.344, **family 0.352**, background 0.017. Families score *higher*. It
+  separates rings from background (+0.327) and not at all from the hard
+  negatives (-0.008), which is the distinction the benchmark exists to test.
+- **Expected:** the highest-weighted signal should do the hard half of the job,
+  not the easy half. Either the weight or the stated justification must change.
+- **Error:** no exception. `non_triviality.signal_sign_check` reports it as
+  correctly signed, because it compares positives against ALL negatives and the
+  background majority masks the family collision.
+- **Files involved:** `riskmesh/config.py` (weight and the SIGNALS comment),
+  `riskmesh/score.py` (signal 2 and module docstring), `riskmesh/generate.py`
+  (`_add_burst` and the family co-burst knobs).
+- **Reproduce:** `python -m riskmesh`, seed 20260824; compare per-signal
+  normalised means for ring vs family components in train+validation.
+- **Suspected cause:** self-inflicted during Tier 0 tuning. Closing the
+  non-triviality bounds meant raising `family_coburst_rate` 0.35 -> 0.60, setting
+  `family_coburst_participation` to 0.9, and dropping
+  `family_coburst_window_multiplier` from 3 to 1 -- so households now burst in
+  the same 30-minute window, at nearly the same participation, as rings. The
+  tuning that made the benchmark honest is what neutralised this signal.
+- **Fix:** deferred. The options interact: widen the family co-burst window back
+  out (which loosens the non-triviality margin), reweight toward the signals that
+  do discriminate, or accept it and let Tier 2's supervised scorer learn the
+  weighting. Choosing needs the cost model, so it belongs to Tier 1 threshold
+  work rather than a weight tweak now. **Docs corrected in the meantime** so the
+  stated justification no longer contradicts the measurement.
+
+### RISK-004 — instrument_sharing scores families above rings
+
+- **Status:** OPEN, deferred. Same audit as RISK-003.
+- **Symptom:** normalised means, train+validation: ring 0.203, **family 0.297**,
+  background 0.037. Ring minus family is -0.094 at weight 0.144, so the signal
+  pushes hard negatives toward the positive band.
+- **Expected:** higher on rings than on the legitimate lookalikes.
+- **Error:** no exception. Masked in `signal_sign_check` for the same reason as
+  RISK-003 -- the background majority dominates the all-negative mean (+0.088).
+- **Files involved:** `riskmesh/generate.py` (`_inject_rings` instrument overlap,
+  `_inject_families` shared card), `riskmesh/score.py` (signal 3).
+- **Reproduce:** as RISK-003. Raw ranges tell the story: rings [2, 3], families
+  [1, 8].
+- **Suspected cause:** asymmetric injector caps, not a scoring error.
+  `_inject_rings` shares one instrument across `rng.randint(2, 3)` members, so
+  ring raw values cannot exceed 3, while a household of up to
+  `family_size_max` (8) shares one card. Normalising by
+  `(k-1)/(max_instrument_degree-1)` therefore rewards the larger family.
+- **Fix:** deferred. The honest correction is on the generator side -- ring
+  instrument overlap should scale with ring size rather than being pinned at 2-3
+  -- but that changes the data and would invalidate the RISK-001 before/after
+  comparison. Belongs with the Tier 1 ring-type work that revisits the injectors.
 
 ### RISK-002 — merchant_concentration is mis-signed
 

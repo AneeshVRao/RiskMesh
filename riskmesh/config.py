@@ -19,9 +19,16 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass, field
 
-# The seven deterministic signals, in report order. `temporal_burst` carries the
-# largest weight because it is the signal that separates an abuse ring from a
-# family sharing the same device -- the structural signals alone cannot.
+# The seven deterministic signals, in report order.
+#
+# `temporal_burst` carries the largest weight because coordination in time was
+# expected to separate a ring from a family sharing one device. Measurement says
+# otherwise: ring 0.344 vs family 0.352 normalised, so it separates rings from
+# background and NOT from the hard negatives. The weight is unchanged pending
+# RISK-003; the justification is corrected here rather than left standing as a
+# claim the data contradicts. The signals that do discriminate ring from family
+# are account_newness (+0.882), failure_refund_rate (+0.139), device_sharing
+# (+0.114).
 SIGNALS: tuple[str, ...] = (
     "device_sharing",
     "temporal_burst",

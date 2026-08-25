@@ -126,8 +126,18 @@ and a human-readable detail string. Weights sum to exactly 1.00.
 | `account_newness` | 0.111 | Inverted median account age |
 | `merchant_concentration` | 0.089 | Share of traffic at one merchant |
 
-`temporal_burst` carries the most weight because it is the signal that separates
-a ring from a family sharing the same tablet — the structural signals cannot.
+`temporal_burst` carries the most weight because coordination in time was
+expected to separate a ring from a family sharing the same tablet. It does not:
+measured on train+validation it runs ring 0.344 against family **0.352**, so it
+separates rings from background and not from the hard negatives. The weight is
+unchanged pending **RISK-003**; the claim is corrected rather than left standing.
+
+Only three signals actually separate rings from the family hard negatives —
+`account_newness` (+0.882), `failure_refund_rate` (+0.139) and `device_sharing`
+(+0.114). About half the scorer's weight sits on signals that do the easy half of
+the job (rings vs background) and not the hard half. That is the honest state of
+the Tier 1 baseline, and it is what the cost-model and reweighting work has to
+address.
 
 `ip_sharing` carries **zero weight**. It was `ip_concentration`, measuring the
 share of traffic on a component's top IP, and it was mis-signed: families ran
