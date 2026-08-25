@@ -100,6 +100,43 @@ Open bugs: 3 deferred (RISK-002, RISK-003, RISK-004). 2 closed (RISK-001, B1).
   correctly declines to score because it requires a shared merchant. That
   preserves the hard negative and should keep most of the separation.
 
+- **E2 result (same frozen-record discipline, `out/experiment_e2.json`).** Keeps
+  the household co-burst at its original timing and participation and changes
+  only *where* it lands: each member goes to their own merchant instead of all
+  converging on one. The causal story this encodes, stated plainly:
+
+  > **Families share time because they share a household; rings additionally
+  > converge on the same merchant.**
+
+  | | r003-semantic | E1 | E2 |
+  |---|---|---|---|
+  | temporal_burst ring | 0.2969 | 0.2969 | 0.2969 |
+  | temporal_burst family | 0.2969 | 0.0547 | 0.1016 |
+  | temporal_burst background | 0.0034 | 0.0034 | 0.0034 |
+  | **ring - family** | **+0.0000** | **+0.2422** | **+0.1953** |
+  | positives-below-max-negative | 0.9375 | 0.2500 | 0.5625 |
+  | hard negatives in positive range | 5 | 4 | 4 |
+  | shared-device baseline F1 | 0.7442 | 0.7442 | 0.7442 |
+  | held-out F1 | 0.7273 | 0.800 | 0.800 |
+  | held-out precision / FPR | 0.5714 / 0.2609 | 0.6667 / 0.1739 | 0.6667 / 0.1739 |
+
+  E2 matches E1's held-out performance exactly while keeping a far harder
+  benchmark: positives-below-max-negative 0.5625 against E1's 0.25, and family
+  temporal activity roughly twice E1's and 30x background. Households are
+  audibly not silent.
+
+  **Not adopted: it misses its own acceptance band.** Criterion 1 asked for
+  ring-minus-family in +0.05 to +0.15; E2 returned **+0.1953**. Seven of the
+  eight criteria pass. The band exists to catch E2 collapsing toward E1's
+  confound, and on the evidence it did not -- criteria 2 and 4 both clear with
+  margin -- but the number is the number, and the band is the reviewer's to
+  widen, not the implementer's to reinterpret.
+
+  **Isolation:** four of the other six signals identical to four decimals.
+  `failure_refund_rate` -0.0011 and `merchant_concentration` -0.0022 moved, both
+  denominator effects of the same kind seen in E1 and expected whenever the
+  generator changes family transaction counts.
+
 - **Remaining fix:** generator-side. The family co-burst has to differ from the
   ring burst in something a feature can see -- widen
   `family_coburst_window_multiplier` back out from 1, drop

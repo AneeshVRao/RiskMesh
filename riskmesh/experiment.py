@@ -176,11 +176,91 @@ def run_e1(out: Path, base: Config | None = None) -> dict[str, Any]:
             "record_path": record_path}
 
 
+
+
+# --------------------------------------------------------------------------
+# E2
+# --------------------------------------------------------------------------
+
+E2_NAME = "E2-family-coburst-independent-merchants"
+
+# The causal story E2 is meant to produce, stated before the numbers are known:
+E2_CAUSAL_STORY = (
+    "Families share time because they share a household; rings additionally "
+    "converge on the same merchant."
+)
+
+E2_HYPOTHESIS = (
+    "E1 worked but bought its separation by deleting household co-activity "
+    "outright, which weakened the hard negative (positives-below-max-negative "
+    "0.9375 -> 0.25). E2 keeps households co-bursting at the original timing and "
+    "participation and changes only WHERE they land: each member goes to their "
+    "own merchant instead of all converging on one. Under Variant B, which "
+    "requires a shared merchant, a household should therefore still register a "
+    "clearly non-zero burst -- members do coincide on popular merchants by "
+    "chance -- but well below a ring's. Predicted: ring-minus-family lands in a "
+    "moderate band, roughly +0.05 to +0.15, with the non-triviality margin "
+    "largely preserved. Landing near E1's +0.2422 would mean E2 collapsed toward "
+    "the same confound rather than modelling the real difference."
+)
+
+E2_GENERATOR_DELTA = {
+    "family_coburst_shared_merchant": {"from": True, "to": False},
+    "changed": "where a household co-burst lands, not whether it happens",
+    "unchanged": [
+        "family_coburst_rate 0.60, participation 0.9, window multiplier 1",
+        "ring injector (burst rate, window, participation, shared merchant)",
+        "temporal_burst Variant B definition",
+        "all scorer weights and every other signal definition",
+    ],
+}
+
+
+def run_e2(out: Path, base: Config | None = None) -> dict[str, Any]:
+    base = base or Config()
+    cfg = replace(base, family_coburst_shared_merchant=False)
+    record_path = out / "experiment_e2.json"
+
+    candidates = build(cfg)
+    view = design_view(candidates)
+    baseline_view = design_view(build(base))
+
+    meta = {
+        "experiment": E2_NAME,
+        "causal_story": E2_CAUSAL_STORY,
+        "hypothesis": E2_HYPOTHESIS,
+        "generator_delta": E2_GENERATOR_DELTA,
+        "designed_on": list(DESIGN_SPLITS),
+        "design_components": len(view),
+        "seed": cfg.seed,
+        "baseline_config_fingerprint": base.fingerprint(),
+        "experiment_config_fingerprint": cfg.fingerprint(),
+        "python_version": sys.version.split()[0],
+        "design_split_ring_vs_family": {
+            "baseline": ring_vs_family(base, baseline_view),
+            "experiment": ring_vs_family(cfg, view),
+        },
+    }
+    freeze_experiment(record_path, meta)
+
+    held_out = held_out_view(candidates, record_path)
+    meta["held_out_components"] = len(held_out)
+    return {"cfg": cfg, "candidates": candidates, "record": meta,
+            "record_path": record_path}
+
+
 if __name__ == "__main__":
+    import argparse
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("experiment", nargs="?", default="e1", choices=["e1", "e2"])
+    which = ap.parse_args().experiment
+
     out = Path(__file__).resolve().parent.parent / "out"
-    result = run_e1(out)
+    result = (run_e1 if which == "e1" else run_e2)(out)
     rvf = result["record"]["design_split_ring_vs_family"]
-    print(f"{E1_NAME}  (designed on {'+'.join(DESIGN_SPLITS)} only)")
+    print(f"{result['record']['experiment']}  "
+          f"(designed on {'+'.join(DESIGN_SPLITS)} only)")
     print(f"record frozen at {result['record_path']}\n")
     print(f"{'signal':24} {'ring':>7} {'family':>7} {'backgr':>7} "
           f"{'r-f base':>9} {'r-f E1':>8} {'moved':>8}")

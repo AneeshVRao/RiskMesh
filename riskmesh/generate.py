@@ -398,7 +398,7 @@ def _inject_families(
 def _add_burst(
     cfg: Config, rng: random.Random, members: list[Account], window_minutes: int,
     participation: float, by_id: dict[str, Merchant],
-    nat_ips: list[str], out: list[Txn],
+    nat_ips: list[str], out: list[Txn], shared_merchant: bool = True,
 ) -> None:
     """A cluster of accounts hitting one merchant inside a short window.
 
@@ -409,8 +409,10 @@ def _add_burst(
     if not members:
         return
     day_lo, day_hi = _period_days(cfg, members[0].active_period)
-    merchant_id = rng.choice(members[0].merchants)
-    mu, sigma = CATEGORIES[by_id[merchant_id].category]
+    # `shared_merchant` is the whole difference between a ring and a household.
+    # A ring converges on one merchant AND one window; a household shares only
+    # the window, because its members happen to be awake at the same time.
+    shared_id = rng.choice(members[0].merchants)
     burst_day = rng.randrange(day_lo, day_hi)
     base = _timestamp(rng, burst_day)
 
@@ -418,6 +420,8 @@ def _add_burst(
         if rng.random() >= participation:
             continue
         for _ in range(rng.randint(1, 2)):
+            merchant_id = shared_id if shared_merchant else rng.choice(acct.merchants)
+            mu, sigma = CATEGORIES[by_id[merchant_id].category]
             failed = rng.random() < acct.failure_rate
             out.append(
                 Txn(
@@ -497,7 +501,8 @@ def generate(cfg: Config) -> tuple[list[Txn], list[Label]]:
         if members[0].extra.get("coburst", 0.0):
             _add_burst(cfg, rng, members,
                        cfg.ring_burst_minutes * cfg.family_coburst_window_multiplier,
-                       cfg.family_coburst_participation, by_id, nat_ips, txns)
+                       cfg.family_coburst_participation, by_id, nat_ips, txns,
+                       shared_merchant=cfg.family_coburst_shared_merchant)
 
     txns.sort(key=lambda t: (t.ts_minute, t.account_id))
     txns = [t._replace(txn_id=f"t{i:06d}") for i, t in enumerate(txns)]

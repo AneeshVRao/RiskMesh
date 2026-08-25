@@ -143,6 +143,11 @@ class Config:
     family_coburst_rate: float = 0.60
     family_coburst_participation: float = 0.9
     family_coburst_window_multiplier: int = 1
+    # Whether a household's co-burst lands on ONE merchant (as a ring's does) or
+    # each member goes to their own. True reproduces the original behaviour and
+    # is why temporal_burst cannot tell a household from a ring (RISK-003);
+    # False is experiment E2. Default left at True until an experiment is adopted.
+    family_coburst_shared_merchant: bool = True
     family_refund_rate_max: float = 0.30
     # Not every household is a long-standing customer -- a family that just
     # joined looks young, exactly like a mule ring does. Keeping the range wide
