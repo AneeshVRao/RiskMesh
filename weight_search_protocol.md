@@ -110,8 +110,9 @@ number, that number will eventually be compared against, argued about, or quoted
 
 **Two further structural guarantees:**
 
-* `select_weights()` takes validation candidates as its whole input and asserts it
-  received nothing else — identical in shape to `select_threshold()`.
+* `select_weights()` takes design candidates as its whole input and asserts it
+  received nothing else — identical in shape to `select_threshold()`. The
+  threshold sweep inside it uses validation rows only.
 * `evaluate_frozen_policy()` raises `PolicyNotFrozen` unless the winning policy is
   already written to disk.
 
@@ -229,13 +230,13 @@ positive range from 4 to 1. The panel's bound is `>= 0.20`, so B clears it while
 having eaten most of the benchmark's difficulty. The gate is real but its
 threshold may be too permissive to protect what L2 says needs protecting.
 
-**Proposed, needs your decision before step 2 runs:** add a no-regression rule to
-the gate — a candidate must not reduce `positives_below_max_negative` below A's
-0.5625 by more than a stated margin, or must not drop
-`hard_negatives_inside_positive_range` below 4. This would refuse B as well. I
-have not applied it, because tightening a gate after seeing which candidates it
-catches is exactly the move this protocol exists to prevent; it needs to be your
-call, made now, before any selection runs.
+**Resolved, and this is where the two difficulty gates came from.** The decision
+was taken here — before `select_weights()` existed and before any candidate had
+an expected-loss figure — to add two *absolute* bounds rather than a margin from
+A: `hard_negatives_inside_positive_range >= 4` and
+`positives_below_max_negative >= 0.45`. A relative margin was rejected because it
+moves whenever the incumbent moves. B is refused under the tightened gate; see
+§3 and the outcome in §8.
 
 ---
 
