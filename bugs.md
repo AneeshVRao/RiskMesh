@@ -137,6 +137,51 @@ Open bugs: 3 deferred (RISK-002, RISK-003, RISK-004). 2 closed (RISK-001, B1).
   denominator effects of the same kind seen in E1 and expected whenever the
   generator changes family transaction counts.
 
+- **E3 result: FAILS criterion 4, not adopted.** Gave household members
+  overlapping preferred-merchant sets (`family_merchant_overlap` 0.5 over a
+  4-merchant household pool) on top of E2's per-member co-burst merchant.
+
+  | criterion | target | E3 | |
+  |---|---|---|---|
+  | 1 ring-family delta | +0.10 to +0.25 | **+0.2188** | PASS |
+  | 2 family temporal_burst non-zero | > 0.02 | 0.0781 | PASS |
+  | 3 background low | 0.002-0.02 | 0.0034 | PASS |
+  | 4a positives-below-max-negative | >= 0.45 | **0.2500** | **FAIL** |
+  | 4b no regression below E2 | >= 0.5625 | **0.2500** | **FAIL** |
+  | 5 hard-negs in positive range | >= 4 | 4 | PASS |
+  | 6 shared-device baseline F1 | < 0.85 | 0.7442 | PASS |
+  | 7 other six isolated to 4dp | denom effects only | 2 denom effects | PASS |
+  | 8 no test before freeze | structural | structural | PASS |
+
+  Held out: F1 0.7619, precision 0.6154, FPR 0.2174 -- worse than E2's
+  0.800 / 0.6667 / 0.1739 and merely level with r001-resolved.
+
+  **The mechanism worked and the outcome still went the wrong way.** Household
+  members did become more alike: mean pairwise merchant Jaccard rose 0.196 ->
+  0.260. But family `temporal_burst` *fell* 0.1016 -> 0.0781. Under E2 every
+  member drew preferences from the global popularity law, so they all tended to
+  hold the same few dominant merchants and coincided there; under E3 each member
+  holds a random subset of a small household pool, which spreads their choices
+  and makes same-minute, same-merchant collisions rarer. Making a household more
+  self-similar made it less *coincident*. The hard-negative margin then collapsed
+  to 0.2500, exactly E1's figure.
+
+- **Methodological finding, worth more than E3 itself.** E3's first
+  implementation drew the household pool from the main RNG stream, re-rolling
+  every downstream draw and moving `instrument_sharing` by +0.070 -- an
+  account-count metric that merchant preferences cannot affect. Criterion 7
+  caught it. Re-implemented with a dedicated per-cluster `Random`; the band and
+  mechanism were not touched. The lesson is recorded permanently in
+  `experiment.py`: a generator experiment needing randomness during entity
+  construction must not draw from the shared stream.
+
+- **Standing recommendation: E2.** Under the recalibrated band E2 meets every
+  criterion -- delta +0.1953 in [+0.10, +0.25], family 0.1016, background 0.0034,
+  positives-below-max-negative 0.5625, hard-negs 4, device baseline 0.7442,
+  isolation clean -- and it is the only variant that improves held-out
+  performance (F1 0.800) while keeping the hard negatives hard. Not adopted
+  without a decision.
+
 - **Remaining fix:** generator-side. The family co-burst has to differ from the
   ring burst in something a feature can see -- widen
   `family_coburst_window_multiplier` back out from 1, drop

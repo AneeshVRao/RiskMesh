@@ -373,6 +373,25 @@ def _inject_families(
         cobursts = rng.random() < cfg.family_coburst_rate
         size = rng.randint(cfg.family_size_min, cfg.family_size_max)
 
+        # The household's regular shops. Members draw part of their preferences
+        # from here, so they coincide on a merchant more often than strangers do
+        # -- but not always, and not at a single agreed minute the way a ring
+        # does. Empty pool when overlap is 0, which is the pre-E3 behaviour.
+        # Drawn from a DEDICATED per-cluster generator, not the main stream. The
+        # first attempt used `rng` and silently re-rolled every subsequent draw,
+        # which moved signals that merchant preferences cannot possibly affect
+        # (instrument_sharing by +0.070). An experiment that perturbs the shared
+        # random stream is not isolated, whatever its headline number says.
+        household_pool: list[str] = []
+        if cfg.family_merchant_overlap > 0:
+            pool_rng = random.Random(cfg.seed * 1_000_003 + f)
+            for m in pool_rng.choices(merchants, weights=pop_weights,
+                                      k=cfg.family_merchant_pool_size * 3):
+                if m.merchant_id not in household_pool:
+                    household_pool.append(m.merchant_id)
+                if len(household_pool) == cfg.family_merchant_pool_size:
+                    break
+
         for _ in range(size):
             acct = _new_account(
                 cfg, rng, idx, merchants, pop_weights,
@@ -388,6 +407,12 @@ def _inject_families(
             acct.home_ip = household_ip
             acct.refund_rate = refund_rate
             acct.extra["coburst"] = float(cobursts)
+            if household_pool:
+                n_shared = max(1, round(cfg.family_merchant_overlap * len(acct.merchants)))
+                shared = pool_rng.sample(household_pool,
+                                         min(n_shared, len(household_pool)))
+                personal = [m for m in acct.merchants if m not in shared]
+                acct.merchants = (shared + personal)[: len(acct.merchants)]
             if shares_card:
                 acct.instruments.append(shared_pi)
             out.append(acct)

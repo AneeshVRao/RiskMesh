@@ -148,6 +148,13 @@ class Config:
     # is why temporal_burst cannot tell a household from a ring (RISK-003);
     # False is experiment E2. Default left at True until an experiment is adopted.
     family_coburst_shared_merchant: bool = True
+    # How much of a household's merchant preferences are shared between its
+    # members. 0.0 means each member shops entirely independently (E2); 1.0 would
+    # make them shop identically, which is ring-like. A real household overlaps
+    # partially -- same grocery and delivery app, different everything else.
+    # Default 0.0 preserves current behaviour until an experiment is adopted.
+    family_merchant_overlap: float = 0.0
+    family_merchant_pool_size: int = 4
     family_refund_rate_max: float = 0.30
     # Not every household is a long-standing customer -- a family that just
     # joined looks young, exactly like a mule ring does. Keeping the range wide
