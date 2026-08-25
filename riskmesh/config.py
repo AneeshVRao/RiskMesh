@@ -117,6 +117,15 @@ class Config:
     n_rings: int = 24  # 8 per split: 4 was too coarse to report metrics on
     ring_size_min: int = 4
     ring_size_max: int = 9
+    # How many of a ring's members share one instrument, as a fraction of ring
+    # size. 0.0 keeps the original behaviour -- a flat 2-3 sharers however large
+    # the ring is -- which is RISK-004: a 9-member household's shared card
+    # reaches all 9, a 9-member ring's reaches 3, so the household scores higher
+    # on instrument_sharing than the ring does. Experiment E4 sets 0.5.
+    # Deliberately bounded well below 1.0: a real mule ring would concentrate
+    # harder than any household, but a ring that always shares one card across
+    # every member is separable by a single rule.
+    ring_instrument_share: float = 0.0
     ring_shared_device_share: float = 0.68  # not 1.0 -- members keep own traffic
     ring_burst_minutes: int = 30
     ring_failure_rate: float = 0.15

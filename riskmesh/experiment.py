@@ -43,6 +43,7 @@ from .config import SIGNALS, Config
 from .evaluate import Candidate, build_candidates
 from .generate import generate
 from .graph import build_graph
+from .integrity import non_triviality_panel
 from .score import score_all
 from .split import assign_splits
 
@@ -373,16 +374,148 @@ def run_e3(out: Path, base: Config | None = None) -> dict[str, Any]:
             "record_path": record_path}
 
 
+# --------------------------------------------------------------------------
+# E4
+# --------------------------------------------------------------------------
+
+E4_NAME = "E4-ring-instrument-overlap-scales-with-ring-size"
+
+E4_CAUSAL_STORY = (
+    "A household's shared card reaches every member because the household is "
+    "small and whole; a ring's shared card should reach a proportion of the "
+    "ring, not a flat three accounts however large the ring gets."
+)
+
+E4_HYPOTHESIS = (
+    "RISK-004 is injector asymmetry, not a scoring error. _inject_rings shares "
+    "one instrument across rng.randint(2, 3) members -- a flat ceiling of three "
+    "regardless of whether the ring has 4 members or 9 -- while _inject_families "
+    "shares one card across EVERY member when shares_card fires, up to "
+    "family_size_max = 8. Normalising by (k-1)/(max_instrument_degree-1) "
+    "therefore pays the larger household more, and instrument_sharing scores "
+    "families 0.2969 above rings 0.2031 at weight 0.1444. Scaling the ring "
+    "sharer count with ring size should invert that to a positive but modest "
+    "ring-minus-family delta."
+)
+
+E4_DOMAIN_TENSION = (
+    "Stated before running, because it constrains the value chosen. On domain "
+    "grounds a real mule ring should DOMINATE families here by a wide margin: "
+    "the whole mechanic of a mule network is many accounts funded through few "
+    "instruments, whereas a household sharing one card is incidental. Setting "
+    "ring_instrument_share near 1.0 would be the more realistic model and would "
+    "produce a much larger delta. It is deliberately not chosen. A ring whose "
+    "every member shares one card is separable by a single rule, which is the "
+    "one property this benchmark must not have -- criterion 5 exists to catch "
+    "exactly that, and the criterion 1 upper bound of +0.20 exists to stop the "
+    "signal turning into a near-separator. Realism is traded down to keep the "
+    "benchmark honest, and the trade is recorded rather than quietly made."
+)
+
+E4_BAND = (0.05, 0.20)
+
+E4_GENERATOR_DELTA = {
+    "ring_instrument_share": {"from": 0.0, "to": 0.5},
+    "changed": (
+        "ring instrument sharer count scales with ring size "
+        "(max(2, round(0.5 * size))) instead of a flat rng.randint(2, 3)"
+    ),
+    "unchanged": [
+        "family injector in every respect, including p_family_shared_instrument 0.5",
+        "the main RNG stream during entity construction -- the original "
+        "rng.randint(2, 3) and rng.sample() draws are still made, and the "
+        "expanded sharer set comes from a dedicated Random(seed * 15485863 + r)",
+        "every signal definition and every scorer weight",
+        "E2's adopted family co-burst behaviour",
+    ],
+    "value_chosen": (
+        "0.5 pre-registered, on the reasoning in E4_DOMAIN_TENSION. One value, "
+        "one result. Adjacent fractions are explicitly NOT to be tried if this "
+        "misses -- a failed 0.5 hypothesis is a result about the mechanism, not "
+        "a bad parameter, and the next step would be rethinking the feature "
+        "definition or the injector, not sweeping for a number that passes."
+    ),
+}
+
+E4_CRITERIA = {
+    "1_ring_family_delta_band": list(E4_BAND),
+    "2_ring_instrument_sharing": ">= 0.30 (from 0.2031)",
+    "3_family_instrument_sharing_unchanged": "0.2969 +/- 0.01 -- HARD GATE",
+    "4a_positives_below_max_negative": ">= 0.45 and no regression below 0.5625",
+    "4b_hard_negatives_in_positive_range": ">= 4",
+    "5_instrument_sharing_single_signal_f1": "< 0.85",
+    "6_shared_device_baseline_f1": "< 0.85",
+    "7_other_six_isolated": "identical to 4dp, denominator effects excepted",
+    "8_held_out_f1": ">= 0.800, read only after the record is frozen",
+    "9_no_test_before_freeze": "structural, enforced by held_out_view()",
+}
+
+
+def _design_panel(cfg: Config, view: list[Candidate]) -> dict[str, Any]:
+    """The criterion 4/5/6 measurements, on design splits only."""
+    panel = non_triviality_panel(cfg, view)
+    return {
+        "positives_below_max_negative":
+            panel["positives_below_max_negative"]["fraction"],
+        "hard_negatives_inside_positive_range":
+            panel["hard_negatives_inside_positive_range"],
+        "single_signal_max_f1": panel["single_signal_max_f1"],
+        "shared_device_only_baseline_f1": panel["shared_device_only_baseline_f1"],
+        "verdict": panel["verdict"],
+    }
+
+
+def run_e4(out: Path, base: Config | None = None) -> dict[str, Any]:
+    base = base or Config()
+    cfg = replace(base, ring_instrument_share=0.5)
+    record_path = out / "experiment_e4.json"
+
+    candidates = build(cfg)
+    view = design_view(candidates)
+    baseline_view = design_view(build(base))
+
+    meta = {
+        "experiment": E4_NAME,
+        "causal_story": E4_CAUSAL_STORY,
+        "hypothesis": E4_HYPOTHESIS,
+        "domain_tension": E4_DOMAIN_TENSION,
+        "acceptance_criteria": E4_CRITERIA,
+        "band": list(E4_BAND),
+        "generator_delta": E4_GENERATOR_DELTA,
+        "designed_on": list(DESIGN_SPLITS),
+        "design_components": len(view),
+        "seed": cfg.seed,
+        "baseline_config_fingerprint": base.fingerprint(),
+        "experiment_config_fingerprint": cfg.fingerprint(),
+        "python_version": sys.version.split()[0],
+        "design_split_ring_vs_family": {
+            "baseline": ring_vs_family(base, baseline_view),
+            "experiment": ring_vs_family(cfg, view),
+        },
+        "design_split_panel": {
+            "baseline": _design_panel(base, baseline_view),
+            "experiment": _design_panel(cfg, view),
+        },
+    }
+    freeze_experiment(record_path, meta)
+
+    held_out = held_out_view(candidates, record_path)
+    meta["held_out_components"] = len(held_out)
+    return {"cfg": cfg, "candidates": candidates, "record": meta,
+            "record_path": record_path}
+
+
 if __name__ == "__main__":
     import argparse
 
     ap = argparse.ArgumentParser()
     ap.add_argument("experiment", nargs="?", default="e1",
-                    choices=["e1", "e2", "e3"])
+                    choices=["e1", "e2", "e3", "e4"])
     which = ap.parse_args().experiment
 
     out = Path(__file__).resolve().parent.parent / "out"
-    result = {"e1": run_e1, "e2": run_e2, "e3": run_e3}[which](out)
+    result = {"e1": run_e1, "e2": run_e2,
+              "e3": run_e3, "e4": run_e4}[which](out)
     rvf = result["record"]["design_split_ring_vs_family"]
     print(f"{result['record']['experiment']}  "
           f"(designed on {'+'.join(DESIGN_SPLITS)} only)")

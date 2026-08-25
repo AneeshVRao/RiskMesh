@@ -331,8 +331,24 @@ def _inject_rings(
             acct.extra["burst"] = float(bursts)
             members.append(acct)
 
-        # Partial instrument overlap: 2-3 members, not the whole ring.
+        # Partial instrument overlap. Originally a flat 2-3 members however large
+        # the ring was, which is RISK-004: a household's shared card reaches
+        # every member, a ring's reached at most three, so the hard negative
+        # outscored the positive on instrument_sharing. ring_instrument_share
+        # scales the sharer count with ring size instead.
+        #
+        # The 2-3 draw is kept even when the knob is on, so the main stream
+        # consumes exactly what it consumed before and the family injector that
+        # runs next is byte-identical -- see the RNG-stream note in
+        # experiment.py. The expanded set is drawn from a dedicated Random.
         sharers = rng.sample(members, min(len(members), rng.randint(2, 3)))
+        if cfg.ring_instrument_share > 0:
+            share_rng = random.Random(cfg.seed * 15_485_863 + r)
+            sharers = share_rng.sample(
+                members,
+                min(len(members),
+                    max(2, round(cfg.ring_instrument_share * len(members)))),
+            )
         shared_pi = f"pi_{ring_id}"
         for acct in sharers:
             acct.instruments.append(shared_pi)

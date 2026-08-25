@@ -1,0 +1,184 @@
+{
+  "experiment": "E4-ring-instrument-overlap-scales-with-ring-size",
+  "causal_story": "A household's shared card reaches every member because the household is small and whole; a ring's shared card should reach a proportion of the ring, not a flat three accounts however large the ring gets.",
+  "hypothesis": "RISK-004 is injector asymmetry, not a scoring error. _inject_rings shares one instrument across rng.randint(2, 3) members -- a flat ceiling of three regardless of whether the ring has 4 members or 9 -- while _inject_families shares one card across EVERY member when shares_card fires, up to family_size_max = 8. Normalising by (k-1)/(max_instrument_degree-1) therefore pays the larger household more, and instrument_sharing scores families 0.2969 above rings 0.2031 at weight 0.1444. Scaling the ring sharer count with ring size should invert that to a positive but modest ring-minus-family delta.",
+  "domain_tension": "Stated before running, because it constrains the value chosen. On domain grounds a real mule ring should DOMINATE families here by a wide margin: the whole mechanic of a mule network is many accounts funded through few instruments, whereas a household sharing one card is incidental. Setting ring_instrument_share near 1.0 would be the more realistic model and would produce a much larger delta. It is deliberately not chosen. A ring whose every member shares one card is separable by a single rule, which is the one property this benchmark must not have -- criterion 5 exists to catch exactly that, and the criterion 1 upper bound of +0.20 exists to stop the signal turning into a near-separator. Realism is traded down to keep the benchmark honest, and the trade is recorded rather than quietly made.",
+  "acceptance_criteria": {
+    "1_ring_family_delta_band": [
+      0.05,
+      0.2
+    ],
+    "2_ring_instrument_sharing": ">= 0.30 (from 0.2031)",
+    "3_family_instrument_sharing_unchanged": "0.2969 +/- 0.01 -- HARD GATE",
+    "4a_positives_below_max_negative": ">= 0.45 and no regression below 0.5625",
+    "4b_hard_negatives_in_positive_range": ">= 4",
+    "5_instrument_sharing_single_signal_f1": "< 0.85",
+    "6_shared_device_baseline_f1": "< 0.85",
+    "7_other_six_isolated": "identical to 4dp, denominator effects excepted",
+    "8_held_out_f1": ">= 0.800, read only after the record is frozen",
+    "9_no_test_before_freeze": "structural, enforced by held_out_view()"
+  },
+  "band": [
+    0.05,
+    0.2
+  ],
+  "generator_delta": {
+    "ring_instrument_share": {
+      "from": 0.0,
+      "to": 0.5
+    },
+    "changed": "ring instrument sharer count scales with ring size (max(2, round(0.5 * size))) instead of a flat rng.randint(2, 3)",
+    "unchanged": [
+      "family injector in every respect, including p_family_shared_instrument 0.5",
+      "the main RNG stream during entity construction -- the original rng.randint(2, 3) and rng.sample() draws are still made, and the expanded sharer set comes from a dedicated Random(seed * 15485863 + r)",
+      "every signal definition and every scorer weight",
+      "E2's adopted family co-burst behaviour"
+    ],
+    "value_chosen": "0.5 pre-registered, on the reasoning in E4_DOMAIN_TENSION. One value, one result. Adjacent fractions are explicitly NOT to be tried if this misses -- a failed 0.5 hypothesis is a result about the mechanism, not a bad parameter, and the next step would be rethinking the feature definition or the injector, not sweeping for a number that passes."
+  },
+  "designed_on": [
+    "train",
+    "validation"
+  ],
+  "design_components": 69,
+  "seed": 20260824,
+  "baseline_config_fingerprint": "6ebb043b3c1954b1",
+  "experiment_config_fingerprint": "ac47ff4d4280a536",
+  "python_version": "3.12.10",
+  "design_split_ring_vs_family": {
+    "baseline": {
+      "device_sharing": {
+        "ring": 0.4716,
+        "family": 0.358,
+        "background": 0.0835,
+        "ring_minus_family": 0.1136,
+        "weight": 0.2444
+      },
+      "temporal_burst": {
+        "ring": 0.2969,
+        "family": 0.1016,
+        "background": 0.0034,
+        "ring_minus_family": 0.1953,
+        "weight": 0.2778
+      },
+      "instrument_sharing": {
+        "ring": 0.2031,
+        "family": 0.2969,
+        "background": 0.0372,
+        "ring_minus_family": -0.0938,
+        "weight": 0.1444
+      },
+      "failure_refund_rate": {
+        "ring": 0.2751,
+        "family": 0.1369,
+        "background": 0.0051,
+        "ring_minus_family": 0.1383,
+        "weight": 0.1333
+      },
+      "ip_sharing": {
+        "ring": 0.0,
+        "family": 0.5625,
+        "background": 0.0,
+        "ring_minus_family": -0.5625,
+        "weight": 0.0
+      },
+      "account_newness": {
+        "ring": 0.9069,
+        "family": 0.025,
+        "background": 0.1403,
+        "ring_minus_family": 0.8819,
+        "weight": 0.1111
+      },
+      "merchant_concentration": {
+        "ring": 0.2483,
+        "family": 0.238,
+        "background": 0.3275,
+        "ring_minus_family": 0.0103,
+        "weight": 0.0889
+      }
+    },
+    "experiment": {
+      "device_sharing": {
+        "ring": 0.4716,
+        "family": 0.358,
+        "background": 0.0835,
+        "ring_minus_family": 0.1136,
+        "weight": 0.2444
+      },
+      "temporal_burst": {
+        "ring": 0.2969,
+        "family": 0.1016,
+        "background": 0.0034,
+        "ring_minus_family": 0.1953,
+        "weight": 0.2778
+      },
+      "instrument_sharing": {
+        "ring": 0.2578,
+        "family": 0.2969,
+        "background": 0.0372,
+        "ring_minus_family": -0.0391,
+        "weight": 0.1444
+      },
+      "failure_refund_rate": {
+        "ring": 0.2751,
+        "family": 0.1369,
+        "background": 0.0051,
+        "ring_minus_family": 0.1383,
+        "weight": 0.1333
+      },
+      "ip_sharing": {
+        "ring": 0.0,
+        "family": 0.5625,
+        "background": 0.0,
+        "ring_minus_family": -0.5625,
+        "weight": 0.0
+      },
+      "account_newness": {
+        "ring": 0.9069,
+        "family": 0.025,
+        "background": 0.1403,
+        "ring_minus_family": 0.8819,
+        "weight": 0.1111
+      },
+      "merchant_concentration": {
+        "ring": 0.2483,
+        "family": 0.238,
+        "background": 0.3275,
+        "ring_minus_family": 0.0103,
+        "weight": 0.0889
+      }
+    }
+  },
+  "design_split_panel": {
+    "baseline": {
+      "positives_below_max_negative": 0.5625,
+      "hard_negatives_inside_positive_range": 4,
+      "single_signal_max_f1": {
+        "device_sharing": 0.7442,
+        "temporal_burst": 0.7143,
+        "instrument_sharing": 0.6154,
+        "failure_refund_rate": 0.75,
+        "ip_sharing": 0.4638,
+        "account_newness": 0.9412,
+        "merchant_concentration": 0.4923
+      },
+      "shared_device_only_baseline_f1": 0.7442,
+      "verdict": "PASS"
+    },
+    "experiment": {
+      "positives_below_max_negative": 0.6875,
+      "hard_negatives_inside_positive_range": 4,
+      "single_signal_max_f1": {
+        "device_sharing": 0.7442,
+        "temporal_burst": 0.7143,
+        "instrument_sharing": 0.6286,
+        "failure_refund_rate": 0.75,
+        "ip_sharing": 0.4638,
+        "account_newness": 0.9412,
+        "merchant_concentration": 0.4923
+      },
+      "shared_device_only_baseline_f1": 0.7442,
+      "verdict": "PASS"
+    }
+  }
+}

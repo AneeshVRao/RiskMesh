@@ -14,10 +14,14 @@ exists on disk.
 | `experiment_e1.json` | household co-burst removed | +0.2422 | 0.2500 | 0.800 | rejected — destroys the hard negative |
 | `experiment_e2.json` | household co-burst at independent merchants | +0.1953 | 0.5625 | 0.800 | **adopted** |
 | `experiment_e3.json` | overlapping household merchant pools | +0.2188 | 0.2500 | 0.7619 | rejected — fails criterion 4 |
+| `experiment_e4.json` | ring instrument overlap scales with ring size (RISK-004) | -0.0391 | 0.6875 | 0.800 | rejected — fails criteria 1 and 2 |
 
-Full reasoning in `bugs.md`, RISK-003.
+The `ring-family` column is the delta on the signal each experiment targets:
+`temporal_burst` for E1-E3, `instrument_sharing` for E4.
 
-Regenerate any of them with `python -m riskmesh.experiment {e1,e2,e3}`. Note that
+Full reasoning in `bugs.md`, RISK-003 and RISK-004.
+
+Regenerate any of them with `python -m riskmesh.experiment {e1,e2,e3,e4}`. Note that
 E2 is now the default config, so `run_e2`'s baseline-vs-experiment comparison
 reads differently than it did when the record was first frozen; the frozen file
 is the record of the original run.

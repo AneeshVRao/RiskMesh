@@ -234,7 +234,8 @@ Open bugs: 2 deferred (RISK-002, RISK-004). 3 closed (RISK-001, RISK-003, B1).
 
 ### RISK-004 — instrument_sharing scores families above rings
 
-- **Status:** OPEN, deferred. Same audit as RISK-003.
+- **Status:** OPEN. Filed by the same audit as RISK-003; the proposed
+  generator-side fix was pre-registered, run as E4, and **failed** -- see below.
 - **Symptom:** normalised means, train+validation: ring 0.203, **family 0.297**,
   background 0.037. Ring minus family is -0.094 at weight 0.144, so the signal
   pushes hard negatives toward the positive band.
@@ -250,10 +251,83 @@ Open bugs: 2 deferred (RISK-002, RISK-004). 3 closed (RISK-001, RISK-003, B1).
   ring raw values cannot exceed 3, while a household of up to
   `family_size_max` (8) shares one card. Normalising by
   `(k-1)/(max_instrument_degree-1)` therefore rewards the larger family.
-- **Fix:** deferred. The honest correction is on the generator side -- ring
-  instrument overlap should scale with ring size rather than being pinned at 2-3
-  -- but that changes the data and would invalidate the RISK-001 before/after
-  comparison. Belongs with the Tier 1 ring-type work that revisits the injectors.
+- **E4 result: the proposed fix was run and it does not work.** Pre-registered
+  hypothesis: scale ring instrument overlap with ring size
+  (`ring_instrument_share = 0.5`, replacing the flat `rng.randint(2, 3)` cap).
+  One value, one result -- adjacent fractions were ruled out in advance, because
+  a failed 0.5 hypothesis is a result about the mechanism, not a bad parameter.
+  Record frozen to `out/experiment_e4.json` before the test split was read.
+
+  | # | criterion | bound | E4 | |
+  |---|---|---|---|---|
+  | 1 | ring-family delta on `instrument_sharing` | [+0.05, +0.20] | **-0.0391** | **FAIL** |
+  | 2 | ring `instrument_sharing` | >= 0.30 | **0.2578** | **FAIL** |
+  | 3 | family `instrument_sharing` unchanged (hard gate) | 0.2969 +/- 0.01 | 0.2969 | PASS |
+  | 4a | positives-below-max-negative | >= 0.45, no regression below 0.5625 | 0.6875 | PASS |
+  | 4b | hard negatives in positive range | >= 4 | 4 | PASS |
+  | 5 | `instrument_sharing` single-signal F1 | < 0.85 | 0.6286 | PASS |
+  | 6 | shared-device baseline F1 | < 0.85 | 0.7442 | PASS |
+  | 7 | other six signals isolated to 4dp | denom effects only | **none moved at all** | PASS |
+  | 8 | held-out F1 | >= 0.800 | 0.8000 | PASS |
+  | 9 | no test read before freeze | structural | structural | PASS |
+
+  Seven of nine pass. The two that fail are the two the experiment existed to
+  move: the sign does not invert. `instrument_sharing` goes from ring 0.2031 /
+  family 0.2969 to ring 0.2578 / family 0.2969 -- an improvement of +0.0547 on
+  the ring side, less than half of what closing the -0.0938 gap needs.
+
+  **Why, measured rather than guessed.** Mean sharers per ring went 2.50 -> 3.04
+  against a mean ring size of 6.33. The premise that a flat 2-3 cap sits well
+  below half the ring is simply wrong at these ring sizes: half of 6.33 is 3.2,
+  and the old rule already delivered 2.5. Python's banker's rounding costs a
+  little more (`round(0.5*5) == 2`, `round(0.5*9) == 4`), but that is a detail,
+  not the cause.
+
+  The real asymmetry is not 3-versus-size, it is **50% of members against 100%
+  of members**. Only 13 of 24 households share a card at all, but the ones that
+  do share it across a mean of 5.31 accounts out of a mean household size of
+  5.08 -- effectively everyone. Every ring shares, but only with half its
+  members. Two similarly-sized groups, one sharing wholesale and one sharing
+  partially, is why the household still wins.
+
+  **Arithmetic that is deliberately not being acted on.** For the ring mean to
+  clear family + 0.05 the mean sharer count would have to reach about 3.78, i.e.
+  `ring_instrument_share` near 0.6. That is an in-band value and it is exactly
+  the adjacent-fraction sweep that was pre-registered as forbidden, so it has not
+  been run and should not be run as a fix. It would move a mean without making
+  the feature discriminative: single-signal F1 moved only 0.6154 -> 0.6286 under
+  E4, because the two distributions overlap by construction and a larger sharer
+  count slides one mean along without separating them.
+
+- **Domain-grounds tension, recorded because it bounds the design.** A real mule
+  ring should dominate families here by a wide margin -- many accounts funded
+  through few instruments is the mechanic. Modelling that faithfully means
+  `ring_instrument_share` near 1.0, which makes the signal a near-separator and
+  is precisely what criterion 5 and the +0.20 ceiling exist to forbid. Realism is
+  being traded down to keep the benchmark honest. That trade is what makes the
+  band narrow, and it is why the fix cannot simply be "share harder".
+
+- **Status: OPEN.** The count-scaling mechanism is now a measured dead end rather
+  than an untested plan. The next decision is which of two things to rethink, and
+  it is a decision, not a sweep:
+  1. **The feature.** `instrument_sharing` normalises max-accounts-on-one-
+     instrument by a global cap (`max_instrument_degree`), so it rewards group
+     size. Normalising by component size, or counting *instruments per account*
+     rather than accounts per instrument, would measure concentration instead of
+     headcount -- and concentration is the thing that actually differs.
+  2. **The injector.** Give rings several shared instruments over many members
+     (a funding pattern) rather than one instrument over a subset, so the ring's
+     signature is the ratio of accounts to distinct cards rather than the size of
+     the largest sharing set.
+
+  Option 1 is the smaller change and does not touch the data, so the RISK-001 and
+  RISK-003 before/after comparisons survive it. That is the one to try first.
+
+- **Kept:** `ring_instrument_share` stays in `config.py` at its inert default
+  0.0, and `run_e4` stays in `experiment.py`. The frozen record is in
+  `experiments/experiment_e4.json`. Rejected-alternative provenance, not dead
+  code -- it is the evidence for why the next attempt should not be another
+  fraction.
 
 ### RISK-002 — merchant_concentration is mis-signed
 
