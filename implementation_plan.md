@@ -744,11 +744,11 @@ with one held-out read taken.
 
 **Remaining, roughly in order:**
 
-1. **Abstention / manual-review band.** A PRD must-have and the direct
-   consequence of the held-out result — all four false positives are hard
-   negatives, and a three-way allow/review/block policy is the right response to
-   that rather than further weight tuning. Needs its own cost treatment, since
-   the current model already charges review on every flag.
+1. **Abstention / manual-review band.** A PRD must-have, and the next thing to
+   build. The ordering against XGBoost is deliberate and is argued below rather
+   than assumed — it is the lower-risk step, not merely the cheaper one. Needs
+   its own cost treatment, since the current model already charges a review on
+   every flag and a three-way policy prices the review band separately.
 2. **SQLite persistence and the FastAPI service.** Endpoints over the existing
    artifacts; no modelling change.
 3. **React investigator console.** The `detail` strings in `score.py` were built
@@ -760,14 +760,61 @@ with one held-out read taken.
    candidate set, feasibility gates (the same three), what beating the baseline
    means, and a single held-out read. The Tier 1 baseline it must beat is F1
    0.8000 / expected loss 9,392.92 at threshold 0.23. Ring-level splits already
-   prevent the obvious leakage; the non-obvious risk is a stronger model
-   improving F1 by exploiting the same difficulty erosion L2 describes.
+   prevent the obvious leakage; the non-obvious risk is described immediately
+   below.
 6. **RISK-002** (`merchant_concentration` mis-signed, +0.0103 at weight 0.0889)
    — **stays deprioritised.** It is FLAG-level, the smallest weight in the
    scorer, and the weight search found no feasible candidate that improved on
    leaving it alone.
 7. **Additional ring and hard-negative types**, which is also what would let
    RISK-004's instrument work be revisited from E6.
+
+### Why abstention comes before XGBoost
+
+Not a sequencing preference. It follows from what the held-out read actually
+said, and from L2.
+
+**Every held-out error is a hard negative.** At the frozen A_baseline policy the
+test confusion matrix is tp 8, fp 4, fn 0, tn 19 — and **all four false positives
+are family components. Zero are background.** Recall is 1.0000; the scorer misses
+nothing. The entire residual error is the legitimate-lookalike class the
+generator was built to produce, and those components sit inside the positive
+score range on purpose: `hard_negatives_inside_positive_range` is 4, and
+`positives_below_max_negative` is 0.5625, both by construction.
+
+**That is the shape of problem abstention solves and discrimination does not.**
+A household sharing a device, a card and an evening genuinely resembles a ring on
+the features available; the overlap is a property of the data, not a deficiency
+of the model. A three-way **allow / review / escalate** policy routes exactly
+that ambiguous band to a human, which is the correct handling of a case where the
+evidence is genuinely equivocal. A stronger classifier, by contrast, would have to
+*out-discriminate* an overlap the benchmark deliberately created — and the four
+components it would need to separate are the ones RISK-004 already established
+cannot be separated on the instrument dimension for this ring type.
+
+**And pursuing XGBoost next carries a specific risk that abstention does not.** A
+supervised model would be trained and evaluated against **this** benchmark — the
+one `bugs.md` L2 showed can reward an easier task over a better model. L2's
+evidence: held-out F1 rose 0.8000 → 0.8889 twice, by two unrelated mechanisms
+(E6's near-separator, and the zero-weight fallback's renormalisation onto
+`account_newness`), and the non-triviality panel went PASS → FAIL both times. A
+gradient-boosted model has far more capacity to find that kind of solution than a
+six-signal linear score does, and it will find it preferentially, because it is
+the cheapest way to improve the objective. The three feasibility gates would have
+to hold against a model that can fit the difficulty structure itself, which is a
+strictly harder guarantee than holding them against five hand-declared weight
+vectors.
+
+Abstention changes the **decision policy** over a frozen scorer. It cannot erode
+the benchmark, because it does not touch what the scorer computes — so it is
+evaluable without re-litigating difficulty. That makes it the lower-risk next
+step, and the fact that it is also cheaper is incidental.
+
+None of this says XGBoost should be skipped. It says XGBoost needs its frozen
+comparison protocol written *first*, with the same three gates, and that the
+abstention band should exist before it so the Tier 2 comparison is against a
+system already handling its ambiguous cases properly rather than against one
+forced into a binary call.
 
 **Still deferred beyond Tier 1:** GraphSAGE (Tier 3), bootstrap confidence
 intervals, the full baseline suite.
