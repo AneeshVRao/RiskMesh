@@ -178,10 +178,19 @@ def score_component(cfg: Config, comp: Component, ctx: ScoringContext) -> Compon
         f"{burst}/{n_acc} accounts at one merchant within "
         f"{cfg.burst_window_minutes} minutes")
 
-    # 3. instrument sharing -- partial card overlap
+    # 3. instrument sharing -- partial card overlap.
+    #    Two definitions. The original normalises by the global degree cap, so a
+    #    larger group scores higher for the same behaviour, which is RISK-004.
+    #    The component-relative one asks what share of THIS component sits on its
+    #    most-shared instrument -- concentration instead of headcount (E5).
     pi, k_pi = _max_accounts_per(comp, "instrument_id")
-    add("instrument_sharing", k_pi, (k_pi - 1) / max(1, cfg.max_instrument_degree - 1),
-        f"{k_pi} accounts share instrument {pi}")
+    if cfg.instrument_sharing_component_relative:
+        add("instrument_sharing", k_pi, k_pi / max(1, comp.size),
+            f"{k_pi}/{comp.size} accounts share instrument {pi}")
+    else:
+        add("instrument_sharing", k_pi,
+            (k_pi - 1) / max(1, cfg.max_instrument_degree - 1),
+            f"{k_pi} accounts share instrument {pi}")
 
     # 4. refund/failure pressure, measured against the population baseline
     bad = sum(1 for t in comp.txns if t.is_refund or t.status == "failed")

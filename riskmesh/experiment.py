@@ -717,12 +717,149 @@ def run_ablation(out: Path, signal: str = "temporal_burst",
     return {"cfg": cfg, "record": meta, "record_path": record_path}
 
 
+# --------------------------------------------------------------------------
+# E5
+# --------------------------------------------------------------------------
+
+E5_NAME = "E5-instrument-sharing-component-relative"
+
+E5_CAUSAL_STORY = (
+    "What marks a mule network is not how many accounts touch one card but how "
+    "concentrated the component's funding is on it. Group size is not evidence; "
+    "a share is."
+)
+
+E5_HYPOTHESIS = (
+    "RISK-004 option 1: fix the feature, not the generator. instrument_sharing "
+    "currently normalises max-accounts-on-one-instrument by the GLOBAL cap "
+    "max_instrument_degree, so a larger group scores higher for identical "
+    "behaviour -- an 8-member household sharing one card scores 0.875 while a "
+    "4-member ring sharing one card scores 0.375. Replacing the denominator with "
+    "the component's own size measures concentration instead of headcount, which "
+    "is the property that should differ between a funding network and a "
+    "household."
+)
+
+E5_PREDICTION_AGAINST = (
+    "Stated before running, because a pre-registration that only records the "
+    "hoped-for outcome is worth little. I expect this to FAIL, and possibly to "
+    "make the delta worse rather than better. The reason is in the generator, "
+    "not the feature: _inject_families gives its shared card to EVERY member of "
+    "a household when shares_card fires, while _inject_rings gives it to a "
+    "subset. E4 measured the resulting counts -- rings share across 2.50 of 6.33 "
+    "members, sharing households across 5.31 of 5.08. A component-relative share "
+    "therefore reads roughly 0.40 for a ring and close to 1.00 for a sharing "
+    "household, which is a LARGER gap in the wrong direction than the current "
+    "definition produces. If that is what happens, the honest conclusion is that "
+    "no function of the instrument graph can separate these classes while the "
+    "injectors differ only in what fraction of the group shares, and RISK-004 "
+    "becomes an injector problem (option 2) or a case for zero-weighting the "
+    "signal as RISK-001 did for ip_sharing. Running it anyway: the arithmetic "
+    "above is a prediction about component structure, which is not the same as "
+    "label-group structure, and a measured refutation of a stated prediction is "
+    "worth more than the prediction."
+)
+
+E5_BAND = (0.05, 0.20)
+E5_BAND_JUSTIFICATION = (
+    "Same band as E4, unchanged, and frozen before running. It is the same "
+    "question about the same signal, so moving the band for a different attempt "
+    "at it would make the two results incomparable. The upper bound of +0.20 "
+    "still exists to stop the signal becoming a near-separator."
+)
+
+E5_GENERATOR_DELTA = {
+    "instrument_sharing_component_relative": {"from": False, "to": True},
+    "changed": (
+        "scorer only: instrument_sharing normalised by the component's own size "
+        "(k/size) instead of (k-1)/(max_instrument_degree-1)"
+    ),
+    "unchanged": [
+        "the generator in every respect -- this is a feature-definition change, "
+        "so both arms run on byte-identical data",
+        "every other signal definition and every scorer weight",
+        "the E2 family co-burst behaviour and the E4 ring instrument cap "
+        "(ring_instrument_share stays 0.0)",
+    ],
+    "no_parameter_to_sweep": (
+        "There is no tunable number here, by design. The denominator is the "
+        "component's size, not a coefficient. If this misses, the next step is "
+        "the option-2 injector question or zero-weighting -- not a variant of "
+        "this definition chosen because it scores better."
+    ),
+}
+
+E5_CRITERIA = {
+    "1_ring_family_delta_band": list(E5_BAND),
+    "2_ring_instrument_sharing": ">= 0.30",
+    "3_other_six_bit_identical": (
+        "HARD GATE: the data is unchanged, so the other six signals must be "
+        "identical to full float precision. Any movement at all is a bug in the "
+        "scorer branch, not a result."
+    ),
+    "4a_positives_below_max_negative": ">= 0.45 and no regression below 0.5625",
+    "4b_hard_negatives_in_positive_range": ">= 4",
+    "5_instrument_sharing_single_signal_f1": "< 0.85",
+    "6_shared_device_baseline_f1": "< 0.85",
+    "7_total_score_ring_minus_family": ">= 0.1758 (no worse than 0.1858 - 0.01)",
+    "8_held_out_f1": ">= 0.800, read only after the record is frozen",
+    "9_no_test_before_freeze": "structural, enforced by held_out_view()",
+}
+
+
+def run_e5(out: Path, base: Config | None = None) -> dict[str, Any]:
+    base = base or Config()
+    cfg = replace(base, instrument_sharing_component_relative=True)
+    record_path = out / "experiment_e5.json"
+
+    candidates = build(cfg)
+    view = design_view(candidates)
+    baseline_candidates = build(base)
+    baseline_view = design_view(baseline_candidates)
+
+    meta = {
+        "experiment": E5_NAME,
+        "causal_story": E5_CAUSAL_STORY,
+        "hypothesis": E5_HYPOTHESIS,
+        "prediction_against": E5_PREDICTION_AGAINST,
+        "acceptance_criteria": E5_CRITERIA,
+        "band": list(E5_BAND),
+        "band_justification": E5_BAND_JUSTIFICATION,
+        "generator_delta": E5_GENERATOR_DELTA,
+        "designed_on": list(DESIGN_SPLITS),
+        "design_components": len(view),
+        "seed": cfg.seed,
+        "baseline_config_fingerprint": base.fingerprint(),
+        "experiment_config_fingerprint": cfg.fingerprint(),
+        "python_version": sys.version.split()[0],
+        "design_split_ring_vs_family": {
+            "baseline": ring_vs_family(base, baseline_view),
+            "experiment": ring_vs_family(cfg, view),
+        },
+        "design_split_panel": {
+            "baseline": _design_panel(base, baseline_view),
+            "experiment": _design_panel(cfg, view),
+        },
+        "design_split_total_score_separation": {
+            "baseline": _separation(baseline_view),
+            "experiment": _separation(view),
+        },
+    }
+    freeze_experiment(record_path, meta)
+
+    held_out = held_out_view(candidates, record_path)
+    meta["held_out_components"] = len(held_out)
+    return {"cfg": cfg, "base": base, "candidates": candidates,
+            "baseline_candidates": baseline_candidates,
+            "record": meta, "record_path": record_path}
+
+
 if __name__ == "__main__":
     import argparse
 
     ap = argparse.ArgumentParser()
     ap.add_argument("experiment", nargs="?", default="e1",
-                    choices=["e1", "e2", "e3", "e4", "ablation"])
+                    choices=["e1", "e2", "e3", "e4", "e5", "ablation"])
     which = ap.parse_args().experiment
 
     out = Path(__file__).resolve().parent.parent / "out"
@@ -771,8 +908,8 @@ if __name__ == "__main__":
         print(f'record frozen at {out / "ablation_temporal_burst.json"}')
         raise SystemExit(0)
 
-    result = {"e1": run_e1, "e2": run_e2,
-              "e3": run_e3, "e4": run_e4}[which](out)
+    result = {"e1": run_e1, "e2": run_e2, "e3": run_e3,
+              "e4": run_e4, "e5": run_e5}[which](out)
     rvf = result["record"]["design_split_ring_vs_family"]
     print(f"{result['record']['experiment']}  "
           f"(designed on {'+'.join(DESIGN_SPLITS)} only)")

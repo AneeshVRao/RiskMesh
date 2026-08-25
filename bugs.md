@@ -334,6 +334,69 @@ ceiling F1 — a deliberate deferral the cost-model stage owns, not an oversight
   code -- it is the evidence for why the next attempt should not be another
   fraction.
 
+- **E5 result: option 1 refuted, and it is worse than what it replaces.**
+  Redefined `instrument_sharing` as the share of a component's accounts on its
+  most-shared instrument (`k / component_size`) instead of `(k-1)/(cap-1)`.
+  A scorer-only change, so both arms ran on byte-identical data. The prediction
+  that this would fail was written into the frozen record *before* the run.
+
+  | # | criterion | bound | E5 | |
+  |---|---|---|---|---|
+  | 1 | ring-family delta | [+0.05, +0.20] | **-0.2263** | **FAIL** |
+  | 2 | ring `instrument_sharing` | >= 0.30 | 0.4514 | PASS |
+  | 3 | other six bit-identical (hard gate) | exact | none moved | PASS |
+  | 4a | positives-below-max-negative | >= 0.45, >= 0.5625 | 0.5625 | PASS |
+  | 4b | hard negatives in positive range | >= 4 | 4 | PASS |
+  | 5 | `instrument_sharing` single-signal F1 | < 0.85 | 0.6154 | PASS |
+  | 6 | shared-device baseline F1 | < 0.85 | 0.7442 | PASS |
+  | 7 | total-score ring - family | >= 0.1758 | **0.1667** | **FAIL** |
+  | 8 | held-out F1 | >= 0.800 | 0.8000 | PASS |
+  | 9 | no test read before freeze | structural | structural | PASS |
+
+  Seven of nine. The delta went **-0.0938 -> -0.2263**, two and a half times
+  worse, and the whole-scorer separation fell 0.1858 -> 0.1667. Held-out metrics
+  did not move, which says only that the signal's weight is too small to shift
+  the operating point -- not that the change was harmless.
+
+  **Why, and it is the same reason E4 failed.** Rings share one card across a
+  subset (2.50 of 6.33 members); households that share, share across everyone
+  (5.31 of 5.08). Removing the group-size term does not help, because group size
+  was never the thing helping rings -- it was the only thing *limiting* the
+  household's score. A share-based measure lets the household reach ~1.0 and the
+  ring ~0.45, which is a cleaner measurement of a difference that runs the wrong
+  way.
+
+  **A second, independent defect the experiment exposed.** Component-relative
+  normalisation is degenerate on small components: `k/size` saturates at 1.0 for
+  any size-2 component whose two accounts touch one instrument. **29 of 37**
+  background components in train+validation are size 2, so background jumped
+  0.0372 -> **0.5901** and became the second-highest-scoring group on this
+  signal. Even if the ring-family direction had come out right, this definition
+  would have to be rejected for that alone.
+
+- **Where RISK-004 now stands.** Both generator-side scaling (E4) and
+  feature-side renormalisation (E5) have been measured and refuted. What remains
+  is not a third variant of either:
+
+  1. **Option 2, injector-side.** Give rings *several* shared instruments across
+     many members -- a funding pattern -- so the ring's signature is the ratio of
+     accounts to distinct cards rather than the size of the largest sharing set.
+     This changes the data, so it would need the same freeze-and-compare
+     discipline as E1-E4 and would invalidate nothing already tagged.
+  2. **Zero-weight it, as RISK-001 did for `ip_sharing`.** The signal currently
+     runs at -0.0938 against the hard negatives at weight 0.1444: it is actively
+     pushing households toward the positive band. RISK-001 set the precedent that
+     a signal measuring the wrong thing should carry zero weight until it earns
+     otherwise. This is a *weight* decision, so it belongs with the cost model --
+     logged as D2 in `deferred_decisions.md`.
+
+  Option 2 is the one that could make the signal genuinely work; option 2 and the
+  D2 weight question are independent and can both be true.
+
+- **Kept:** `instrument_sharing_component_relative` stays in `config.py` at its
+  inert default `False`, `run_e5` stays in `experiment.py`, and the frozen record
+  is in `experiments/experiment_e5.json`.
+
 ### RISK-002 — merchant_concentration is mis-signed
 
 - **Status:** OPEN, deferred. Surfaced by the sign check added while closing

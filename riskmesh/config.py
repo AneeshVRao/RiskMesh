@@ -182,6 +182,13 @@ class Config:
     # is never capped away. Every capped node is listed in the integrity report.
     max_ip_degree: int = 8
     max_device_degree: int = 12
+    # RISK-004 option 1, experiment E5. False keeps the original definition of
+    # instrument_sharing -- max accounts on one instrument, normalised by the
+    # global cap below -- which rewards raw group size and is why a household
+    # outscores a ring. True measures what SHARE of a component's accounts sit
+    # on its most-shared instrument, which is concentration rather than
+    # headcount. Default False until an experiment is adopted.
+    instrument_sharing_component_relative: bool = False
     max_instrument_degree: int = 9  # above family_size_max, so a genuine family
                                     # card is never mistaken for common infra
     min_edge_txns: int = 2

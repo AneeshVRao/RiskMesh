@@ -1,0 +1,200 @@
+{
+  "experiment": "E5-instrument-sharing-component-relative",
+  "causal_story": "What marks a mule network is not how many accounts touch one card but how concentrated the component's funding is on it. Group size is not evidence; a share is.",
+  "hypothesis": "RISK-004 option 1: fix the feature, not the generator. instrument_sharing currently normalises max-accounts-on-one-instrument by the GLOBAL cap max_instrument_degree, so a larger group scores higher for identical behaviour -- an 8-member household sharing one card scores 0.875 while a 4-member ring sharing one card scores 0.375. Replacing the denominator with the component's own size measures concentration instead of headcount, which is the property that should differ between a funding network and a household.",
+  "prediction_against": "Stated before running, because a pre-registration that only records the hoped-for outcome is worth little. I expect this to FAIL, and possibly to make the delta worse rather than better. The reason is in the generator, not the feature: _inject_families gives its shared card to EVERY member of a household when shares_card fires, while _inject_rings gives it to a subset. E4 measured the resulting counts -- rings share across 2.50 of 6.33 members, sharing households across 5.31 of 5.08. A component-relative share therefore reads roughly 0.40 for a ring and close to 1.00 for a sharing household, which is a LARGER gap in the wrong direction than the current definition produces. If that is what happens, the honest conclusion is that no function of the instrument graph can separate these classes while the injectors differ only in what fraction of the group shares, and RISK-004 becomes an injector problem (option 2) or a case for zero-weighting the signal as RISK-001 did for ip_sharing. Running it anyway: the arithmetic above is a prediction about component structure, which is not the same as label-group structure, and a measured refutation of a stated prediction is worth more than the prediction.",
+  "acceptance_criteria": {
+    "1_ring_family_delta_band": [
+      0.05,
+      0.2
+    ],
+    "2_ring_instrument_sharing": ">= 0.30",
+    "3_other_six_bit_identical": "HARD GATE: the data is unchanged, so the other six signals must be identical to full float precision. Any movement at all is a bug in the scorer branch, not a result.",
+    "4a_positives_below_max_negative": ">= 0.45 and no regression below 0.5625",
+    "4b_hard_negatives_in_positive_range": ">= 4",
+    "5_instrument_sharing_single_signal_f1": "< 0.85",
+    "6_shared_device_baseline_f1": "< 0.85",
+    "7_total_score_ring_minus_family": ">= 0.1758 (no worse than 0.1858 - 0.01)",
+    "8_held_out_f1": ">= 0.800, read only after the record is frozen",
+    "9_no_test_before_freeze": "structural, enforced by held_out_view()"
+  },
+  "band": [
+    0.05,
+    0.2
+  ],
+  "band_justification": "Same band as E4, unchanged, and frozen before running. It is the same question about the same signal, so moving the band for a different attempt at it would make the two results incomparable. The upper bound of +0.20 still exists to stop the signal becoming a near-separator.",
+  "generator_delta": {
+    "instrument_sharing_component_relative": {
+      "from": false,
+      "to": true
+    },
+    "changed": "scorer only: instrument_sharing normalised by the component's own size (k/size) instead of (k-1)/(max_instrument_degree-1)",
+    "unchanged": [
+      "the generator in every respect -- this is a feature-definition change, so both arms run on byte-identical data",
+      "every other signal definition and every scorer weight",
+      "the E2 family co-burst behaviour and the E4 ring instrument cap (ring_instrument_share stays 0.0)"
+    ],
+    "no_parameter_to_sweep": "There is no tunable number here, by design. The denominator is the component's size, not a coefficient. If this misses, the next step is the option-2 injector question or zero-weighting -- not a variant of this definition chosen because it scores better."
+  },
+  "designed_on": [
+    "train",
+    "validation"
+  ],
+  "design_components": 69,
+  "seed": 20260824,
+  "baseline_config_fingerprint": "997b773d19d9117c",
+  "experiment_config_fingerprint": "18507377708cba4f",
+  "python_version": "3.12.10",
+  "design_split_ring_vs_family": {
+    "baseline": {
+      "device_sharing": {
+        "ring": 0.4716,
+        "family": 0.358,
+        "background": 0.0835,
+        "ring_minus_family": 0.1136,
+        "weight": 0.2444
+      },
+      "temporal_burst": {
+        "ring": 0.2969,
+        "family": 0.1016,
+        "background": 0.0034,
+        "ring_minus_family": 0.1953,
+        "weight": 0.2778
+      },
+      "instrument_sharing": {
+        "ring": 0.2031,
+        "family": 0.2969,
+        "background": 0.0372,
+        "ring_minus_family": -0.0938,
+        "weight": 0.1444
+      },
+      "failure_refund_rate": {
+        "ring": 0.2751,
+        "family": 0.1369,
+        "background": 0.0051,
+        "ring_minus_family": 0.1383,
+        "weight": 0.1333
+      },
+      "ip_sharing": {
+        "ring": 0.0,
+        "family": 0.5625,
+        "background": 0.0,
+        "ring_minus_family": -0.5625,
+        "weight": 0.0
+      },
+      "account_newness": {
+        "ring": 0.9069,
+        "family": 0.025,
+        "background": 0.1403,
+        "ring_minus_family": 0.8819,
+        "weight": 0.1111
+      },
+      "merchant_concentration": {
+        "ring": 0.2483,
+        "family": 0.238,
+        "background": 0.3275,
+        "ring_minus_family": 0.0103,
+        "weight": 0.0889
+      }
+    },
+    "experiment": {
+      "device_sharing": {
+        "ring": 0.4716,
+        "family": 0.358,
+        "background": 0.0835,
+        "ring_minus_family": 0.1136,
+        "weight": 0.2444
+      },
+      "temporal_burst": {
+        "ring": 0.2969,
+        "family": 0.1016,
+        "background": 0.0034,
+        "ring_minus_family": 0.1953,
+        "weight": 0.2778
+      },
+      "instrument_sharing": {
+        "ring": 0.4514,
+        "family": 0.6777,
+        "background": 0.5901,
+        "ring_minus_family": -0.2263,
+        "weight": 0.1444
+      },
+      "failure_refund_rate": {
+        "ring": 0.2751,
+        "family": 0.1369,
+        "background": 0.0051,
+        "ring_minus_family": 0.1383,
+        "weight": 0.1333
+      },
+      "ip_sharing": {
+        "ring": 0.0,
+        "family": 0.5625,
+        "background": 0.0,
+        "ring_minus_family": -0.5625,
+        "weight": 0.0
+      },
+      "account_newness": {
+        "ring": 0.9069,
+        "family": 0.025,
+        "background": 0.1403,
+        "ring_minus_family": 0.8819,
+        "weight": 0.1111
+      },
+      "merchant_concentration": {
+        "ring": 0.2483,
+        "family": 0.238,
+        "background": 0.3275,
+        "ring_minus_family": 0.0103,
+        "weight": 0.0889
+      }
+    }
+  },
+  "design_split_panel": {
+    "baseline": {
+      "positives_below_max_negative": 0.5625,
+      "hard_negatives_inside_positive_range": 4,
+      "single_signal_max_f1": {
+        "device_sharing": 0.7442,
+        "temporal_burst": 0.7143,
+        "instrument_sharing": 0.6154,
+        "failure_refund_rate": 0.75,
+        "ip_sharing": 0.4638,
+        "account_newness": 0.9412,
+        "merchant_concentration": 0.4923
+      },
+      "shared_device_only_baseline_f1": 0.7442,
+      "verdict": "PASS"
+    },
+    "experiment": {
+      "positives_below_max_negative": 0.5625,
+      "hard_negatives_inside_positive_range": 4,
+      "single_signal_max_f1": {
+        "device_sharing": 0.7442,
+        "temporal_burst": 0.7143,
+        "instrument_sharing": 0.6154,
+        "failure_refund_rate": 0.75,
+        "ip_sharing": 0.4638,
+        "account_newness": 0.9412,
+        "merchant_concentration": 0.4923
+      },
+      "shared_device_only_baseline_f1": 0.7442,
+      "verdict": "PASS"
+    }
+  },
+  "design_split_total_score_separation": {
+    "baseline": {
+      "ring": 0.3866,
+      "family": 0.2008,
+      "background": 0.0721,
+      "ring_minus_family": 0.1858,
+      "ring_minus_background": 0.3145
+    },
+    "experiment": {
+      "ring": 0.4225,
+      "family": 0.2558,
+      "background": 0.152,
+      "ring_minus_family": 0.1667,
+      "ring_minus_background": 0.2705
+    }
+  }
+}

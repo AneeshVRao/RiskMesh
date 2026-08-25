@@ -52,3 +52,42 @@ correct. It is the pre-ablation weight, carried forward on purpose, with the cos
 recorded here.
 
 Related: `bugs.md` RISK-003, `implementation_plan.md` (Tier 1 ablation gate).
+
+---
+
+## D2 — `instrument_sharing` keeps weight 0.1444 while scoring hard negatives above positives
+
+**Owner: the cost-model / weight-optimisation stage. Not optional cleanup.**
+
+**What was measured.** On train+validation, `instrument_sharing` reads ring
+0.2031 against family **0.2969** — a ring-minus-family delta of **-0.0938** at
+weight **0.1444**. The signal is not merely uninformative; it pushes the hard
+negatives *toward* the positive band, which is the one direction a weighted
+signal must not push.
+
+**Two fixes were pre-registered, run and refuted.** E4 scaled ring instrument
+overlap with ring size and moved the delta only to -0.0391. E5 replaced the
+global-cap denominator with the component's own size and made it **worse**, at
+-0.2263, while introducing a size-2 saturation artefact that sent background to
+0.5901. Both records are in `experiments/`; the reasoning is in `bugs.md`
+RISK-004.
+
+**Why the weight was left alone anyway.** Changing it is a weight decision, and
+this project has one rule about those: they need a criterion, and the criterion
+comes from the cost model. Zeroing it now would be the same judgement call made
+without the thing that justifies it. RISK-001 set the precedent — `ip_sharing`
+was zero-weighted at -0.5625 — but that was done as part of a scoped fix with a
+before/after comparison, not as a loose adjustment.
+
+**What the cost-model stage must actually decide.** Given explicit
+false-positive/false-negative costs: is the optimal weight for
+`instrument_sharing` zero? If the injector-side fix (RISK-004 option 2) lands
+first and the delta turns positive, this entry closes on its own — but it must
+close *explicitly*, with the number that justified it recorded here.
+
+**Do not** read the current 0.1444 as evidence that anyone has judged the weight
+correct. Two attempts to make the signal work have failed, and the weight is
+carried forward pending a criterion.
+
+Related: `bugs.md` RISK-004, `experiments/experiment_e4.json`,
+`experiments/experiment_e5.json`.
