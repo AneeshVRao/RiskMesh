@@ -251,7 +251,7 @@ tests/test_riskmesh.py 19 checks
 ## Current figures
 
 Read from `out/` after `rm -rf out` and a clean regeneration. Config fingerprint
-`997b773d19d9117c`, seed 20260824, Python 3.12.10:
+`7c1e4fb2b329796c`, seed 20260824, Python 3.12.10:
 
 - 5962 transactions, 789 accounts, 976 devices, 906 IPs, 823 instruments, 40 merchants
 - 24 rings and 24 family clusters injected

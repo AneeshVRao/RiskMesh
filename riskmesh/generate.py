@@ -353,6 +353,21 @@ def _inject_rings(
         for acct in sharers:
             acct.instruments.append(shared_pi)
 
+        # RISK-004 option 2 (E6): fund the whole ring through a small pool of
+        # cards instead of bolting one shared card onto a subset. This is the
+        # mule mechanic -- few instruments, many accounts -- and it supersedes
+        # the append above. The pool assignment uses a dedicated Random so the
+        # main stream, and therefore the family injector that runs next, is
+        # untouched (see the RNG-stream note in experiment.py).
+        if cfg.ring_instrument_pool_size > 0:
+            pool_rng = random.Random(cfg.seed * 32_452_843 + r)
+            pool = [
+                f"pi_{ring_id}_f{j}"
+                for j in range(min(cfg.ring_instrument_pool_size, len(members)))
+            ]
+            for acct in members:
+                acct.instruments = [pool_rng.choice(pool)]
+
         out.extend(members)
 
     return out

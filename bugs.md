@@ -29,6 +29,48 @@ ceiling F1 — a deliberate deferral the cost-model stage owns, not an oversight
 
 <!-- Add entries below this line. -->
 
+### L1 — size-based normalisation degenerates at small component sizes
+
+**A standing lesson, not a bug.** Filed separately from RISK-004 on purpose: the
+ring-vs-family direction failure is specific to that comparison, this is not.
+It applies to any feature, in any tier, whose denominator is the size of the
+thing being scored.
+
+**What happened.** E5 redefined `instrument_sharing` as
+`max_accounts_on_one_instrument / component_size`. For a component of size 2
+whose two accounts touch one instrument, that is `2/2 = 1.0` — the maximum score,
+from the smallest and least interesting structure in the graph. Design-split
+components are dominated by exactly that shape: **31 of 69 are size 2 and 41 of
+69 are size 3 or smaller**. The result was that **29 of 37** background
+components (78%) saturated at or above 0.90, and background became the
+second-highest-scoring group on the signal, above rings. Under the original
+`(k-1)/(cap-1)` definition the same figure is **0 of 37**.
+
+**The general shape of the mistake.** A ratio `part / whole` is not a
+concentration measure when `whole` is small — it is a coin flip with a coarse
+denominator. Concentration only means something once there is enough population
+for a concentrated distribution to be distinguishable from a uniform one. Any
+normalisation of the form "share of this component", "fraction of this cluster",
+or "proportion of this group" inherits the defect, and it will not show up in a
+mean: E5's background *mean* on the signal was 0.5901, which looks merely high
+rather than degenerate. It shows up in the saturation fraction.
+
+**What to do instead, in rough order of preference.**
+1. Normalise by a global constant, as every other Tier 0 signal does
+   (`(k-1)/(cap-1)` against `max_*_degree`). Scale-free and immune to this.
+2. If the measure must be component-relative, use a quantity whose achievable
+   range grows with size — accounts-per-distinct-attribute rather than
+   share-of-accounts — so a size-2 component cannot reach the top of the range.
+3. If neither is possible, floor the denominator or exclude components below a
+   minimum size from the signal, and say so in the feature's docstring.
+
+**The check that catches it.** Report the fraction of components scoring >= 0.90
+normalised, broken out by group *and* by component size, not just the mean. This
+is criterion 10 on any future instrument-feature experiment, and it is worth
+running against any new size-normalised feature in Tier 2 before trusting it.
+
+
+
 ### RISK-003 — temporal_burst carries the top weight on a false premise
 
 - **Status: RESOLVED.** Fixed in two parts: a feature-semantic change
@@ -396,6 +438,90 @@ ceiling F1 — a deliberate deferral the cost-model stage owns, not an oversight
 - **Kept:** `instrument_sharing_component_relative` stays in `config.py` at its
   inert default `False`, `run_e5` stays in `experiment.py`, and the frozen record
   is in `experiments/experiment_e5.json`.
+
+- **E6 result: option 2 inverts the sign, then over-separates.** Rings funded
+  through a pool of 3 cards replacing their personal instrument, scored as
+  accounts-per-distinct-instrument normalised by the global cap. Generator *and*
+  feature changed together, which is a deliberate exception to one-change-at-a-
+  time: a funding pool is invisible to a largest-sharing-set feature, and an
+  accounts-per-card feature has nothing to find in the old injector. Either alone
+  is a no-op. The record says so before the numbers.
+
+  | # | criterion | bound | E6 | |
+  |---|---|---|---|---|
+  | 1 | ring-family delta | [+0.05, +0.20] | +0.1576 | PASS |
+  | 2 | ring `instrument_sharing` | >= 0.30 | **0.1576** | **FAIL** |
+  | 3 | other six isolated to 4dp | denom effects | none moved | PASS |
+  | 4a | positives-below-max-negative | >= 0.45, >= 0.5625 | **0.0625** | **FAIL** |
+  | 4b | hard negatives in positive range | >= 4 | **1** | **FAIL** |
+  | 5 | `instrument_sharing` single-signal F1 | < 0.85 | **0.9697** | **FAIL** |
+  | 6 | shared-device baseline F1 | < 0.85 | 0.7442 | PASS |
+  | 7 | total-score ring - family | >= 0.1758 | 0.2221 | PASS |
+  | 8 | held-out F1 | >= 0.800 | 0.8889 | PASS |
+  | 9 | no test read before freeze | structural | structural | PASS |
+  | 10a | background saturated >= 0.90 | <= 0.10 | 0.0000 (0/37) | PASS |
+  | 10b | size <= 3 saturated >= 0.90 | <= 0.15 | 0.0000 (0/41) | PASS |
+
+  The mechanism works and that is the problem. `instrument_sharing` goes to ring
+  0.1576 against family **exactly 0.0000** and background 0.0034: the signal
+  becomes a near-binary ring detector with single-signal F1 **0.9697**, the
+  non-triviality panel verdict flips to **FAIL**, positives-below-max-negative
+  collapses 0.5625 -> 0.0625 and hard negatives inside the positive range fall
+  4 -> 1. Held-out F1 *rises* to 0.8889 -- the detector looks better precisely
+  because the benchmark stopped being hard. This is what criterion 5 and the
+  band's upper bound existed to catch.
+
+  Criterion 10, added after E5, passed cleanly at 0/37 and 0/41: normalising by
+  the global cap rather than component size avoided the saturation defect
+  entirely. The new gate worked; it just was not the thing that failed.
+
+  **One criterion was mis-specified and it is being reported, not reinterpreted.**
+  Criterion 2 ("ring `instrument_sharing` >= 0.30") was carried forward verbatim
+  from E4, where family sat at 0.2969 and a ring below 0.30 could not possibly
+  lead. Under E6's feature the scale is different -- family is 0.0000, so a ring
+  at 0.1576 already leads by the full band. The criterion as written is not
+  measuring what it was written to measure. It is left as a FAIL. Rescoring a
+  frozen criterion after seeing the result is the exact failure mode this
+  discipline exists to prevent, and the outcome does not turn on it: 4a, 4b and 5
+  fail on substance and the panel fails outright.
+
+### The pre-declared fallback was executed, measured, and cannot stand
+
+Zero-weighting `instrument_sharing` and renormalising the remaining five was run
+end to end. **It breaks the benchmark's own integrity gate:**
+
+| | weighted 0.1444 | zero-weighted |
+|---|---|---|
+| positives-below-max-negative | 0.5625 | **0.1250** (bound >= 0.20) |
+| hard negatives in positive range | 4 | **1** |
+| panel verdict | PASS | **FAIL** |
+| held-out precision | 0.6667 | 0.8000 |
+| held-out F1 | 0.8000 | 0.8889 |
+| held-out FPR | 0.1739 | 0.0870 |
+
+Same pathology as E6, reached from the opposite direction. `instrument_sharing`'s
+-0.0938 delta was the main thing holding the hard negatives up against the
+positives; removing it lets them fall away. The renormalisation compounds it by
+redistributing weight to `account_newness` (0.1111 -> 0.1299), which at
+single-signal F1 0.9412 is the closest thing the scorer has to a lone separator.
+
+**So the repo is left at the last known-good state**, weights unchanged, panel
+PASS, held-out F1 0.800. Shipping a state whose own non-triviality gate reports
+FAIL is not a defensible close, and quietly relaxing the bound to accommodate it
+would be worse. This is the one point in the RISK-004 sequence where the
+pre-declared plan met evidence it did not anticipate, and the evidence wins.
+
+- **Status: CONCLUDED, not fixed. `instrument_sharing` stays at weight 0.1444.**
+  Three pre-registered attempts -- generator-side scaling (E4), feature
+  renormalisation (E5), funding-pool mechanism (E6) -- were run and rejected, and
+  the zero-weight fallback was run and rejected too. No further variants: the
+  signal's defect and the benchmark's difficulty are the same fact seen from two
+  sides, and separating them needs the cost model, which supplies the criterion
+  none of these attempts had. Tracked as **D2** in `deferred_decisions.md`.
+
+- **Kept:** `ring_instrument_pool_size` (0) and
+  `instrument_sharing_accounts_per_card` (False) stay in `config.py` inert,
+  `run_e6` stays in `experiment.py`, record in `experiments/experiment_e6.json`.
 
 ### RISK-002 — merchant_concentration is mis-signed
 

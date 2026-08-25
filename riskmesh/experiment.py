@@ -854,12 +854,181 @@ def run_e5(out: Path, base: Config | None = None) -> dict[str, Any]:
             "record": meta, "record_path": record_path}
 
 
+# --------------------------------------------------------------------------
+# E6 -- the last materially different attempt on instrument_sharing
+# --------------------------------------------------------------------------
+
+E6_NAME = "E6-ring-funding-pool"
+
+E6_CAUSAL_STORY = (
+    "A mule network is funded through a few cards used by many accounts. A "
+    "household shares one card on top of everyone still having their own. The "
+    "difference is the ratio of accounts to instruments, not the size of the "
+    "largest sharing set."
+)
+
+E6_HYPOTHESIS = (
+    "RISK-004 option 2. E4 (scale the ring sharer count) and E5 (make the "
+    "feature component-relative) both failed for one reason: rings share one "
+    "card across a subset while households that share, share across everyone, so "
+    "every measure of largest-sharing-set favours the household. E6 changes what "
+    "the ring DOES rather than how it is measured. Ring members are funded "
+    "through a pool of 3 cards that replaces their personal instrument, so a "
+    "ring of 6 runs 6 accounts on 3 cards while a household of 6 runs 6 accounts "
+    "on 7. Paired with a feature that counts accounts per distinct instrument, "
+    "that should separate the classes in the right direction."
+)
+
+E6_TWO_CHANGES_NOTE = (
+    "This experiment changes the generator AND the feature at once, which breaks "
+    "the usual one-change-at-a-time rule. The exception is deliberate and the "
+    "reason is structural, not convenience: a funding pool is invisible to a "
+    "feature that only counts the largest sharing set (3 cards over 6 accounts "
+    "has a largest set of 2, LOWER than today's 2-3), and an accounts-per-card "
+    "feature has nothing to find in an injector that gives every account its own "
+    "card plus one shared one. Either change alone is measurably a no-op or a "
+    "regression. They are one mechanism, so they are tested as one."
+)
+
+E6_VALUE_CHOSEN = (
+    "Pool size 3, fixed a priori. Rationale: it puts roughly 2 accounts on each "
+    "funding card at the mean ring size of 6.33, which is the same order of "
+    "concentration the original injector already modelled with its 2-3 shared "
+    "members -- so the experiment changes the STRUCTURE of ring card usage "
+    "without inflating its intensity. The feature normalises by "
+    "max_instrument_degree, the same global constant every other signal uses, "
+    "rather than by component size, which bugs.md L1 records as degenerate. "
+    "Neither number was chosen by trying alternatives, and per the standing "
+    "instruction no adjacent value will be tried if this misses."
+)
+
+E6_BAND = (0.05, 0.20)
+E6_BAND_JUSTIFICATION = (
+    "Unchanged from E4 and E5 and frozen before running. Same signal, same "
+    "question, so moving it would make the three attempts incomparable. The "
+    "upper bound still exists to catch the signal becoming a near-separator, "
+    "which is a live risk here in a way it was not for E4 or E5: this mechanism "
+    "could plausibly over-separate rather than under-separate, and that is a "
+    "failure of the benchmark even though it would look like a success of the "
+    "detector."
+)
+
+E6_SATURATION_CEILING = {
+    "background_at_or_above_0.90": 0.10,
+    "components_of_size_3_or_less_at_or_above_0.90": 0.15,
+    "justification": (
+        "Predeclared before running, grounded on both endpoints already "
+        "measured. The current global-cap definition saturates 0 of 37 "
+        "background components and 0 of 41 components of size <= 3. E5's "
+        "component-relative definition saturated 29 of 37 background (78%). A "
+        "healthy feature belongs far nearer the first number than the second. "
+        "10% of background allows a genuine tail -- a background component that "
+        "really is many accounts on few cards should be allowed to score high, "
+        "because that is the thing being measured -- without licensing a size "
+        "artefact. 15% for size <= 3 is slightly looser because that denominator "
+        "(41 components) is where an artefact would appear first and a single "
+        "component is already 2.4% of it. A hard gate, alongside criterion 3."
+    ),
+}
+
+E6_CRITERIA = {
+    "1_ring_family_delta_band": list(E6_BAND),
+    "2_ring_instrument_sharing": ">= 0.30",
+    "3_other_six_isolated": "identical to 4dp, denominator effects excepted",
+    "4a_positives_below_max_negative": ">= 0.45 and no regression below 0.5625",
+    "4b_hard_negatives_in_positive_range": ">= 4",
+    "5_instrument_sharing_single_signal_f1": "< 0.85",
+    "6_shared_device_baseline_f1": "< 0.85",
+    "7_total_score_ring_minus_family": ">= 0.1758",
+    "8_held_out_f1": ">= 0.800, read only after the record is frozen",
+    "9_no_test_before_freeze": "structural, enforced by held_out_view()",
+    "10_saturation_ceiling": E6_SATURATION_CEILING,
+}
+
+
+def saturation(view: list[Candidate], signal: str = "instrument_sharing",
+               level: float = 0.90) -> dict[str, Any]:
+    """Fraction of components pinned at the top of a signal's range.
+
+    A mean hides this; E5's background mean was 0.5901, which reads as high
+    rather than degenerate. The saturation fraction is what exposes it.
+    """
+    groups: dict[str, list[float]] = {"ring": [], "family": [], "background": []}
+    small: list[float] = []
+    for c in view:
+        g = "ring" if c.is_positive else ("family" if c.has_family else "background")
+        groups[g].append(c.signals[signal])
+        if len(c.accounts) <= 3:
+            small.append(c.signals[signal])
+    out: dict[str, Any] = {"level": level}
+    for g, vals in groups.items():
+        n = sum(1 for v in vals if v >= level)
+        out[g] = {"n": n, "of": len(vals),
+                  "fraction": round(n / len(vals), 4) if vals else 0.0}
+    n = sum(1 for v in small if v >= level)
+    out["size_le_3"] = {"n": n, "of": len(small),
+                        "fraction": round(n / len(small), 4) if small else 0.0}
+    return out
+
+
+def run_e6(out: Path, base: Config | None = None) -> dict[str, Any]:
+    base = base or Config()
+    cfg = replace(base, ring_instrument_pool_size=3,
+                  instrument_sharing_accounts_per_card=True)
+    record_path = out / "experiment_e6.json"
+
+    candidates = build(cfg)
+    view = design_view(candidates)
+    baseline_candidates = build(base)
+    baseline_view = design_view(baseline_candidates)
+
+    meta = {
+        "experiment": E6_NAME,
+        "causal_story": E6_CAUSAL_STORY,
+        "hypothesis": E6_HYPOTHESIS,
+        "two_changes_note": E6_TWO_CHANGES_NOTE,
+        "value_chosen": E6_VALUE_CHOSEN,
+        "acceptance_criteria": E6_CRITERIA,
+        "band": list(E6_BAND),
+        "band_justification": E6_BAND_JUSTIFICATION,
+        "designed_on": list(DESIGN_SPLITS),
+        "design_components": len(view),
+        "seed": cfg.seed,
+        "baseline_config_fingerprint": base.fingerprint(),
+        "experiment_config_fingerprint": cfg.fingerprint(),
+        "python_version": sys.version.split()[0],
+        "design_split_ring_vs_family": {
+            "baseline": ring_vs_family(base, baseline_view),
+            "experiment": ring_vs_family(cfg, view),
+        },
+        "design_split_panel": {
+            "baseline": _design_panel(base, baseline_view),
+            "experiment": _design_panel(cfg, view),
+        },
+        "design_split_total_score_separation": {
+            "baseline": _separation(baseline_view),
+            "experiment": _separation(view),
+        },
+        "design_split_saturation": {
+            "baseline": saturation(baseline_view),
+            "experiment": saturation(view),
+        },
+    }
+    freeze_experiment(record_path, meta)
+
+    held_out = held_out_view(candidates, record_path)
+    meta["held_out_components"] = len(held_out)
+    return {"cfg": cfg, "base": base, "candidates": candidates,
+            "baseline_candidates": baseline_candidates,
+            "record": meta, "record_path": record_path}
+
+
 if __name__ == "__main__":
     import argparse
 
     ap = argparse.ArgumentParser()
     ap.add_argument("experiment", nargs="?", default="e1",
-                    choices=["e1", "e2", "e3", "e4", "e5", "ablation"])
+                    choices=["e1", "e2", "e3", "e4", "e5", "e6", "ablation"])
     which = ap.parse_args().experiment
 
     out = Path(__file__).resolve().parent.parent / "out"
@@ -909,7 +1078,7 @@ if __name__ == "__main__":
         raise SystemExit(0)
 
     result = {"e1": run_e1, "e2": run_e2, "e3": run_e3,
-              "e4": run_e4, "e5": run_e5}[which](out)
+              "e4": run_e4, "e5": run_e5, "e6": run_e6}[which](out)
     rvf = result["record"]["design_split_ring_vs_family"]
     print(f"{result['record']['experiment']}  "
           f"(designed on {'+'.join(DESIGN_SPLITS)} only)")

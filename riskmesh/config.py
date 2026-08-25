@@ -189,6 +189,31 @@ class Config:
     # on its most-shared instrument, which is concentration rather than
     # headcount. Default False until an experiment is adopted.
     instrument_sharing_component_relative: bool = False
+    # RISK-004 option 2, experiment E6. A mule network is funded through a small
+    # pool of cards used by many accounts; a household shares one card on top of
+    # everyone's own. 0 keeps the original single-shared-card injector. When > 0,
+    # every ring member is funded through one card drawn from a pool of this
+    # size, replacing their personal instrument. Requires
+    # instrument_sharing_accounts_per_card -- the pool is invisible to a feature
+    # that only counts the largest sharing set. E6 was rejected: see bugs.md.
+    ring_instrument_pool_size: int = 0
+    # The matching feature: accounts per distinct instrument in the component,
+    # normalised by the same global cap every other signal uses. Deliberately NOT
+    # normalised by component size -- see bugs.md L1.
+    instrument_sharing_accounts_per_card: bool = False
+    # RISK-004 option 2, experiment E6. A mule network is funded through a small
+    # pool of cards used by many accounts; a household shares one card on top of
+    # everyone's own. 0 keeps the original single-shared-card injector. When > 0,
+    # every ring member is funded through one card drawn from a pool of this
+    # size, replacing their personal instrument. Requires
+    # instrument_sharing_accounts_per_card -- the pool is invisible to a feature
+    # that only counts the largest sharing set.
+    ring_instrument_pool_size: int = 0
+    # The matching feature: accounts per distinct instrument in the component,
+    # normalised by the same global cap every other signal uses. Measures how few
+    # cards fund how many accounts, rather than how big the biggest sharing set
+    # is. Deliberately NOT normalised by component size -- see bugs.md L1.
+    instrument_sharing_accounts_per_card: bool = False
     max_instrument_degree: int = 9  # above family_size_max, so a genuine family
                                     # card is never mistaken for common infra
     min_edge_txns: int = 2

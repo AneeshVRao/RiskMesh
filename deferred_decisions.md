@@ -51,6 +51,12 @@ Whatever the answer, the reasoning goes in this file's entry before it is closed
 correct. It is the pre-ablation weight, carried forward on purpose, with the cost
 recorded here.
 
+**Interaction with D2, found while testing it.** Zero-weighting
+`instrument_sharing` renormalises `temporal_burst` from 0.2778 up to **0.3247** —
+so the two entries are coupled. Any fix for D2 that removes weight from a signal
+increases the share held by one this file already records as redundant and mildly
+harmful. Decide D1 and D2 together, not in sequence.
+
 Related: `bugs.md` RISK-003, `implementation_plan.md` (Tier 1 ablation gate).
 
 ---
@@ -65,29 +71,52 @@ weight **0.1444**. The signal is not merely uninformative; it pushes the hard
 negatives *toward* the positive band, which is the one direction a weighted
 signal must not push.
 
-**Two fixes were pre-registered, run and refuted.** E4 scaled ring instrument
-overlap with ring size and moved the delta only to -0.0391. E5 replaced the
-global-cap denominator with the component's own size and made it **worse**, at
--0.2263, while introducing a size-2 saturation artefact that sent background to
-0.5901. Both records are in `experiments/`; the reasoning is in `bugs.md`
-RISK-004.
+**Three fixes were pre-registered, run and refuted, and so was the fallback.**
+E4 scaled ring instrument overlap with ring size and moved the delta only to
+-0.0391. E5 replaced the global-cap denominator with the component's own size and
+made it **worse**, at -0.2263, while saturating 78% of background components. E6
+funded rings through a card pool and scored accounts-per-instrument: it inverted
+the sign to +0.1576 but over-separated, single-signal F1 0.9697, and flipped the
+non-triviality panel to FAIL. All records are in `experiments/`; the reasoning is
+in `bugs.md` RISK-004.
 
-**Why the weight was left alone anyway.** Changing it is a weight decision, and
-this project has one rule about those: they need a criterion, and the criterion
-comes from the cost model. Zeroing it now would be the same judgement call made
-without the thing that justifies it. RISK-001 set the precedent — `ip_sharing`
-was zero-weighted at -0.5625 — but that was done as part of a scoped fix with a
-before/after comparison, not as a loose adjustment.
+**Zeroing it was tried and it breaks the benchmark.** This is no longer a
+deferral for tidiness; it is a deferral because the obvious fix is measurably
+wrong. Setting the weight to 0.00 and renormalising the remaining five takes
+positives-below-max-negative from 0.5625 to **0.1250**, below the 0.20 bound, and
+hard negatives inside the positive range from 4 to **1**. The panel verdict flips
+to **FAIL**. Held-out numbers improve — precision 0.6667 -> 0.8000, F1 0.8000 ->
+0.8889 — which is the tell: the detector looks better because the benchmark got
+easier.
 
-**What the cost-model stage must actually decide.** Given explicit
-false-positive/false-negative costs: is the optimal weight for
-`instrument_sharing` zero? If the injector-side fix (RISK-004 option 2) lands
-first and the delta turns positive, this entry closes on its own — but it must
-close *explicitly*, with the number that justified it recorded here.
+The mechanism is worth carrying forward, because it constrains *any* reweighting,
+not just this one. `instrument_sharing`'s negative delta is a large part of what
+holds the hard negatives up against the positives. Renormalising after removing
+it also pushes weight onto `account_newness` (0.1111 -> 0.1299), which at
+single-signal F1 0.9412 is the closest thing the scorer has to a lone separator.
+**Any reweighting that increases `account_newness`'s share risks trivialising the
+benchmark, and the non-triviality panel must be re-run and must PASS after every
+weight change — not only the held-out metrics.**
+
+RISK-001 set the precedent for zero-weighting a signal that measures the wrong
+thing, but `ip_sharing` had a delta of -0.5625 with no load-bearing role in the
+benchmark's difficulty. `instrument_sharing` does have one. The two cases are not
+analogous, which is why the precedent does not settle it.
+
+**What the cost-model stage must actually decide.** Not "should this be zero" —
+that was tried. The real question is how to hold the benchmark's difficulty fixed
+while optimising weights, given that one of the two is currently doing the other's
+job. Concretely: under explicit false-positive/false-negative costs, find the
+weight vector that minimises expected cost **subject to the non-triviality panel
+still passing**, and report what `instrument_sharing` gets. If that constraint
+turns out to be unsatisfiable, the honest conclusion is that the generator needs a
+harder negative that does not depend on this signal — which is Tier 1 ring-type
+work, not weight work.
 
 **Do not** read the current 0.1444 as evidence that anyone has judged the weight
-correct. Two attempts to make the signal work have failed, and the weight is
-carried forward pending a criterion.
+correct. Three attempts to make the signal work have failed and so has removing
+it; the weight is carried forward because every alternative measured worse, not
+because it is right.
 
-Related: `bugs.md` RISK-004, `experiments/experiment_e4.json`,
-`experiments/experiment_e5.json`.
+Related: `bugs.md` RISK-004 and L1, `experiments/experiment_e4.json`,
+`experiments/experiment_e5.json`, `experiments/experiment_e6.json`.

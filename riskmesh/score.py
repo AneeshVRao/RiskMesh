@@ -31,6 +31,14 @@ its siblings. Its weight is 0.00 in Tier 0: the ring injector assigns no shared
 IP, so this measures 1.00 for every ring and every background component and
 separates nothing. It is kept computed as investigator evidence and because it
 becomes genuinely discriminative once a shared-IP ring type exists.
+
+**Do not normalise a signal by its own component's size.** A ratio of the form
+`part / component_size` saturates at 1.0 on size-2 components, which are 31 of
+the 69 design-split components here, so the signal ends up measuring smallness
+rather than risk. Measured in E5: background saturation at >= 0.90 went from
+0 of 37 under the global-cap normalisation to 29 of 37 under the
+component-relative one. Every signal below normalises by a global constant from
+`config.py` for this reason. See bugs.md L1 before defining a new one.
 """
 
 from __future__ import annotations
@@ -184,7 +192,13 @@ def score_component(cfg: Config, comp: Component, ctx: ScoringContext) -> Compon
     #    The component-relative one asks what share of THIS component sits on its
     #    most-shared instrument -- concentration instead of headcount (E5).
     pi, k_pi = _max_accounts_per(comp, "instrument_id")
-    if cfg.instrument_sharing_component_relative:
+    if cfg.instrument_sharing_accounts_per_card:
+        n_pi = len({t.instrument_id for t in comp.txns})
+        ratio = comp.size / max(1, n_pi)
+        add("instrument_sharing", round(ratio, 4),
+            (ratio - 1) / max(1, cfg.max_instrument_degree - 1),
+            f"{comp.size} accounts funded through {n_pi} instruments")
+    elif cfg.instrument_sharing_component_relative:
         add("instrument_sharing", k_pi, k_pi / max(1, comp.size),
             f"{k_pi}/{comp.size} accounts share instrument {pi}")
     else:

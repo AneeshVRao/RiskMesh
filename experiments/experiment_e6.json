@@ -1,0 +1,241 @@
+{
+  "experiment": "E6-ring-funding-pool",
+  "causal_story": "A mule network is funded through a few cards used by many accounts. A household shares one card on top of everyone still having their own. The difference is the ratio of accounts to instruments, not the size of the largest sharing set.",
+  "hypothesis": "RISK-004 option 2. E4 (scale the ring sharer count) and E5 (make the feature component-relative) both failed for one reason: rings share one card across a subset while households that share, share across everyone, so every measure of largest-sharing-set favours the household. E6 changes what the ring DOES rather than how it is measured. Ring members are funded through a pool of 3 cards that replaces their personal instrument, so a ring of 6 runs 6 accounts on 3 cards while a household of 6 runs 6 accounts on 7. Paired with a feature that counts accounts per distinct instrument, that should separate the classes in the right direction.",
+  "two_changes_note": "This experiment changes the generator AND the feature at once, which breaks the usual one-change-at-a-time rule. The exception is deliberate and the reason is structural, not convenience: a funding pool is invisible to a feature that only counts the largest sharing set (3 cards over 6 accounts has a largest set of 2, LOWER than today's 2-3), and an accounts-per-card feature has nothing to find in an injector that gives every account its own card plus one shared one. Either change alone is measurably a no-op or a regression. They are one mechanism, so they are tested as one.",
+  "value_chosen": "Pool size 3, fixed a priori. Rationale: it puts roughly 2 accounts on each funding card at the mean ring size of 6.33, which is the same order of concentration the original injector already modelled with its 2-3 shared members -- so the experiment changes the STRUCTURE of ring card usage without inflating its intensity. The feature normalises by max_instrument_degree, the same global constant every other signal uses, rather than by component size, which bugs.md L1 records as degenerate. Neither number was chosen by trying alternatives, and per the standing instruction no adjacent value will be tried if this misses.",
+  "acceptance_criteria": {
+    "1_ring_family_delta_band": [
+      0.05,
+      0.2
+    ],
+    "2_ring_instrument_sharing": ">= 0.30",
+    "3_other_six_isolated": "identical to 4dp, denominator effects excepted",
+    "4a_positives_below_max_negative": ">= 0.45 and no regression below 0.5625",
+    "4b_hard_negatives_in_positive_range": ">= 4",
+    "5_instrument_sharing_single_signal_f1": "< 0.85",
+    "6_shared_device_baseline_f1": "< 0.85",
+    "7_total_score_ring_minus_family": ">= 0.1758",
+    "8_held_out_f1": ">= 0.800, read only after the record is frozen",
+    "9_no_test_before_freeze": "structural, enforced by held_out_view()",
+    "10_saturation_ceiling": {
+      "background_at_or_above_0.90": 0.1,
+      "components_of_size_3_or_less_at_or_above_0.90": 0.15,
+      "justification": "Predeclared before running, grounded on both endpoints already measured. The current global-cap definition saturates 0 of 37 background components and 0 of 41 components of size <= 3. E5's component-relative definition saturated 29 of 37 background (78%). A healthy feature belongs far nearer the first number than the second. 10% of background allows a genuine tail -- a background component that really is many accounts on few cards should be allowed to score high, because that is the thing being measured -- without licensing a size artefact. 15% for size <= 3 is slightly looser because that denominator (41 components) is where an artefact would appear first and a single component is already 2.4% of it. A hard gate, alongside criterion 3."
+    }
+  },
+  "band": [
+    0.05,
+    0.2
+  ],
+  "band_justification": "Unchanged from E4 and E5 and frozen before running. Same signal, same question, so moving it would make the three attempts incomparable. The upper bound still exists to catch the signal becoming a near-separator, which is a live risk here in a way it was not for E4 or E5: this mechanism could plausibly over-separate rather than under-separate, and that is a failure of the benchmark even though it would look like a success of the detector.",
+  "designed_on": [
+    "train",
+    "validation"
+  ],
+  "design_components": 69,
+  "seed": 20260824,
+  "baseline_config_fingerprint": "7c1e4fb2b329796c",
+  "experiment_config_fingerprint": "1d0e180218946016",
+  "python_version": "3.12.10",
+  "design_split_ring_vs_family": {
+    "baseline": {
+      "device_sharing": {
+        "ring": 0.4716,
+        "family": 0.358,
+        "background": 0.0835,
+        "ring_minus_family": 0.1136,
+        "weight": 0.2444
+      },
+      "temporal_burst": {
+        "ring": 0.2969,
+        "family": 0.1016,
+        "background": 0.0034,
+        "ring_minus_family": 0.1953,
+        "weight": 0.2778
+      },
+      "instrument_sharing": {
+        "ring": 0.2031,
+        "family": 0.2969,
+        "background": 0.0372,
+        "ring_minus_family": -0.0938,
+        "weight": 0.1444
+      },
+      "failure_refund_rate": {
+        "ring": 0.2751,
+        "family": 0.1369,
+        "background": 0.0051,
+        "ring_minus_family": 0.1383,
+        "weight": 0.1333
+      },
+      "ip_sharing": {
+        "ring": 0.0,
+        "family": 0.5625,
+        "background": 0.0,
+        "ring_minus_family": -0.5625,
+        "weight": 0.0
+      },
+      "account_newness": {
+        "ring": 0.9069,
+        "family": 0.025,
+        "background": 0.1403,
+        "ring_minus_family": 0.8819,
+        "weight": 0.1111
+      },
+      "merchant_concentration": {
+        "ring": 0.2483,
+        "family": 0.238,
+        "background": 0.3275,
+        "ring_minus_family": 0.0103,
+        "weight": 0.0889
+      }
+    },
+    "experiment": {
+      "device_sharing": {
+        "ring": 0.4716,
+        "family": 0.358,
+        "background": 0.0835,
+        "ring_minus_family": 0.1136,
+        "weight": 0.2444
+      },
+      "temporal_burst": {
+        "ring": 0.2969,
+        "family": 0.1016,
+        "background": 0.0034,
+        "ring_minus_family": 0.1953,
+        "weight": 0.2778
+      },
+      "instrument_sharing": {
+        "ring": 0.1576,
+        "family": 0.0,
+        "background": 0.0034,
+        "ring_minus_family": 0.1576,
+        "weight": 0.1444
+      },
+      "failure_refund_rate": {
+        "ring": 0.2751,
+        "family": 0.1369,
+        "background": 0.0051,
+        "ring_minus_family": 0.1383,
+        "weight": 0.1333
+      },
+      "ip_sharing": {
+        "ring": 0.0,
+        "family": 0.5625,
+        "background": 0.0,
+        "ring_minus_family": -0.5625,
+        "weight": 0.0
+      },
+      "account_newness": {
+        "ring": 0.9069,
+        "family": 0.025,
+        "background": 0.1403,
+        "ring_minus_family": 0.8819,
+        "weight": 0.1111
+      },
+      "merchant_concentration": {
+        "ring": 0.2483,
+        "family": 0.238,
+        "background": 0.3275,
+        "ring_minus_family": 0.0103,
+        "weight": 0.0889
+      }
+    }
+  },
+  "design_split_panel": {
+    "baseline": {
+      "positives_below_max_negative": 0.5625,
+      "hard_negatives_inside_positive_range": 4,
+      "single_signal_max_f1": {
+        "device_sharing": 0.7442,
+        "temporal_burst": 0.7143,
+        "instrument_sharing": 0.6154,
+        "failure_refund_rate": 0.75,
+        "ip_sharing": 0.4638,
+        "account_newness": 0.9412,
+        "merchant_concentration": 0.4923
+      },
+      "shared_device_only_baseline_f1": 0.7442,
+      "verdict": "PASS"
+    },
+    "experiment": {
+      "positives_below_max_negative": 0.0625,
+      "hard_negatives_inside_positive_range": 1,
+      "single_signal_max_f1": {
+        "device_sharing": 0.7442,
+        "temporal_burst": 0.7143,
+        "instrument_sharing": 0.9697,
+        "failure_refund_rate": 0.75,
+        "ip_sharing": 0.4638,
+        "account_newness": 0.9412,
+        "merchant_concentration": 0.4923
+      },
+      "shared_device_only_baseline_f1": 0.7442,
+      "verdict": "FAIL"
+    }
+  },
+  "design_split_total_score_separation": {
+    "baseline": {
+      "ring": 0.3866,
+      "family": 0.2008,
+      "background": 0.0721,
+      "ring_minus_family": 0.1858,
+      "ring_minus_background": 0.3145
+    },
+    "experiment": {
+      "ring": 0.38,
+      "family": 0.1579,
+      "background": 0.0672,
+      "ring_minus_family": 0.2221,
+      "ring_minus_background": 0.3128
+    }
+  },
+  "design_split_saturation": {
+    "baseline": {
+      "level": 0.9,
+      "ring": {
+        "n": 0,
+        "of": 16,
+        "fraction": 0.0
+      },
+      "family": {
+        "n": 0,
+        "of": 16,
+        "fraction": 0.0
+      },
+      "background": {
+        "n": 0,
+        "of": 37,
+        "fraction": 0.0
+      },
+      "size_le_3": {
+        "n": 0,
+        "of": 41,
+        "fraction": 0.0
+      }
+    },
+    "experiment": {
+      "level": 0.9,
+      "ring": {
+        "n": 0,
+        "of": 16,
+        "fraction": 0.0
+      },
+      "family": {
+        "n": 0,
+        "of": 16,
+        "fraction": 0.0
+      },
+      "background": {
+        "n": 0,
+        "of": 37,
+        "fraction": 0.0
+      },
+      "size_le_3": {
+        "n": 0,
+        "of": 41,
+        "fraction": 0.0
+      }
+    }
+  }
+}
