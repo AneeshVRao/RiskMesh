@@ -4,7 +4,8 @@ One entry per bug, newest at the top. Fill in **every** field before touching
 code — the point of this file is to reason about a fix rather than guess at one.
 Delete an entry once its fix is verified by the matching `testing.md` row.
 
-Open bugs: 2 deferred (RISK-002, RISK-004). 3 closed (RISK-001, RISK-003, B1).
+Open bugs: 1 deferred (RISK-002). 4 closed (RISK-001, RISK-003, RISK-004, B1).
+Standing lessons: L1 (size-based normalisation), L2 (held-out F1 as an objective).
 
 Knowingly-deferred *decisions* (as opposed to bugs) live in
 `deferred_decisions.md`. D1 there records that `temporal_burst` is still carried
@@ -28,6 +29,60 @@ ceiling F1 — a deliberate deferral the cost-model stage owns, not an oversight
 ---
 
 <!-- Add entries below this line. -->
+
+### L2 — held-out F1 is not a safe objective for weight selection on this benchmark
+
+**A standing lesson, filed separately from RISK-004 because it is not about
+instruments.** It is the single most important thing this build has learned about
+how to choose weights, and it must be in front of whoever runs the cost model.
+
+**The observation.** Held-out F1 improved from 0.8000 to **0.8889** twice, by two
+mechanisms with nothing in common, and **both times the non-triviality panel went
+from PASS to FAIL**:
+
+| | held-out F1 | held-out precision | FPR | positives below max negative | panel |
+|---|---|---|---|---|---|
+| current scorer | 0.8000 | 0.6667 | 0.1739 | 0.5625 | **PASS** |
+| E6 funding-pool signal | 0.8889 | 0.8000 | 0.0870 | 0.0625 | **FAIL** |
+| zero-weight fallback | 0.8889 | 0.8000 | 0.0870 | 0.1250 | **FAIL** |
+
+E6 improved F1 by giving the scorer a near-separator (`instrument_sharing`
+single-signal F1 0.9697, family exactly 0.0000). The zero-weight fallback
+improved F1 by renormalising weight onto `account_newness`, whose single-signal
+F1 is 0.9412. Different signals, different mechanisms, identical held-out
+numbers, identical failure.
+
+**Why it happens.** Held-out F1 measures the *pair* (model, benchmark). It goes
+up when the model gets better and it goes up when the benchmark gets easier, and
+it does not distinguish the two. On this dataset the hard negatives are held in
+the positive score range by a handful of signals; anything that removes their
+influence -- a new dominant signal, or reweighting away from the ones doing that
+work -- raises F1 by making the task easier. **An optimiser pointed at held-out
+F1, or at expected loss without a difficulty constraint, will find these
+solutions preferentially, because they are the cheapest way to improve the
+number.**
+
+**What to do instead.** Treat the non-triviality panel as a **feasibility
+constraint, not a report**. A weight vector that fails the panel is not a
+worse candidate -- it is not a candidate. Concretely:
+
+1. The panel must be re-run on train+validation after **every** weight change,
+   before any performance metric is read.
+2. A candidate that fails the panel must be structurally unable to receive a
+   score, in the same way `held_out_view()` is structurally unable to return test
+   rows without a frozen record. Enforced in `riskmesh/costmodel.py` by
+   `gated_expected_loss()`, which raises `PanelGateFailure` rather than returning
+   a number. See `weight_search_protocol.md`.
+3. Report `positives_below_max_negative` and
+   `hard_negatives_inside_positive_range` alongside every F1 figure in any
+   comparison table, so a reader can see the difficulty as well as the score.
+
+**The generalisation.** Any benchmark whose difficulty is partly produced by the
+model's own components has this failure mode. Optimising a metric computed on
+that benchmark will silently trade difficulty for score unless difficulty is
+constrained separately. Related: `deferred_decisions.md` D1 and D2.
+
+
 
 ### L1 — size-based normalisation degenerates at small component sizes
 
@@ -279,10 +334,12 @@ running against any new size-normalised feature in Tier 2 before trusting it.
   them on *where* rather than *when*, which is the difference an investigator
   would actually cite.
 
-### RISK-004 — instrument_sharing scores families above rings
+### RISK-004 — instrument_sharing scores families above rings — CLOSED
 
-- **Status:** OPEN. Filed by the same audit as RISK-003; the proposed
-  generator-side fix was pre-registered, run as E4, and **failed** -- see below.
+- **Status: CLOSED** — rejected as a production scoring signal for the current
+  benchmark and ring type. Full closure statement and its scope caveat at the end
+  of this entry. Filed by the same audit as RISK-003; three pre-registered fixes
+  and the zero-weight fallback were run and all four failed -- see below.
 - **Symptom:** normalised means, train+validation: ring 0.203, **family 0.297**,
   background 0.037. Ring minus family is -0.094 at weight 0.144, so the signal
   pushes hard negatives toward the positive band.
@@ -485,7 +542,7 @@ running against any new size-normalised feature in Tier 2 before trusting it.
   discipline exists to prevent, and the outcome does not turn on it: 4a, 4b and 5
   fail on substance and the panel fails outright.
 
-### The pre-declared fallback was executed, measured, and cannot stand
+#### The pre-declared fallback was executed, measured, and cannot stand
 
 Zero-weighting `instrument_sharing` and renormalising the remaining five was run
 end to end. **It breaks the benchmark's own integrity gate:**
@@ -511,13 +568,36 @@ FAIL is not a defensible close, and quietly relaxing the bound to accommodate it
 would be worse. This is the one point in the RISK-004 sequence where the
 pre-declared plan met evidence it did not anticipate, and the evidence wins.
 
-- **Status: CONCLUDED, not fixed. `instrument_sharing` stays at weight 0.1444.**
-  Three pre-registered attempts -- generator-side scaling (E4), feature
-  renormalisation (E5), funding-pool mechanism (E6) -- were run and rejected, and
-  the zero-weight fallback was run and rejected too. No further variants: the
-  signal's defect and the benchmark's difficulty are the same fact seen from two
-  sides, and separating them needs the cost model, which supplies the criterion
-  none of these attempts had. Tracked as **D2** in `deferred_decisions.md`.
+- **Status: CLOSED — rejected as a production scoring signal for the current
+  benchmark and ring type.** `instrument_sharing` stays computed and stays at
+  weight 0.1444, because removing it measurably breaks the benchmark (above), but
+  it is not a signal this build relies on to make a call. Three pre-registered
+  attempts -- generator-side scaling (E4), feature renormalisation (E5),
+  funding-pool mechanism (E6) -- were run and rejected, and the zero-weight
+  fallback was run and rejected too. No further variants. Tracked as **D2** in
+  `deferred_decisions.md` for the weight/cost stage.
+
+  **Scope of this closure, stated explicitly so it is not over-read.** What was
+  rejected is instrument sharing *as a discriminative signal against this
+  benchmark's hard negative, for Tier 0's single shared-device ring type*. It is
+  **not** a finding that instrument intelligence is useless for coordinated-abuse
+  detection, and nothing here should be quoted that way.
+
+  The reason the signal cannot work here is specific and it is a property of the
+  generator, not of the domain: Tier 0's ring shares **one** card across a subset
+  of members, and its hard negative -- a household -- shares **one** card across
+  all of them. Two mechanisms that differ only in what fraction of a
+  similarly-sized group shares a single instrument. That is the entire reason
+  every measure of it favours the household.
+
+  A **multi-card ring type** breaks that symmetry, and E6 is the evidence: when
+  rings were funded through a pool of cards, accounts-per-instrument separated
+  the classes immediately and in the right direction (+0.1576, family exactly
+  0.0000). E6 was rejected for over-separating *this* benchmark, whose only
+  positive class is the shared-device ring -- not because the feature failed. If
+  Tier 1 or Tier 2 adds a funding-network ring type alongside the existing one,
+  this signal should be revisited from E6's design, and the record in
+  `experiments/experiment_e6.json` is the starting point rather than a dead end.
 
 - **Kept:** `ring_instrument_pool_size` (0) and
   `instrument_sharing_accounts_per_card` (False) stay in `config.py` inert,
