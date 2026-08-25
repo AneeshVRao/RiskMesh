@@ -107,24 +107,43 @@ def _max_accounts_per(
 
 
 def _burst(comp: Component, window: int) -> tuple[int, int]:
-    """Most distinct accounts active inside any `window`-minute span.
+    """Most distinct accounts hitting the SAME merchant inside any `window`-minute
+    span -- coordination, not merely density (RISK-003).
 
-    Sliding window over time-sorted transactions -- the signal that separates a
-    coordinated ring from a family that merely shares a tablet.
+    The earlier definition counted any accounts active in the same window
+    regardless of what they were doing. That measured traffic volume as much as
+    coordination, and it read *backwards* against the hard negatives: family
+    components average 12.6 transactions per account against a ring's 9.9, so
+    households accumulated more coincidental co-occurrence and scored higher
+    (ring 0.344, family 0.352). Requiring a shared merchant strips the
+    coincidence -- background components drop from 0.017 to 0.003 -- so what
+    survives is accounts actually converging on one place at one time.
+
+    Note what this does NOT fix. Ring bursts and family co-bursts are emitted by
+    the same `_add_burst` in generate.py, at the same 30-minute window and the
+    same single merchant, with families at *higher* participation (0.9 vs 0.75).
+    So ring-vs-family separation moves from -0.008 to +0.000: the feature now
+    measures the right thing, and there is nothing in the data left for it to
+    find. Closing that gap needs the generator to differentiate the two bursts.
     """
-    events = sorted((t.ts_minute, t.account_id) for t in comp.txns)
-    counts: Counter[str] = Counter()
+    buckets: dict[str, list[tuple[int, str]]] = defaultdict(list)
+    for t in comp.txns:
+        buckets[t.merchant_id].append((t.ts_minute, t.account_id))
+
     best = 0
-    lo = 0
-    for ts, acct in events:
-        counts[acct] += 1
-        while events[lo][0] < ts - window:
-            drop = events[lo][1]
-            counts[drop] -= 1
-            if counts[drop] == 0:
-                del counts[drop]
-            lo += 1
-        best = max(best, len(counts))
+    for events in buckets.values():
+        events.sort()
+        counts: Counter[str] = Counter()
+        lo = 0
+        for ts, acct in events:
+            counts[acct] += 1
+            while events[lo][0] < ts - window:
+                drop = events[lo][1]
+                counts[drop] -= 1
+                if counts[drop] == 0:
+                    del counts[drop]
+                lo += 1
+            best = max(best, len(counts))
     return best, len(comp.accounts)
 
 
@@ -153,10 +172,11 @@ def score_component(cfg: Config, comp: Component, ctx: ScoringContext) -> Compon
     add("device_sharing", k, (k - 1) / max(1, cfg.max_device_degree - 1),
         f"{k} accounts share device {device}")
 
-    # 2. temporal burst -- coordination in time, the ring/family discriminator
+    # 2. temporal burst -- accounts converging on one merchant in one window
     burst, n_acc = _burst(comp, cfg.burst_window_minutes)
     add("temporal_burst", burst, (burst - 1) / max(1, cfg.ring_size_max - 1),
-        f"{burst}/{n_acc} accounts within {cfg.burst_window_minutes} minutes")
+        f"{burst}/{n_acc} accounts at one merchant within "
+        f"{cfg.burst_window_minutes} minutes")
 
     # 3. instrument sharing -- partial card overlap
     pi, k_pi = _max_accounts_per(comp, "instrument_id")

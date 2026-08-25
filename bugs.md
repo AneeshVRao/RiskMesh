@@ -50,12 +50,45 @@ Open bugs: 3 deferred (RISK-002, RISK-003, RISK-004). 2 closed (RISK-001, B1).
   `family_coburst_window_multiplier` from 3 to 1 -- so households now burst in
   the same 30-minute window, at nearly the same participation, as rings. The
   tuning that made the benchmark honest is what neutralised this signal.
-- **Fix:** deferred. The options interact: widen the family co-burst window back
-  out (which loosens the non-triviality margin), reweight toward the signals that
-  do discriminate, or accept it and let Tier 2's supervised scorer learn the
-  weighting. Choosing needs the cost model, so it belongs to Tier 1 threshold
-  work rather than a weight tweak now. **Docs corrected in the meantime** so the
-  stated justification no longer contradicts the measurement.
+- **Partial fix applied (feature semantics only). STILL OPEN.**
+  `temporal_burst` now requires accounts to converge on the **same merchant**
+  inside the window, not merely to be active in it. Measured on train+validation:
+
+  | | before | after |
+  |---|---|---|
+  | ring | 0.344 | 0.297 |
+  | family | 0.352 | 0.297 |
+  | background | 0.017 | 0.003 |
+  | **ring - family** | **-0.008** | **+0.000** |
+
+  What this fixed: the signal no longer rewards raw traffic volume. Family
+  components average 12.6 transactions per account against a ring's 9.9, so they
+  were accumulating more coincidental co-occurrence; requiring a shared merchant
+  strips it, and background drops nearly to zero. The feature now measures what
+  its name claims.
+
+  What this did NOT fix, and cannot: **ring-vs-family separation is still zero.**
+  `_add_burst` in `generate.py` emits ring bursts and family co-bursts from the
+  same code path -- same 30-minute window, same single merchant, with families at
+  *higher* participation (0.9 vs 0.75). There is no coordination difference in
+  the data for any feature definition to detect. Variants were measured before
+  choosing: window+merchant+device -0.078, window+device -0.086, both worse; a
+  15-minute window reached +0.039, rejected as a tuning knob at noise scale on
+  16 positives rather than a fix.
+
+  **Cost of the change, reported not buried:** raw single-signal F1 0.6316 ->
+  0.6061 and held-out F1 0.7619 -> 0.7273 (precision 0.6154 -> 0.5714, FPR
+  0.2174 -> 0.2609, one additional false positive). The old definition was partly
+  earning its keep from the coincidental-density effect against background. The
+  benchmark got slightly harder and more honest at the same time.
+
+- **Remaining fix:** generator-side. The family co-burst has to differ from the
+  ring burst in something a feature can see -- widen
+  `family_coburst_window_multiplier` back out from 1, drop
+  `family_coburst_participation` below the ring's 0.75, or give ring bursts a
+  tighter cluster. All three loosen the non-triviality margin that the Tier 0
+  tuning bought by making them identical, so this is a trade to be made
+  deliberately alongside the cost model, not a knob to nudge now.
 
 ### RISK-004 — instrument_sharing scores families above rings
 

@@ -26,10 +26,10 @@ Stated here rather than left to be discovered. The scorer puts 0.278 on
 `temporal_burst` and 0.144 on `instrument_sharing` — 0.422 of its total weight,
 roughly 42%. Measured on held-out data, **neither of those two signals separates
 abuse rings from the family hard negatives**, which is the distinction this
-benchmark exists to test. On normalised values, `temporal_burst` runs ring 0.344
-against family 0.352 and `instrument_sharing` runs ring 0.203 against family
-0.297 — in both cases the legitimate clusters score at least as high as the
-rings. Both signals do separate rings from ordinary background accounts, which is
+benchmark exists to test. On normalised values, `temporal_burst` runs ring 0.297
+against family 0.297 — dead level after its RISK-003 redefinition, improved from
+0.344 vs 0.352 but still no separation — and `instrument_sharing` runs ring 0.203
+against family 0.297, where the legitimate clusters score clearly higher. Both signals do separate rings from ordinary background accounts, which is
 the easy half of the problem and not the half that matters. The three signals
 carrying the real work are `account_newness` (ring-minus-family +0.882),
 `failure_refund_rate` (+0.139) and `device_sharing` (+0.114).
@@ -37,7 +37,10 @@ carrying the real work are `account_newness` (ring-minus-family +0.882),
 The causes are understood and are not mysterious. `temporal_burst` was
 neutralised by Tier 0's own generator tuning: closing the non-triviality bounds
 required households to burst in the same 30-minute window as rings, which is
-honest data at the cost of that signal (RISK-003). `instrument_sharing` is
+honest data at the cost of that signal. Redefining it to require same-merchant
+convergence fixed its semantics and removed a traffic-volume bias, but could not
+restore separation, because both bursts are emitted by one shared code path
+(RISK-003, still open). `instrument_sharing` is
 skewed by asymmetric injectors — ring card overlap is pinned at 2–3 accounts
 while a household of up to 8 shares one card, so the normalisation rewards the
 family (RISK-004).
