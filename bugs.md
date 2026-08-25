@@ -4,7 +4,7 @@ One entry per bug, newest at the top. Fill in **every** field before touching
 code — the point of this file is to reason about a fix rather than guess at one.
 Delete an entry once its fix is verified by the matching `testing.md` row.
 
-Open bugs: 3 deferred (RISK-002, RISK-003, RISK-004). 2 closed (RISK-001, B1).
+Open bugs: 2 deferred (RISK-002, RISK-004). 3 closed (RISK-001, RISK-003, B1).
 
 ---
 
@@ -26,8 +26,46 @@ Open bugs: 3 deferred (RISK-002, RISK-003, RISK-004). 2 closed (RISK-001, B1).
 
 ### RISK-003 — temporal_burst carries the top weight on a false premise
 
-- **Status:** OPEN, deferred. Found by the full seven-signal audit run before
-  starting Tier 1 feature work.
+- **Status: RESOLVED.** Fixed in two parts: a feature-semantic change
+  (`temporal_burst` requires same-merchant convergence, tag
+  `tier0-risk003-semantic`) and a generator change (households co-burst at
+  independent merchants — experiment E2, adopted as the default
+  `family_coburst_shared_merchant = False`). Ring-minus-family on the design
+  splits went **+0.0000 -> +0.1953**; held-out F1 0.7273 -> 0.800, precision
+  0.5714 -> 0.6667, FPR 0.2609 -> 0.1739, with the non-triviality margin
+  *improving* to 0.5625. Tag `tier0-risk003-resolved`.
+
+  **Experimental chain, in order.** Each step was designed on train+validation
+  only, with the record frozen to disk before the held-out split was read:
+
+  | | ring-family | pos-below-max-neg | held-out F1 | outcome |
+  |---|---|---|---|---|
+  | semantic fix (Variant B) | +0.0000 | 0.9375 | 0.7273 | kept, insufficient alone |
+  | E1 no household co-burst | +0.2422 | 0.2500 | 0.800 | **rejected** |
+  | E2 independent merchants | **+0.1953** | **0.5625** | **0.800** | **ADOPTED** |
+  | E3 overlapping merchant pools | +0.2188 | 0.2500 | 0.7619 | **rejected** |
+
+  **Why E1 was rejected** (kept, not deleted — this is why the adopted design
+  looks the way it does): E1 deletes the household co-burst outright. It buys the
+  largest delta of the four, but the margin it destroys is the whole point of the
+  hard negative — positives-below-max-negative collapses 0.9375 -> 0.2500 and
+  family temporal activity falls to 0.0547, barely above background's 0.0034. A
+  household that *never* transacts together is a weaker lookalike than one that
+  does, so E1 improves the number by making the benchmark easier. Rejected on
+  realism, not on the metric.
+
+  **Why E3 was rejected:** it fails criterion 4 outright (0.2500 against a >=0.45
+  bound and a no-regression-below-0.5625 bound) and regresses held-out F1 to
+  0.7619. Detail and the counterintuitive mechanism are recorded below.
+
+  **Why E2 was adopted:** it is the only variant that improves held-out
+  performance *and* keeps the hard negatives hard, and its causal story is a real
+  behavioural difference rather than a separability trick. Under the band
+  recalibrated once on E1/E2 evidence and then frozen, it meets all eight
+  criteria.
+
+- **Original finding.** Found by the full seven-signal audit run before starting
+  Tier 1 feature work.
 - **Symptom:** `temporal_burst` holds the largest scorer weight (0.278) and is
   documented as "the signal that separates an abuse ring from a family sharing
   the same device". Measured on normalised values, train+validation only:
@@ -175,20 +213,24 @@ Open bugs: 3 deferred (RISK-002, RISK-003, RISK-004). 2 closed (RISK-001, B1).
   `experiment.py`: a generator experiment needing randomness during entity
   construction must not draw from the shared stream.
 
-- **Standing recommendation: E2.** Under the recalibrated band E2 meets every
-  criterion -- delta +0.1953 in [+0.10, +0.25], family 0.1016, background 0.0034,
-  positives-below-max-negative 0.5625, hard-negs 4, device baseline 0.7442,
-  isolation clean -- and it is the only variant that improves held-out
-  performance (F1 0.800) while keeping the hard negatives hard. Not adopted
-  without a decision.
+- **E2 adopted as the default.** `family_coburst_shared_merchant` flipped
+  True -> False in `config.py`; nothing else changed. Verified against the frozen
+  `out/experiment_e2.json`: all seven signals reproduce bit-exactly (ring,
+  family, background and delta identical to four decimals on every one), panel
+  PASS, 19/19 checks, pyright clean. The config fingerprint moved
+  `381948e3f5dc84cc` -> `b7b069226b2299c7`, fully accounted for by the two fields
+  (`family_merchant_overlap`, `family_merchant_pool_size`) added for E3 after the
+  E2 run — hashing today's config without those two fields returns
+  `381948e3f5dc84cc` exactly. The experiment and the default-config run are
+  equivalent by measurement, not by assumption.
 
-- **Remaining fix:** generator-side. The family co-burst has to differ from the
-  ring burst in something a feature can see -- widen
-  `family_coburst_window_multiplier` back out from 1, drop
-  `family_coburst_participation` below the ring's 0.75, or give ring bursts a
-  tighter cluster. All three loosen the non-triviality margin that the Tier 0
-  tuning bought by making them identical, so this is a trade to be made
-  deliberately alongside the cost model, not a knob to nudge now.
+- **Alternatives left on the table, deliberately not taken.** Widening
+  `family_coburst_window_multiplier` back out from 1, or dropping
+  `family_coburst_participation` below the ring's 0.75, would also separate the
+  classes — but both work by making the household *less* like a ring in timing,
+  which loosens the non-triviality margin that Tier 0 tuning bought. E2 separates
+  them on *where* rather than *when*, which is the difference an investigator
+  would actually cite.
 
 ### RISK-004 — instrument_sharing scores families above rings
 

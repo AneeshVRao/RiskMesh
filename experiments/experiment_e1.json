@@ -1,0 +1,132 @@
+{
+  "experiment": "E1-family-independent-temporal",
+  "hypothesis": "RISK-003's residual defect is in the generator, not the feature. Family co-bursts are emitted by the same _add_burst path as ring bursts -- same 30-minute window, same single merchant, families at higher participation (0.9 vs 0.75) -- so no definition of temporal_burst can separate them. Removing the family co-burst makes household activity what a household's activity actually is: each member transacting on their own routine, drawn independently per account, with no shared merchant-and-minute rendezvous. Predicted: temporal_burst ring-minus-family turns clearly positive. Also predicted, and the reason this may not be adopted: family components become easier, so the non-triviality margin that Tier 0 bought by making the two bursts identical will shrink.",
+  "generator_delta": {
+    "family_coburst_rate": {
+      "from": 0.6,
+      "to": 0.0
+    },
+    "changed": "family temporal generation only",
+    "unchanged": [
+      "ring injector (burst rate, window, participation, merchant)",
+      "temporal_burst Variant B definition",
+      "all scorer weights",
+      "device_sharing, instrument_sharing, merchant_concentration, ip_sharing, account_newness, failure_refund_rate definitions",
+      "family size, signup, refund, device and IP sharing"
+    ],
+    "note": "Implemented as a config value rather than a new code path: at family_coburst_rate 0.0 the family injector never calls _add_burst, so family activity comes only from _emit, which already draws each account's transactions independently with per-account diurnal timing. Family transaction VOLUME (randint(8,16)) is deliberately left alone -- E1 is scoped to temporal coordination, not activity rate."
+  },
+  "designed_on": [
+    "train",
+    "validation"
+  ],
+  "design_components": 69,
+  "seed": 20260824,
+  "baseline_config_fingerprint": "605e71743ebe6a64",
+  "experiment_config_fingerprint": "2df392b9043bd2c5",
+  "python_version": "3.12.10",
+  "design_split_ring_vs_family": {
+    "baseline": {
+      "device_sharing": {
+        "ring": 0.4716,
+        "family": 0.358,
+        "background": 0.0835,
+        "ring_minus_family": 0.1136,
+        "weight": 0.2444
+      },
+      "temporal_burst": {
+        "ring": 0.2969,
+        "family": 0.2969,
+        "background": 0.0034,
+        "ring_minus_family": 0.0,
+        "weight": 0.2778
+      },
+      "instrument_sharing": {
+        "ring": 0.2031,
+        "family": 0.2969,
+        "background": 0.0372,
+        "ring_minus_family": -0.0938,
+        "weight": 0.1444
+      },
+      "failure_refund_rate": {
+        "ring": 0.2765,
+        "family": 0.1371,
+        "background": 0.0052,
+        "ring_minus_family": 0.1394,
+        "weight": 0.1333
+      },
+      "ip_sharing": {
+        "ring": 0.0,
+        "family": 0.5625,
+        "background": 0.0,
+        "ring_minus_family": -0.5625,
+        "weight": 0.0
+      },
+      "account_newness": {
+        "ring": 0.9069,
+        "family": 0.025,
+        "background": 0.1403,
+        "ring_minus_family": 0.8819,
+        "weight": 0.1111
+      },
+      "merchant_concentration": {
+        "ring": 0.2483,
+        "family": 0.2357,
+        "background": 0.3275,
+        "ring_minus_family": 0.0125,
+        "weight": 0.0889
+      }
+    },
+    "experiment": {
+      "device_sharing": {
+        "ring": 0.4716,
+        "family": 0.358,
+        "background": 0.0835,
+        "ring_minus_family": 0.1136,
+        "weight": 0.2444
+      },
+      "temporal_burst": {
+        "ring": 0.2969,
+        "family": 0.0547,
+        "background": 0.0034,
+        "ring_minus_family": 0.2422,
+        "weight": 0.2778
+      },
+      "instrument_sharing": {
+        "ring": 0.2031,
+        "family": 0.2969,
+        "background": 0.0372,
+        "ring_minus_family": -0.0938,
+        "weight": 0.1444
+      },
+      "failure_refund_rate": {
+        "ring": 0.2785,
+        "family": 0.1463,
+        "background": 0.0053,
+        "ring_minus_family": 0.1322,
+        "weight": 0.1333
+      },
+      "ip_sharing": {
+        "ring": 0.0,
+        "family": 0.5625,
+        "background": 0.0,
+        "ring_minus_family": -0.5625,
+        "weight": 0.0
+      },
+      "account_newness": {
+        "ring": 0.9069,
+        "family": 0.025,
+        "background": 0.1403,
+        "ring_minus_family": 0.8819,
+        "weight": 0.1111
+      },
+      "merchant_concentration": {
+        "ring": 0.2483,
+        "family": 0.2342,
+        "background": 0.3275,
+        "ring_minus_family": 0.014,
+        "weight": 0.0889
+      }
+    }
+  }
+}

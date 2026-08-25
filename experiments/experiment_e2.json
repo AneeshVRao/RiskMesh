@@ -1,0 +1,131 @@
+{
+  "experiment": "E2-family-coburst-independent-merchants",
+  "causal_story": "Families share time because they share a household; rings additionally converge on the same merchant.",
+  "hypothesis": "E1 worked but bought its separation by deleting household co-activity outright, which weakened the hard negative (positives-below-max-negative 0.9375 -> 0.25). E2 keeps households co-bursting at the original timing and participation and changes only WHERE they land: each member goes to their own merchant instead of all converging on one. Under Variant B, which requires a shared merchant, a household should therefore still register a clearly non-zero burst -- members do coincide on popular merchants by chance -- but well below a ring's. Predicted: ring-minus-family lands in a moderate band, roughly +0.05 to +0.15, with the non-triviality margin largely preserved. Landing near E1's +0.2422 would mean E2 collapsed toward the same confound rather than modelling the real difference.",
+  "generator_delta": {
+    "family_coburst_shared_merchant": {
+      "from": true,
+      "to": false
+    },
+    "changed": "where a household co-burst lands, not whether it happens",
+    "unchanged": [
+      "family_coburst_rate 0.60, participation 0.9, window multiplier 1",
+      "ring injector (burst rate, window, participation, shared merchant)",
+      "temporal_burst Variant B definition",
+      "all scorer weights and every other signal definition"
+    ]
+  },
+  "designed_on": [
+    "train",
+    "validation"
+  ],
+  "design_components": 69,
+  "seed": 20260824,
+  "baseline_config_fingerprint": "8ee06547e7e3195f",
+  "experiment_config_fingerprint": "381948e3f5dc84cc",
+  "python_version": "3.12.10",
+  "design_split_ring_vs_family": {
+    "baseline": {
+      "device_sharing": {
+        "ring": 0.4716,
+        "family": 0.358,
+        "background": 0.0835,
+        "ring_minus_family": 0.1136,
+        "weight": 0.2444
+      },
+      "temporal_burst": {
+        "ring": 0.2969,
+        "family": 0.2969,
+        "background": 0.0034,
+        "ring_minus_family": 0.0,
+        "weight": 0.2778
+      },
+      "instrument_sharing": {
+        "ring": 0.2031,
+        "family": 0.2969,
+        "background": 0.0372,
+        "ring_minus_family": -0.0938,
+        "weight": 0.1444
+      },
+      "failure_refund_rate": {
+        "ring": 0.2765,
+        "family": 0.1371,
+        "background": 0.0052,
+        "ring_minus_family": 0.1394,
+        "weight": 0.1333
+      },
+      "ip_sharing": {
+        "ring": 0.0,
+        "family": 0.5625,
+        "background": 0.0,
+        "ring_minus_family": -0.5625,
+        "weight": 0.0
+      },
+      "account_newness": {
+        "ring": 0.9069,
+        "family": 0.025,
+        "background": 0.1403,
+        "ring_minus_family": 0.8819,
+        "weight": 0.1111
+      },
+      "merchant_concentration": {
+        "ring": 0.2483,
+        "family": 0.2357,
+        "background": 0.3275,
+        "ring_minus_family": 0.0125,
+        "weight": 0.0889
+      }
+    },
+    "experiment": {
+      "device_sharing": {
+        "ring": 0.4716,
+        "family": 0.358,
+        "background": 0.0835,
+        "ring_minus_family": 0.1136,
+        "weight": 0.2444
+      },
+      "temporal_burst": {
+        "ring": 0.2969,
+        "family": 0.1016,
+        "background": 0.0034,
+        "ring_minus_family": 0.1953,
+        "weight": 0.2778
+      },
+      "instrument_sharing": {
+        "ring": 0.2031,
+        "family": 0.2969,
+        "background": 0.0372,
+        "ring_minus_family": -0.0938,
+        "weight": 0.1444
+      },
+      "failure_refund_rate": {
+        "ring": 0.2751,
+        "family": 0.1369,
+        "background": 0.0051,
+        "ring_minus_family": 0.1383,
+        "weight": 0.1333
+      },
+      "ip_sharing": {
+        "ring": 0.0,
+        "family": 0.5625,
+        "background": 0.0,
+        "ring_minus_family": -0.5625,
+        "weight": 0.0
+      },
+      "account_newness": {
+        "ring": 0.9069,
+        "family": 0.025,
+        "background": 0.1403,
+        "ring_minus_family": 0.8819,
+        "weight": 0.1111
+      },
+      "merchant_concentration": {
+        "ring": 0.2483,
+        "family": 0.238,
+        "background": 0.3275,
+        "ring_minus_family": 0.0103,
+        "weight": 0.0889
+      }
+    }
+  }
+}

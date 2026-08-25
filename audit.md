@@ -1,3 +1,76 @@
+# Audit -- RISK-003 closed, E2 adopted, generator frozen . 2026-08-25
+
+Newest audit first. The RISK-001 audit follows below, unchanged.
+
+**Every figure here was read from `out/` after `rm -rf out` and a fresh
+`python -m riskmesh`.** Config fingerprint `b7b069226b2299c7`, seed 20260824,
+Python 3.12.10. `python tests/test_riskmesh.py` 19/19; pyright 0 errors. Both
+were run *before* tagging, not after.
+
+## What changed
+
+One line of `config.py`: `family_coburst_shared_merchant` True -> False. A
+household's co-burst now lands on each member's own merchant instead of all
+members converging on one. Nothing else moved -- not the ring injector, not a
+weight, not a signal definition.
+
+## Reproduction check against the frozen E2 record
+
+The instruction was not to assume the experiment and the default-config run are
+equivalent just because the mechanism is the same. They were compared directly
+against `out/experiment_e2.json`:
+
+| signal | ring | family | background | delta | E2 delta |
+|---|---|---|---|---|---|
+| device_sharing | 0.4716 | 0.3580 | 0.0835 | +0.1136 | +0.1136 |
+| temporal_burst | 0.2969 | 0.1016 | 0.0034 | **+0.1953** | **+0.1953** |
+| instrument_sharing | 0.2031 | 0.2969 | 0.0372 | -0.0938 | -0.0938 |
+| failure_refund_rate | 0.2751 | 0.1369 | 0.0051 | +0.1383 | +0.1383 |
+| ip_sharing | 0.0000 | 0.5625 | 0.0000 | -0.5625 | -0.5625 |
+| account_newness | 0.9069 | 0.0250 | 0.1403 | +0.8819 | +0.8819 |
+| merchant_concentration | 0.2483 | 0.2380 | 0.3275 | +0.0103 | +0.0103 |
+
+All seven identical to full float precision. Panel figures also match:
+positives-below-max-negative 0.5625, hard negatives in the positive range 4,
+shared-device baseline F1 0.7442. Held out at frozen threshold 0.23: precision
+0.6667, recall 1.000, F1 0.800, FPR 0.1739, ring recovery 8/8 -- E2's recorded
+numbers exactly.
+
+**One discrepancy, found and explained rather than waved through.** The config
+fingerprint is `b7b069226b2299c7`, not E2's recorded `381948e3f5dc84cc`. Cause:
+`family_merchant_overlap` and `family_merchant_pool_size` were added to `Config`
+*after* the E2 run, for E3, and `fingerprint()` hashes every field. Hashing
+today's config with those two fields removed returns `381948e3f5dc84cc` exactly,
+so the delta is fully accounted for and no generator behaviour changed. Both
+fields keep their inert defaults (0.0 and 4).
+
+## Transaction count moved 5968 -> 5962
+
+Expected, not a regression. With `shared_merchant=False`, `_add_burst` draws an
+extra `rng.choice(acct.merchants)` per burst transaction, which shifts the shared
+RNG stream downstream. This is the same denominator effect the E2 record already
+documented for `failure_refund_rate` (-0.0011) and `merchant_concentration`
+(-0.0022), and it is inherent to the mechanism rather than a leak: the change
+*is* a change to what the generator draws.
+
+## Rejected alternatives kept
+
+`experiments/` now holds durable copies of all three frozen records with an index
+of why each was accepted or rejected. `out/` is gitignored, so the E1 and E3
+records would otherwise have been one `git clean` from gone; they are provenance
+for why the adopted design looks the way it does, not dead work.
+
+## Still open
+
+RISK-002 (`merchant_concentration` mis-signed, FLAG-level, weight 0.0889) and
+RISK-004 (`instrument_sharing` scores families 0.2969 above rings 0.2031 at
+weight 0.1444). Together they are ~0.23 of the scorer's weight still not doing
+its intended job -- down from the ~0.42 before RISK-001 and RISK-003 closed. The
+Tier 1 ablation gate (temporal_burst in vs out, measured on ring-vs-family) is
+still unrun and still gates any pitch claim about the signal.
+
+---
+
 # Audit — RISK-001 closed (Tier 1 entry) · 2026-08-25
 
 > Compare what is actually built against `implementation_plan.md`. What is

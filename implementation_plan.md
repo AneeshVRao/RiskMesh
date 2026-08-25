@@ -259,16 +259,20 @@ Weights live in `config.py` and sum to exactly 1.00:
 
 | Signal | w | Definition |
 |---|---|---|
-| device_sharing | 0.22 | max accounts on one device, `(k-1)/(cap-1)` |
-| temporal_burst | 0.25 | max distinct accounts transacting in a 30-min sliding window / component accounts |
-| instrument_sharing | 0.13 | max accounts on one instrument |
-| failure_refund_rate | 0.12 | component refund+failure rate vs global base rate, clipped |
-| ip_concentration | 0.10 | share of component txns on its top non-common IP |
-| account_newness | 0.10 | inverted median account tenure at first transaction |
-| merchant_concentration | 0.08 | share of component txns at a single merchant |
+| device_sharing | 0.2444 | max accounts on one device, `(k-1)/(cap-1)` |
+| temporal_burst | 0.2778 | max distinct accounts converging on the **same merchant** in a 30-min sliding window |
+| instrument_sharing | 0.1444 | max accounts on one instrument |
+| failure_refund_rate | 0.1333 | component refund+failure rate vs global base rate, clipped |
+| account_newness | 0.1111 | inverted median account tenure at first transaction |
+| merchant_concentration | 0.0889 | share of component txns at a single merchant |
+| ip_sharing | 0.0000 | max accounts on one non-common IP — zero-weighted, see RISK-001 |
 
-`temporal_burst` carries the largest weight precisely because it is the signal
-that separates a ring from a family sharing the same device.
+Two of these differ from the original plan. `ip_concentration` was redefined as
+`ip_sharing` and zero-weighted when RISK-001 showed it was measuring NAT
+plumbing; the remaining six renormalise to 1.00. `temporal_burst` gained the
+same-merchant requirement when RISK-003 showed a window-only definition could not
+tell a household from a ring — it now carries the largest weight on a premise
+that has been measured, ring-minus-family +0.1953, rather than assumed.
 
 **Raw + normalized output.** `score_component()` returns
 `{score, signals: {name: {raw, normalized, weight, contribution, detail}}}`, where
@@ -494,11 +498,17 @@ temporal instance, and it must exist before the demo asserts anything about
 
 **Why it is a gate.** The scorer weights `temporal_burst` highest (0.278) on the
 premise that it separates a coordinated ring from a family sharing one device.
-Measured on train+validation, that is false: ring 0.344 against family 0.352
-normalised. It separates rings from *background* (+0.327) and not from the hard
-negatives (-0.008). Until the ablation below is run, the pitch line "temporal
-concentration is what tells a ring apart from legitimate shared infrastructure"
-is not supported by the held-out data and must not be said. See RISK-003.
+When RISK-003 was filed that premise was false — ring 0.344 against family 0.352
+normalised, a separation of -0.008 against the hard negatives. RISK-003 is now
+closed and the premise holds on the design splits: ring 0.2969, family 0.1016,
+background 0.0034, **ring-minus-family +0.1953**.
+
+That is a *per-signal mean*, not an ablation. This gate still stands unrun. The
+pitch line "temporal concentration is what tells a ring apart from legitimate
+shared infrastructure" may not be said until removing the signal is shown to cost
+something measurable on hard-negative-only F1 or ring-vs-family separation. A
+signal with a healthy mean gap can still be redundant with `device_sharing` or
+`account_newness`, and only the ablation distinguishes those cases.
 
 ### What to measure
 
@@ -546,10 +556,12 @@ Write `out/ablation_report.json` and a table in the benchmark view:
 
 The claim "temporal_burst distinguishes rings from legitimate shared
 infrastructure" may be made **only if** removing it produces a material drop in
-hard-negative-only F1 or in ring-vs-family separation. On the current data the
-expected result is that it does not, in which case the honest pitch line credits
-`account_newness` (+0.882), `failure_refund_rate` (+0.139) and `device_sharing`
-(+0.114), which are the three signals that measurably do this work.
+hard-negative-only F1 or in ring-vs-family separation. Before RISK-003 closed the
+expected result was that it does not; with the signal now at +0.1953 the outcome
+is genuinely open, which is exactly why the ablation has to be run rather than
+assumed in either direction. If it fails, the honest pitch line credits
+`account_newness` (+0.8819), `failure_refund_rate` (+0.1383) and `device_sharing`
+(+0.1136), which measurably do this work regardless.
 
 Recording the expectation up front is deliberate: it stops the ablation being
 read backwards to justify whatever the numbers turn out to be.

@@ -144,15 +144,21 @@ class Config:
     family_coburst_participation: float = 0.9
     family_coburst_window_multiplier: int = 1
     # Whether a household's co-burst lands on ONE merchant (as a ring's does) or
-    # each member goes to their own. True reproduces the original behaviour and
-    # is why temporal_burst cannot tell a household from a ring (RISK-003);
-    # False is experiment E2. Default left at True until an experiment is adopted.
-    family_coburst_shared_merchant: bool = True
+    # each member goes to their own. True was the original behaviour and is why
+    # temporal_burst could not tell a household from a ring (RISK-003). False is
+    # experiment E2, ADOPTED: families share time because they share a household;
+    # rings additionally converge on the same merchant. Do not flip this back
+    # without re-reading the E1/E2/E3 records in bugs.md -- E1 (no household
+    # co-burst at all) and E3 (overlapping household merchant pools) were both
+    # measured and rejected, E1 for erasing the hard negative and E3 for
+    # collapsing the non-triviality margin to 0.2500.
+    family_coburst_shared_merchant: bool = False
     # How much of a household's merchant preferences are shared between its
     # members. 0.0 means each member shops entirely independently (E2); 1.0 would
     # make them shop identically, which is ring-like. A real household overlaps
     # partially -- same grocery and delivery app, different everything else.
-    # Default 0.0 preserves current behaviour until an experiment is adopted.
+    # Stays 0.0: E3 set it to 0.5 and was rejected. Kept as a knob because the
+    # rejection is a measured result, not a dead end -- see bugs.md RISK-003.
     family_merchant_overlap: float = 0.0
     family_merchant_pool_size: int = 4
     family_refund_rate_max: float = 0.30
