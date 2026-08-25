@@ -20,6 +20,37 @@ No install step and no dependencies — CPython 3.10+ and the standard library.
 `requirements.txt` is deliberately empty; that is what makes "reproducible from
 a clean environment" true rather than aspirational.
 
+## Known limitation: ~42% of the scorer's weight is not yet earning it
+
+Stated here rather than left to be discovered. The scorer puts 0.278 on
+`temporal_burst` and 0.144 on `instrument_sharing` — 0.422 of its total weight,
+roughly 42%. Measured on held-out data, **neither of those two signals separates
+abuse rings from the family hard negatives**, which is the distinction this
+benchmark exists to test. On normalised values, `temporal_burst` runs ring 0.344
+against family 0.352 and `instrument_sharing` runs ring 0.203 against family
+0.297 — in both cases the legitimate clusters score at least as high as the
+rings. Both signals do separate rings from ordinary background accounts, which is
+the easy half of the problem and not the half that matters. The three signals
+carrying the real work are `account_newness` (ring-minus-family +0.882),
+`failure_refund_rate` (+0.139) and `device_sharing` (+0.114).
+
+The causes are understood and are not mysterious. `temporal_burst` was
+neutralised by Tier 0's own generator tuning: closing the non-triviality bounds
+required households to burst in the same 30-minute window as rings, which is
+honest data at the cost of that signal (RISK-003). `instrument_sharing` is
+skewed by asymmetric injectors — ring card overlap is pinned at 2–3 accounts
+while a household of up to 8 shares one card, so the normalisation rewards the
+family (RISK-004).
+
+Both are **deferred, not fixed**, and deliberately so: correcting either means
+changing weights or the ring injector, and both would invalidate the
+`tier0-baseline` comparison that the RISK-001 result rests on. They are scheduled
+against Tier 1's cost-model and ring-type work, where the trade-offs can be made
+once rather than twice. Until the ablation specified in `implementation_plan.md`
+has been run, **no pitch or demo should claim `temporal_burst` is what
+distinguishes rings from legitimate shared infrastructure** — the held-out data
+does not currently support that claim. Full detail in `bugs.md`.
+
 ## What it writes to `out/`
 
 | File | Contents |

@@ -485,6 +485,75 @@ Then work `testing.md` top to bottom, including the manual rows.
 Tier 0 is done when every `testing.md` row passes, the final `audit.md` reports no
 gaps and no orphaned files, and `bugs.md` has no open entries.
 
+## Tier 1 — required ablation before any pitch claim
+
+This is a gate, not a nice-to-have. The PRD's ablation requirement asks for
+device, IP, instrument, temporal and behavioural signal groups; this is the
+temporal instance, and it must exist before the demo asserts anything about
+`temporal_burst`.
+
+**Why it is a gate.** The scorer weights `temporal_burst` highest (0.278) on the
+premise that it separates a coordinated ring from a family sharing one device.
+Measured on train+validation, that is false: ring 0.344 against family 0.352
+normalised. It separates rings from *background* (+0.327) and not from the hard
+negatives (-0.008). Until the ablation below is run, the pitch line "temporal
+concentration is what tells a ring apart from legitimate shared infrastructure"
+is not supported by the held-out data and must not be said. See RISK-003.
+
+### What to measure
+
+Ring-vs-**family** separation, not ring-vs-background. Separating rings from
+ordinary unrelated accounts is the easy half of the problem and every signal
+already does it; the benchmark exists to test the hard half.
+
+Evaluate on a **hard-negative-only** view: positives unchanged, negatives
+restricted to components carrying a family cluster. Background components are
+excluded from the denominator, because their presence is exactly what masked
+this in `signal_sign_check`. Report the ordinary full-negative numbers alongside,
+so the gap between the two is visible rather than implied.
+
+### Configurations to compare
+
+| Run | Scorer |
+|---|---|
+| full | all seven signals at current weights |
+| ablated: temporal | `temporal_burst` weight 0, remaining six renormalised to 1.00 |
+| ablated: instrument | `instrument_sharing` weight 0, remaining six renormalised (RISK-004 is the same class of defect and costs nothing extra to measure here) |
+| ablated: both | both zeroed, remaining five renormalised |
+
+Renormalise rather than leaving the weights summing to less than one, so the
+comparison isolates the signal's contribution instead of also shifting the
+score's overall scale against a fixed threshold.
+
+### Protocol
+
+Unchanged from Tier 0, and non-negotiable: each configuration selects its own
+threshold on **validation only**, freezes it to disk, then reads test once. Four
+configurations means four independent freezes — reusing one configuration's
+threshold on another silently leaks the comparison.
+
+### Report
+
+Write `out/ablation_report.json` and a table in the benchmark view:
+
+- precision, recall, F1, FPR per configuration, on both the hard-negative-only
+  and full-negative views
+- the ring-minus-family normalised delta per signal, which is the number that
+  actually diagnoses the problem
+- each configuration's frozen threshold and the split it came from
+
+### Passing condition for the pitch claim
+
+The claim "temporal_burst distinguishes rings from legitimate shared
+infrastructure" may be made **only if** removing it produces a material drop in
+hard-negative-only F1 or in ring-vs-family separation. On the current data the
+expected result is that it does not, in which case the honest pitch line credits
+`account_newness` (+0.882), `failure_refund_rate` (+0.139) and `device_sharing`
+(+0.114), which are the three signals that measurably do this work.
+
+Recording the expectation up front is deliberate: it stops the ablation being
+read backwards to justify whatever the numbers turn out to be.
+
 ## Deferred to Tier 1 and beyond
 
 Not built here, listed so the omission is explicit: SQLite persistence, FastAPI
