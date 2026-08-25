@@ -82,6 +82,24 @@ Open bugs: 3 deferred (RISK-002, RISK-003, RISK-004). 2 closed (RISK-001, B1).
   earning its keep from the coincidental-density effect against background. The
   benchmark got slightly harder and more honest at the same time.
 
+- **E1 result (train+validation design, held-out read only after the record was
+  frozen to `out/experiment_e1.json`):** removing the family co-burst entirely
+  (`family_coburst_rate` 0.60 -> 0.0) makes `temporal_burst` work. Ring-minus-
+  family +0.0000 -> **+0.2422**; family drops 0.2969 -> 0.0547 while ring holds
+  at 0.2969. Raw single-signal F1 0.6061 -> 0.7692. Held out: F1 0.7273 -> 0.800,
+  precision 0.5714 -> 0.6667, FPR 0.2609 -> 0.1739. Panel stays PASS.
+
+  **Not adopted yet, and not tagged resolved.** The cost is that the
+  non-triviality margin narrows sharply: positives-below-max-negative falls
+  0.9375 -> 0.2500 against a 0.20 bound, and hard-negatives-in-positive-range
+  5 -> 4. The household co-burst was what made the hard negatives hard, and E1
+  removes it outright rather than making it realistic. A household that *never*
+  transacts together is arguably a weaker lookalike than one that does. The
+  likely better mechanism is households co-occurring in time but at
+  **independent merchants** -- real shared-evening behaviour, which Variant B
+  correctly declines to score because it requires a shared merchant. That
+  preserves the hard negative and should keep most of the separation.
+
 - **Remaining fix:** generator-side. The family co-burst has to differ from the
   ring burst in something a feature can see -- widen
   `family_coburst_window_multiplier` back out from 1, drop
