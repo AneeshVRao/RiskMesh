@@ -391,7 +391,7 @@ def main() -> int:
         test_12_to_17_pipeline(cfg, run_a, cands, labels)
         test_18_reproducible_outputs(run_a, run_b)
 
-        print("\nweight-search protocol (frozen, not run)")
+        print("\nweight-search protocol (frozen, run, A_baseline retained)")
         test_19_panel_gate_refuses_a_failing_weight_vector(cfg, cands)
 
         print(f"\n{len(PASSED)}/20 checks passed")

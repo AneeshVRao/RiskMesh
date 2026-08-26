@@ -177,6 +177,28 @@ separates the classes perfectly and the whole benchmark is worthless.
 - [x] accounts-per-device is mostly 1 with a thin tail (`Counter` check)
 - [x] carrier-NAT IPs show 50+ accounts each
 
+**Design target vs. current frozen benchmark.** The counts above (~600 accounts,
+~520 devices, ~40 merchants, ~20 carrier-NAT IPs, 5k transactions) are the Phase
+2 design targets, written before non-triviality tuning grew the ring/family
+population. The frozen benchmark at config fingerprint `7c1e4fb2b329796c`
+(`out/integrity_report.json`) is larger, because `n_accounts=520` is the
+*background* population only — ring and family accounts are additional:
+
+| | design target | frozen benchmark |
+|---|---|---|
+| accounts | ~600 | **789** (520 background + ring/family) |
+| devices | ~520 | **976** |
+| IPs | — | **906** |
+| instruments | — | **823** |
+| merchants | ~40 | **40** |
+| transactions | 5k ±10% | **5,962** |
+
+Both are correct at once: ~600/~520/5k describes the Phase 2 slice as designed,
+789/976/5,962 describes what Phase 3's ring/family injectors and later tuning
+(RISK-003's E2, the weight search) actually produced on top of it. Read the
+table above for the current numbers; read the prose above it for the reasoning
+behind the ratios.
+
 ---
 
 ## Phase 3 — Ring and family injectors
@@ -207,6 +229,18 @@ inside that period's date range. This is what makes the Phase 6 ring-level split
 separate lists. `transactions.csv` carries no `ring_id`, `cluster_id`, or `is_*`
 column. `labels.csv` holds `account_id, ring_id, cluster_id, active_period`.
 Only `split.py`, `integrity.py`, and `evaluate.py` ever read labels.
+
+**Design target vs. current frozen benchmark.** ~12 rings / ~15 families of
+sizes 4–9 / 2–5 was the Phase 3 design target. `n_rings` was raised to 24 (8 per
+split — "4 was too coarse to report metrics on", `config.py`) and
+`family_size_max` to 8 during Tier 0 tuning; both are config knobs, not
+generator-logic changes. The frozen benchmark (`out/integrity_report.json`,
+fingerprint `7c1e4fb2b329796c`) has **24 rings** (sizes 4–9, matching the
+original range) and **24 family clusters** (sizes 2–8, one size wider than the
+2–5 design target). Both numbers are correct at once: the design target
+explains the original per-cluster sizing rationale above; 24/24 is what Tier 0's
+non-triviality tuning settled on and what every frozen result in this file
+reports against.
 
 **Done when:**
 - [x] every ring's and cluster's coordinated activity falls inside one period
@@ -762,7 +796,11 @@ with one held-out read taken.
    0.8000 / expected loss 9,392.92 at threshold 0.23. Ring-level splits already
    prevent the obvious leakage; the non-obvious risk is described immediately
    below.
-6. **RISK-002** (`merchant_concentration` mis-signed, +0.0103 at weight 0.0889)
+6. **RISK-002** (`merchant_concentration` mis-signed against all negatives:
+   delta **-0.0522**, weighted contribution **-0.0046** at weight 0.0889 — see
+   `bugs.md`. Ring-minus-**family** alone is the opposite sign, **+0.0103**; the
+   two deltas measure different comparisons and neither substitutes for the
+   other, per RISK-003's lesson that ring-vs-background can mask ring-vs-family)
    — **stays deprioritised.** It is FLAG-level, the smallest weight in the
    scorer, and the weight search found no feasible candidate that improved on
    leaving it alone.

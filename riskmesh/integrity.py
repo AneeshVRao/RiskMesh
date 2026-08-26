@@ -100,6 +100,16 @@ def non_triviality_panel(cfg: Config, candidates: list[Candidate]) -> dict[str, 
     # inverts during normalisation by design, so its raw direction is "<=" while
     # its contribution is strongly correct. Only this table can tell the two
     # apart, and mis-signing one weighted signal is what RISK-001 was.
+    #
+    # signal_sign_check vs. no_weighted_signal_mis_signed -- complementary, not
+    # contradictory. sign_check below is a DIAGNOSTIC computed over every signal
+    # in SIGNALS, including zero-weighted ones (ip_sharing, RISK-001): it exists
+    # so a signal can be watched even before it earns weight. The gate,
+    # `no_weighted_signal_mis_signed` in `checks` below, filters that same table
+    # to `weight > 0` only -- a zero-weighted signal reading MIS-SIGNED (as
+    # ip_sharing does, by design: RISK-001) cannot fail it, because it makes no
+    # contribution to the score. Reading ip_sharing's row as a contradiction of
+    # the gate's PASS is the mistake this comment exists to prevent.
     sign_check: dict[str, Any] = {}
     for name in SIGNALS:
         mean_pos = statistics.fmean([c.signals[name] for c in pos]) if pos else 0.0
@@ -172,6 +182,14 @@ def non_triviality_panel(cfg: Config, candidates: list[Candidate]) -> dict[str, 
         "single_signal_max_f1": per_signal,
         "single_signal_detail": detail,
         "signal_sign_check": sign_check,
+        "signal_sign_check_note": (
+            "A diagnostic over every signal, including zero-weighted ones -- "
+            "ip_sharing reads MIS-SIGNED here by design (RISK-001) and that is "
+            "expected, not a contradiction of the PASS below. The "
+            "no_weighted_signal_mis_signed check/FLAG filters this same table "
+            "to weight > 0 only, because a zero-weighted signal contributes "
+            "nothing to the score regardless of its sign."
+        ),
         "mis_signed_weighted_signals": mis_signed,
         "total_weighted_score_separation": total_separation,
         "inverted_signals": inverted,

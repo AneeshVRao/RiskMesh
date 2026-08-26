@@ -1,3 +1,110 @@
+# Audit -- weight-search protocol run, A_baseline retained, held-out read taken . 2026-08-25 (backfilled 2026-08-26)
+
+**Backfill notice.** This entry and the one below it (RISK-004 closure) were not
+written at the time of their ritual close, breaking the per-phase discipline
+`implementation_plan.md` sets out. They are reconstructed on 2026-08-26 from git
+history (commits `96ae30f` through `d819b56`) and the frozen records in
+`experiments/` and `out/`, not from a contemporaneous `rm -rf out && python -m
+riskmesh` run the way the entries below this pair were. Read them as a
+retrospective comparison, not a same-day one — the risk that mitigates against
+is a live check catching something a backfill reading of committed files can
+miss, and the pipeline was re-run and re-tested as part of the same cleanup pass
+that wrote this entry (`python -m riskmesh`, `python tests/test_riskmesh.py`,
+`pyright`) to close that gap as far as retroactively possible.
+
+## What was built
+
+`riskmesh/costmodel.py` (460 lines): `PanelGateFailure` / `DifficultyGateFailure`
+/ `PolicyNotFrozen` exception types, `derive_costs()`, `expected_loss()`,
+`panel_verdict()`, `gated_expected_loss()`, the five named policy functions
+(`policy_a_baseline` through `policy_e_drop_temporal`), `select_weights()`,
+`evaluate_frozen_policy()`, `freeze_policy()`. `weight_search_protocol.md`
+frozen before `select_weights()` existed (commit `96ae30f`), matching the
+plan's "rules are written down while the answer is still unknown" discipline
+used for every prior experiment. `experiments/weight_policy.json` (and its
+`out/` copy) is the frozen record.
+
+## Compared against the plan
+
+`implementation_plan.md`'s "Tier 1 — cost model and weight selection (DONE)"
+section documents this stage in full and matches what is in `costmodel.py` and
+`weight_policy.json`: five candidates, three structural gates, A_baseline
+retained, the single held-out read (F1 0.8000, expected loss 9,392.92 at
+threshold 0.23). `deferred_decisions.md` D1 and D2 were updated with the
+coupling note this stage surfaced (zeroing `instrument_sharing` pushes
+`temporal_burst` to 0.3247) — present and correct.
+
+## Gaps found by this backfill, now fixed as part of the same cleanup
+
+- `weight_search_protocol.md`'s status line read "the held-out split has **not**
+  been read; step 5 is still pending review" while §8 of the same file
+  contained the completed read. Corrected to state the protocol is run and
+  closed.
+- The same stale claim had leaked into `tests/test_riskmesh.py`'s own console
+  output (`"weight-search protocol (frozen, not run)"`, printed immediately
+  before the test that exercises the gate) and into README.md's working-files
+  list (`weight_search_protocol.md (frozen, not yet run)`). Both corrected.
+- `riskmesh/config.py` carried two pairs of duplicate field declarations
+  (`ring_instrument_pool_size`, `instrument_sharing_accounts_per_card`) left
+  over from a copy-paste in the E6 commit (`934929e`). Harmless — Python
+  dataclasses silently keep the last declaration, confirmed by re-hashing
+  before and after the fix (`7c1e4fb2b329796c` unchanged) — but noise a future
+  reader would have had to work through. Deduplicated.
+- No audit entry existed for this stage or for RISK-004's closure, which is
+  the gap this entry and the next one close.
+
+## Missing / orphaned
+
+None found. `out/weight_policy.json` and `experiments/weight_policy.json` are
+identical copies (the latter is the durable one, `out/` being gitignored),
+consistent with the pattern already established for the E1–E6 records.
+
+---
+
+# Audit -- RISK-004 closed as rejected-as-a-production-signal . 2026-08-25 (backfilled 2026-08-26)
+
+See the backfill notice above; it applies to this entry too.
+
+## What was built
+
+Three pre-registered experiments (`run_e4`, `run_e5`, `run_e6` in
+`riskmesh/experiment.py`, lines 469, 810, 974) plus a pre-declared zero-weight
+fallback, each frozen to `experiments/experiment_e{4,5,6}.json` before its
+held-out read. `bugs.md` RISK-004 carries the full closure statement and scope
+caveat; `deferred_decisions.md` D2 carries the forward-looking decision the
+cost-model stage owns; `bugs.md` L1 (size-based normalisation) was filed as a
+standing lesson out of E5, separate from the RISK-004 direction failure it was
+found inside.
+
+## Compared against the plan
+
+Matches `implementation_plan.md`'s "Tier 1 remaining" item 7, which already
+correctly points a future funding-network ring type at "`experiment_e6.json`"
+as the restart point rather than treating E6 as dead work. `experiments/README.md`'s
+table of all six frozen experiments (E1–E6) is present and its per-row
+outcomes match the commit messages and `bugs.md` verbatim.
+
+## Gaps found by this backfill
+
+None in the technical record — RISK-004's closure statement in `bugs.md` is
+unusually thorough (it pre-empts the most likely mis-reading of the result,
+that "instrument sharing is a useless signal," and explicitly forecloses it).
+The only gap was procedural: this audit entry itself not having been written
+at close time, and `implementation_plan.md`'s item 6 (RISK-002, a different but
+adjacent signal) conflating a ring-vs-family delta with a ring-vs-all-negatives
+delta — fixed in this same cleanup pass, in `implementation_plan.md` and
+`bugs.md` RISK-002.
+
+## Missing / orphaned
+
+None. `run_e4`, `run_e5`, `run_e6` and their four rejected `Config` fields
+(`ring_instrument_share`, `instrument_sharing_component_relative`,
+`ring_instrument_pool_size`, `instrument_sharing_accounts_per_card`) are kept
+deliberately, per the plan's own "rejected-alternative provenance, not dead
+code" framing for E4 — not orphans, evidence.
+
+---
+
 # Audit -- RISK-003 closed, E2 adopted, generator frozen . 2026-08-25
 
 Newest audit first. The RISK-001 audit follows below, unchanged.
@@ -43,6 +150,41 @@ fingerprint is `b7b069226b2299c7`, not E2's recorded `381948e3f5dc84cc`. Cause:
 today's config with those two fields removed returns `381948e3f5dc84cc` exactly,
 so the delta is fully accounted for and no generator behaviour changed. Both
 fields keep their inert defaults (0.0 and 4).
+
+## The full config-fingerprint chain, verified by re-hashing at every step
+
+The transition above is one hop in a longer chain that runs through the rest of
+RISK-004. Recorded here in full, once, so no later reader has to re-derive it.
+Every hop was produced the same way: an experiment adds a `Config` field for its
+own inert default, and `fingerprint()` hashes every field
+(`json.dumps(asdict(self), ...)`), so a schema addition moves the hash even when
+every value that matters is unchanged. Verified directly — not inferred — by
+taking the current `Config()`, deleting each named field from its `asdict()`
+dict, and re-hashing:
+
+| fingerprint | recorded where | config state | fields removed to reach the previous hash |
+|---|---|---|---|
+| `381948e3f5dc84cc` | `experiments/experiment_e2.json` | E2 experiment run (commit `dcc0a25`) | — (earliest of the four) |
+| `b7b069226b2299c7` | this file, above; `bugs.md` RISK-003 | E2 adopted as default (commit `af8a769`) | `family_merchant_overlap`, `family_merchant_pool_size` (added for E3, commit `982345a`) |
+| `6ebb043b3c1954b1` | `experiments/ablation_temporal_burst.json` | Tier 1 ablation gate (commit `e93033c`) | `ring_instrument_share` (added for E4, same commit) |
+| `7c1e4fb2b329796c` | `out/integrity_report.json`, `experiments/weight_policy.json` (current) | after E5 + E6 (commits `d62f15d`, `934929e`) | `instrument_sharing_component_relative` (E5), `ring_instrument_pool_size`, `instrument_sharing_accounts_per_card` (E6) |
+
+Re-hash check, run against the current `Config()`:
+
+```
+current fingerprint                    7c1e4fb2b329796c
+minus E5/E6 fields                  -> 6ebb043b3c1954b1  (matches the ablation record)
+minus E4 field too                  -> b7b069226b2299c7  (matches E2-adoption)
+minus E3 fields too                 -> 381948e3f5dc84cc  (matches the E2 experiment record)
+```
+
+All four match exactly. No generator or scorer behaviour changed at any of these
+four hops — every field involved keeps an inert default (`0.0`, `False`, or a
+value equal to the prior behaviour) until the experiment that owns it is
+adopted. E4 (`ring_instrument_share`), E5
+(`instrument_sharing_component_relative`) and E6 (`ring_instrument_pool_size`,
+`instrument_sharing_accounts_per_card`) were all rejected — see `bugs.md`
+RISK-004 — so their fields sit at inert defaults today and always have.
 
 ## Transaction count moved 5968 -> 5962
 

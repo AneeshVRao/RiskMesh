@@ -278,7 +278,16 @@ review rate. All four false positives are family components, none background.
 Validation expected loss was 5,348.23; the held-out figure is 76% higher and is
 the one to quote.
 
+**How to describe this result:** we established an explicit cost model and
+selected among integrity-valid policies under it; in this benchmark, the final
+operating point was dominated by the observed error structure. Not "optimized
+to minimize the cost of missed fraud" — A's loss-minimising point has fn = 0,
+so `C_fn` is multiplied by zero and never enters the total (`weight_search_protocol.md`
+§8). The cost model is real and the gate structure did real work (three of five
+candidates refused), but the false-negative cost it was mainly derived from
+currently contributes nothing to why A won.
+
 Working files: `implementation_plan.md` (phases), `testing.md` (checklist),
 `deferred_decisions.md` (knowingly-deferred decisions and who owns each),
-`weight_search_protocol.md` (frozen, not yet run),
+`weight_search_protocol.md` (frozen, run, closed),
 `audit.md` (plan-vs-code drift), `bugs.md` (structured bug log).

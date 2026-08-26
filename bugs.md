@@ -608,9 +608,21 @@ pre-declared plan met evidence it did not anticipate, and the evidence wins.
 - **Status:** OPEN, deferred. Surfaced by the sign check added while closing
   RISK-001. Reported as FLAG, not FAIL — see below.
 - **Symptom:** on normalised values (the numbers that enter the score),
-  `merchant_concentration` means 0.2483 on positives against
-  0.2998 on negatives, delta -0.0515. At weight
-  0.0889 it contributes -0.0046 — the wrong direction.
+  `merchant_concentration` means 0.2483 on positives against **all negatives**
+  (family + background) 0.2998, delta -0.0515. At weight
+  0.0889 it contributes -0.0046 — the wrong direction. This is the
+  ring-vs-all-negatives comparison that `signal_sign_check` and the panel's
+  `no_weighted_signal_mis_signed` gate both use.
+
+  **Not the same number as the ring-vs-family delta.** Ring-minus-**family
+  only** is +0.0103 (ring 0.2483, family 0.2380 — see `audit.md`'s per-signal
+  table), the opposite sign. Both are correct measurements of different
+  comparisons: RISK-002's mis-sign is driven by background (mean 2.17
+  accounts, so a small component's top merchant naturally holds a large share
+  of few transactions), not by family. This is exactly the trap RISK-003
+  fell into — an all-negatives mean can hide or invert what the hard-negative
+  comparison shows — so any report of this signal should say which
+  denominator it used.
 - **Expected:** a weighted signal should be higher on positives.
 - **Error:** no exception. `non_triviality.signal_sign_check` in
   `out/integrity_report.json`, and the `no_weighted_signal_mis_signed` FLAG row.

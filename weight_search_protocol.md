@@ -1,9 +1,12 @@
 # Weight-search protocol — frozen before any candidate is scored
 
-**Status: RUN. Outcome in §8 — A_baseline retained.** The three gates were all
-defined before `select_weights()` was implemented, and the two difficulty gates
-were added before any candidate had been scored on expected loss. The held-out
-split has **not** been read; step 5 is still pending review.
+**Status: RUN and CLOSED. Outcome in §8 — A_baseline retained.** The three gates
+were all defined before `select_weights()` was implemented, and the two
+difficulty gates were added before any candidate had been scored on expected
+loss. The held-out split **has been read, once**, through
+`evaluate_frozen_policy()` — see §8's "Step 5" table (F1 0.8000, expected loss
+9,392.92 at threshold 0.23). Per §5 rule 6 and §7, no second read is permitted
+under this record; any future comparison needs its own frozen protocol.
 
 This is the last thing frozen before Tier 1's weight and cost work. It follows
 the same discipline as every experiment in this build: the rules are written
