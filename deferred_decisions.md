@@ -129,3 +129,81 @@ because it is right.
 
 Related: `bugs.md` RISK-004 and L1, `experiments/experiment_e4.json`,
 `experiments/experiment_e5.json`, `experiments/experiment_e6.json`.
+
+---
+
+## D3 — `expected_loss()` charges an escalated false positive a review cost twice
+
+**Owner: the cost-model / weight-optimisation stage. Same owner as D1 and D2,
+not a new one.**
+
+**What was found, and when.** Surfaced while designing the abstention/review-
+band layer (`abstention_protocol.md`), not while touching the frozen binary
+cost model itself. `derive_costs()` builds `C_fp` as "one manual review
+(INR 500.00) plus `FP_FRICTION_RATE` (0.02) of median negative-component
+exposure" — i.e. a review cost is already one of the two terms inside `C_fp`.
+`expected_loss()` then computes `fn*C_fn + fp*C_fp + (tp+fp)*C_review`, which
+charges a **second**, separate review cost on every flagged component,
+including every false positive. So an escalated false positive is charged a
+review cost through two different line items: once inside `C_fp`'s own
+derivation, and once again through the generic `(tp+fp)*C_review` term that
+prices analyst effort on every flag regardless of correctness.
+
+**Why it has not been touched.** Fixing either the `C_fp` derivation or the
+`expected_loss()` formula changes the value of every already-frozen number that
+depends on it — `A_baseline`'s validation expected loss 5,348.23, its held-out
+expected loss 9,392.92, the entire `weight_search_protocol.md` §8 table, and the
+flag-everything comparisons computed against them. None of those are wrong on
+their own terms — they are internally consistent with the formula as written —
+but silently changing the formula after freezing them would move numbers this
+project has repeatedly said must not move without a new frozen record. The
+abstention-band cost formula in `abstention.py` **carries the same convention
+forward unchanged** (an Escalate-negative costs `C_fp + C_review`, matching
+`expected_loss()` exactly) for the same reason: consistency with the frozen
+baseline it is being compared against matters more here than correcting a
+double-count that does not change which policy wins under either accounting
+(the ranking is driven by `C_fn`'s size relative to everything else, not by
+this).
+
+**What the cost-model stage must actually decide, next time it is revisited.**
+Whether `C_fp`'s derivation should drop its own "one review" term (since the
+generic per-flag review cost already prices that effort), or whether the
+generic `(tp+fp)*C_review` term should exclude false positives specifically
+(since their review cost is priced inside `C_fp` instead) — the two are
+equivalent in effect, and the choice is about which term should own the
+concept, not about the size of the correction, which is small either way (500
+of the total 848.23 assigned to a false positive under the current formula).
+Whichever is chosen, every downstream number that used `expected_loss()` under
+the old convention needs its own new frozen record, exactly as changing a
+weight or a threshold would.
+
+**Do not** read the current formula as evidence anyone has judged the
+double-charge acceptable. It is carried forward because fixing it silently
+would move the 5,348.23 / 9,392.92 baseline without a new freeze, not because
+it is correct.
+
+**Measured consequence, added after the abstention held-out read — this is why
+D3 is no longer only a tidiness item.** The abstention band's headline result
+is that it converts four escalated false positives into four reviews, and the
+size of that improvement depends directly on this double-charge. Under the
+current formula the held-out comparison is 9,392.92 (binary) against 6,000.00
+(three-way), a **36.1%** reduction. Under a D3-corrected `C_fp` — friction only,
+348.23, with the generic per-flag review cost left to price the analyst effort
+once — the same comparison is 7,392.92 against an unchanged 6,000.00, an
+**18.8%** reduction. The direction, the sign, and the structural finding (zero
+escalated false positives on the held-out split) are robust under either
+accounting; only the magnitude moves, and it roughly halves.
+
+So D3 now has a concrete downstream effect on a reported number, not just an
+internal inconsistency: **any claim about how much the abstention band saves is
+sensitive to it**, and both figures must be quoted together until it is
+resolved. This does not change the decision to carry the convention forward —
+that still rests on not silently moving a frozen baseline — but it raises the
+priority of resolving it before the cost model is quoted in a pitch, and it
+means the eventual fix must re-freeze the abstention record as well as the
+weight-search one. Recorded in `experiments/abstention_policy.json` under
+`held_out.d3_sensitivity`.
+
+Related: `weight_search_protocol.md` §4, `abstention_protocol.md` §2 and §8b,
+`riskmesh/costmodel.py` (`derive_costs`, `expected_loss`),
+`riskmesh/abstention.py` (`three_way_stats`).

@@ -352,6 +352,43 @@ def test_19_panel_gate_refuses_a_failing_weight_vector(cfg, cands) -> None:
     check(f"19 weight gates refuse {sorted(refused)}, score {sorted(scored)}")
 
 
+def test_20_abstention_binary_collapse(cfg, cands) -> None:
+    """three_way_stats(t_lo=t_hi) must be bit-for-bit costmodel.expected_loss().
+
+    abstention_protocol.md's entire cost formula is a strict generalisation of
+    the binary one: at t_lo == t_hi the Review band is empty, Allow is the old
+    negative-predicted set and Escalate is the old positive-predicted set. This
+    is a permanent test, not a design-doc claim, because a future edit to
+    either formula that breaks the equivalence would silently make the two
+    cost models inconsistent with each other. The frozen number itself --
+    5,348.23 at threshold 0.23 -- is asserted directly, not just the equality
+    of the two formulas, so a regression in the pipeline upstream of the
+    formulas is caught too.
+    """
+    from riskmesh.abstention import three_way_stats
+    from riskmesh.costmodel import derive_costs, expected_loss
+
+    design = [c for c in cands if c.split in ("train", "validation")]
+    validation = [c for c in design if c.split == "validation"]
+    costs = derive_costs(design)
+
+    binary = expected_loss(validation, 0.23, costs)
+    three_way = three_way_stats(validation, 0.23, 0.23, costs)
+
+    assert three_way["review"] == 0, "t_lo == t_hi must leave the Review band empty"
+    assert three_way["expected_loss"] == binary["expected_loss"], (
+        f"three-way formula at t_lo=t_hi=0.23 gives {three_way['expected_loss']}, "
+        f"binary costmodel.expected_loss() gives {binary['expected_loss']} -- "
+        "the collapse abstention_protocol.md relies on is broken"
+    )
+    assert three_way["expected_loss"] == 5348.23, (
+        f"got {three_way['expected_loss']}, expected the frozen 5,348.23 -- "
+        "either the formula or something upstream of it has changed"
+    )
+    check("20 abstention three_way_stats(t_lo=t_hi=0.23) reproduces the frozen "
+          "binary expected loss 5,348.23 exactly")
+
+
 # --------------------------------------------------------------------------
 
 
@@ -394,7 +431,10 @@ def main() -> int:
         print("\nweight-search protocol (frozen, run, A_baseline retained)")
         test_19_panel_gate_refuses_a_failing_weight_vector(cfg, cands)
 
-        print(f"\n{len(PASSED)}/20 checks passed")
+        print("\nabstention protocol (frozen, run, band 0.23/0.33 retained)")
+        test_20_abstention_binary_collapse(cfg, cands)
+
+        print(f"\n{len(PASSED)}/21 checks passed")
         return 0
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

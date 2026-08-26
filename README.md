@@ -13,7 +13,7 @@ fitted on the test set.
 
 ```bash
 python -m riskmesh          # generate -> graph -> score -> split -> evaluate
-python tests/test_riskmesh.py   # 19 checks
+python tests/test_riskmesh.py   # 21 checks
 ```
 
 No install step and no dependencies -- CPython 3.10+ and the standard library.
@@ -245,7 +245,7 @@ riskmesh/split.py      chronological ring-level split
 riskmesh/integrity.py  integrity report + non-triviality panel
 riskmesh/evaluate.py   ground-truth rule, threshold freeze, metrics
 riskmesh/__main__.py   the one command
-tests/test_riskmesh.py 20 checks
+tests/test_riskmesh.py 21 checks
 ```
 
 ## Current figures
@@ -287,7 +287,41 @@ so `C_fn` is multiplied by zero and never enters the total (`weight_search_proto
 candidates refused), but the false-negative cost it was mainly derived from
 currently contributes nothing to why A won.
 
+### Decision policy (abstention / review band, closed)
+
+A three-way policy layered on the frozen A_baseline scorer — the scorer, its
+weights, and the binary threshold above are unchanged and not reopened:
+
+```
+score < 0.23           -> Allow
+0.23 <= score < 0.33    -> Review    (deferred to a human, no automatic action)
+score >= 0.33           -> Escalate
+```
+
+Both boundaries were freely searched (0.23 was **not** pinned; the search
+landed there on its own), behind a pre-declared 25% review-coverage gate on
+train+validation, with expected loss minimised on validation only and the band
+frozen to disk before test was read. Protocol: `abstention_protocol.md`.
+Record: `experiments/abstention_policy.json`.
+
+Held out, one read: **expected loss 6,000.00** against the binary policy's
+9,392.92 on the identical rows, at a 19.35% review rate — and **zero escalated
+false positives**. All four of the binary policy's held-out false positives are
+family components, and all four fall inside the review band. Escalate-tier
+precision 1.0000 and FPR 0.0000; escalate-tier recall 0.7500, with the other
+two rings deferred to review rather than missed and nothing auto-allowed.
+
+Two things not to over-read. The improvement's *magnitude* depends on
+`deferred_decisions.md` D3 (`C_fp` double-charges a review): under a corrected
+cost model it is 18.8% rather than 36.1%, though the direction and the
+zero-false-positive result hold either way. And the review tier assumes an
+analyst resolves a deferred case correctly — a Phase-1 cost-model assumption,
+named as one in `abstention_protocol.md` §3, not an empirical measurement.
+Validation expected loss was 4,500.00; the held-out 6,000.00 is 33% higher for
+the same small-sample reason the binary policy's figure was, and is the one to
+quote.
+
 Working files: `implementation_plan.md` (phases), `testing.md` (checklist),
 `deferred_decisions.md` (knowingly-deferred decisions and who owns each),
-`weight_search_protocol.md` (frozen, run, closed),
-`audit.md` (plan-vs-code drift), `bugs.md` (structured bug log).
+`weight_search_protocol.md` and `abstention_protocol.md` (both frozen, run,
+closed), `audit.md` (plan-vs-code drift), `bugs.md` (structured bug log).

@@ -774,15 +774,36 @@ history. Everything above this line is done and committed.
 **Done:** Tier 0 generator and benchmark (tagged `tier0-baseline`); RISK-001 and
 RISK-003 closed (tagged); RISK-004 closed as above; the temporal ablation gate;
 the false-positive cost model, expected-loss thresholding and weight selection,
-with one held-out read taken.
+with one held-out read taken; the abstention / review-band policy, with its own
+frozen protocol and its own single held-out read (item 1 below).
 
 **Remaining, roughly in order:**
 
-1. **Abstention / manual-review band.** A PRD must-have, and the next thing to
-   build. The ordering against XGBoost is deliberate and is argued below rather
-   than assumed — it is the lower-risk step, not merely the cheaper one. Needs
-   its own cost treatment, since the current model already charges a review on
-   every flag and a three-way policy prices the review band separately.
+1. ~~**Abstention / manual-review band.**~~ **DONE.** Protocol frozen in
+   `abstention_protocol.md` before any band was scored; code in
+   `riskmesh/abstention.py`; record in `experiments/abstention_policy.json`.
+   Free two-threshold search (`t_lo`, `t_hi` both swept, 0.23 *not* pinned),
+   behind a pre-declared `MAX_REVIEW_RATE = 0.25` coverage gate on
+   train+validation enforced by `ReviewBandGateFailure`, objective minimised on
+   validation only, single held-out read through
+   `evaluate_frozen_abstention_policy()`.
+
+   Selected band `t_lo = 0.23`, `t_hi = 0.33`. Held out: expected loss
+   **6,000.00** against the binary baseline's 9,392.92 on the identical rows
+   (−36.1%, or −18.8% under a D3-corrected cost model — see below), review rate
+   19.35%, and **zero escalated false positives** — all four of the binary
+   policy's held-out false positives are family components and all four land
+   inside the review band, which is exactly what the argument below predicted.
+   Escalate-tier precision 1.0000, FPR 0.0000; escalate-tier recall 0.7500 with
+   the remaining two rings deferred to review rather than missed, and nothing
+   auto-allowed on either split.
+
+   The one new assumption, named as an assumption: a reviewed component is
+   resolved correctly, so it costs one review and neither `C_fp` nor `C_fn`.
+   That is a Phase-1 cost-model assumption, not an empirical measurement. The
+   improvement's *magnitude* is also sensitive to `deferred_decisions.md` D3
+   (`C_fp` double-charges a review); its direction and the zero-false-positive
+   finding are not.
 2. **SQLite persistence and the FastAPI service.** Endpoints over the existing
    artifacts; no modelling change.
 3. **React investigator console.** The `detail` strings in `score.py` were built
