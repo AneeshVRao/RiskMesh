@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RiskMesh - Direction D: Bench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Spline+Sans+Mono:wght@400;500;600;700&family=Archivo:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --chassis:#26292d; --chassis-2:#2f3338; --plate:#1c1f22; --well:#16191b;
+  --cap:#d6d2ca; --cap-2:#bdb8ae; --putty:#8e8a82; --legend:#1a1c1e;
+  --ink:#e6e3dd; --ink-2:#a4a099; --ink-3:#75716b;
+  --orange:#ff5c1a; --amber:#ffb340; --screen:#120e04;
+  --mono:"Spline Sans Mono",ui-monospace,"SFMono-Regular","Consolas",monospace;
+  --sans:"Archivo",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --r:3px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--well);color:var(--ink);font:400 13px/1.5 var(--mono);
+  font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+::selection{background:#5c3a1f;color:#fff}
+:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+::-webkit-scrollbar{width:12px}
+::-webkit-scrollbar-track{background:var(--plate)}
+::-webkit-scrollbar-thumb{background:#3a3e43;border:3px solid var(--plate);border-radius:6px}
+::-webkit-scrollbar-thumb:hover{background:#4a4f55}
+
+.bench{max-width:1360px;margin:0 auto;padding:20px 20px 60px}
+
+/* chassis */
+.unit{background:var(--chassis);border:1px solid #3a3e43;border-radius:var(--r);
+  box-shadow:0 2px 0 #101214,0 10px 24px rgba(0,0,0,.42)}
+.unit+.unit{margin-top:16px}
+
+.top{display:flex;align-items:stretch;border-bottom:1px solid #3a3e43}
+.brandplate{padding:14px 18px;border-right:1px solid #3a3e43;display:flex;flex-direction:column;justify-content:center}
+.brandplate .n{font:700 16px/1 var(--sans);letter-spacing:.02em}
+.brandplate .n i{font-style:normal;color:var(--orange)}
+.brandplate .m{font-size:10px;color:var(--ink-3);margin-top:5px;letter-spacing:.04em}
+
+/* amber status screen: one value at a time */
+.screen{background:var(--screen);border:1px solid #4a3a18;border-radius:2px;margin:10px 14px;
+  padding:10px 14px;min-width:250px;display:flex;flex-direction:column;justify-content:center}
+.screen .lbl{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#8a6a2a}
+.screen .val{font:600 25px/1.1 var(--mono);color:var(--amber);margin-top:3px;letter-spacing:-.01em}
+.screen .aux{font-size:10px;color:#9a7530;margin-top:3px}
+
+.readouts{display:flex;flex:1;flex-wrap:wrap;border-left:1px solid #3a3e43}
+.readouts>div{flex:1 1 0;min-width:130px;padding:12px 14px;border-right:1px solid #3a3e43}
+.readouts>div:last-child{border-right:0}
+.readouts dt{font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3)}
+.readouts dd{font:600 17px/1 var(--mono);margin-top:6px}
+.readouts .s{font-size:10px;color:var(--ink-3);margin-top:5px}
+.readouts .ok{color:#7dc99a}
+
+/* keycap row: the three dispositions as physical keys */
+.keys{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-bottom:1px solid #3a3e43}
+.key{padding:16px 18px;border-right:1px solid #3a3e43;position:relative;background:var(--chassis-2)}
+.key:last-child{border-right:0}
+.keytop{background:var(--cap);border-radius:2px;border-bottom:2px solid #9c988f;
+  padding:12px 14px;color:var(--legend)}
+.key.esc .keytop{background:var(--orange);border-bottom-color:#c33e0c;color:#2a0d02}
+.key.rev .keytop{background:var(--cap-2);border-bottom-color:#948f86}
+.keytop .k{font-size:10px;letter-spacing:.18em;text-transform:uppercase;font-weight:600;display:flex;align-items:center;gap:6px}
+.keytop .k svg{width:12px;height:12px}
+.keytop .v{font:700 30px/1 var(--mono);margin-top:9px;letter-spacing:-.02em}
+.key .note{font-size:10px;color:var(--ink-2);margin-top:9px;line-height:1.45}
+.key .rng{font-size:10px;color:var(--ink-3);margin-top:5px}
+
+/* main split */
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.06fr)}
+@media(max-width:1040px){.split{grid-template-columns:1fr}}
+.split>section:first-child{border-right:1px solid #3a3e43}
+@media(max-width:1040px){.split>section:first-child{border-right:0;border-bottom:1px solid #3a3e43}}
+
+.sh{padding:9px 14px;border-bottom:1px solid #3a3e43;background:var(--plate);
+  font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);
+  display:flex;justify-content:space-between;align-items:center}
+.sh b{color:var(--ink-2);font-weight:400;letter-spacing:.04em;text-transform:none;font-size:10px}
+
+/* channel list */
+.ch{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;
+  padding:9px 14px;border-bottom:1px solid #2c3034;cursor:pointer}
+.ch:hover{background:var(--chassis-2)}
+.ch[aria-selected=true]{background:#33251a;box-shadow:inset 3px 0 0 var(--orange)}
+.led{width:7px;height:22px;border-radius:1px;flex:none}
+.led-e{background:var(--orange)}
+.led-r{background:var(--amber)}
+.led-a{background:#4a4e53}
+.ch .id{font-size:12px;font-weight:500}
+.ch .mt{font-size:10px;color:var(--ink-3);margin-top:3px}
+.ch .rt{text-align:right}
+.ch .sc{font:600 15px/1 var(--mono)}
+.ch .bd{font-size:10px;letter-spacing:.13em;text-transform:uppercase;margin-top:4px;
+  display:inline-flex;align-items:center;gap:4px}
+.ch .bd svg{width:9px;height:9px}
+.be{color:var(--orange)}.br{color:var(--amber)}.ba{color:var(--ink-3)}
+.hh{display:inline-block;font-size:10px;color:var(--ink-2);border:1px solid #43474c;
+  padding:1px 5px;margin-left:6px;letter-spacing:.05em}
+
+/* detail */
+.dh{padding:14px;border-bottom:1px solid #3a3e43;display:flex;justify-content:space-between;
+  gap:16px;align-items:flex-start;flex-wrap:wrap}
+.dh h2{font:600 15px/1.3 var(--sans)}
+.dh .sub{font-size:11px;color:var(--ink-3);margin-top:5px}
+.dh .rd{background:var(--screen);border:1px solid #4a3a18;border-radius:2px;padding:8px 12px;text-align:right}
+.dh .rd .v{font:600 22px/1 var(--mono);color:var(--orange)}
+.dh .rd .l{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#8a6a2a;margin-top:5px}
+
+.gw{padding:14px;border-bottom:1px solid #3a3e43;background:var(--plate)}
+svg.g{width:100%;height:auto;display:block}
+.gc{font-size:11px;color:var(--ink-2);line-height:1.6;margin-top:11px}
+.gc b{color:var(--ink);font-weight:600}
+
+/* knob rows: each signal a detented dial */
+.dials{padding:2px 0}
+.dial{display:grid;grid-template-columns:1fr auto;gap:3px 14px;padding:10px 14px;border-bottom:1px solid #2c3034}
+.dial:last-child{border-bottom:0}
+.dial .nm{font-size:12px;font-weight:500}
+.dial .dt{font-size:10px;color:var(--ink-3);margin-top:2px}
+.dial .rt{text-align:right}
+.dial .v{font:600 13px/1 var(--mono)}
+.dial .w{font-size:10px;color:var(--ink-3);margin-top:4px}
+.detent{grid-column:1/-1;display:flex;gap:2px;margin-top:8px}
+.detent i{flex:1;height:5px;background:#33373c;border-radius:1px}
+.detent i.on{background:var(--orange)}
+.dial.off .nm,.dial.off .dt,.dial.off .v{color:var(--ink-3)}
+.dial.off .detent i.on{background:#4a4e53}
+
+/* action keys */
+.act{display:flex;gap:8px;padding:14px;flex-wrap:wrap;align-items:center;background:var(--plate);
+  border-top:1px solid #3a3e43}
+button{font:600 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;
+  padding:11px 14px;border:0;border-bottom:2px solid #9c988f;border-radius:2px;
+  background:var(--cap);color:var(--legend);cursor:pointer;display:inline-flex;gap:7px;align-items:center}
+button:hover{background:#e2ded6}
+button:active{transform:translateY(2px);border-bottom-width:0;margin-bottom:2px}
+button svg{width:12px;height:12px}
+button.commit{background:var(--orange);border-bottom-color:#c33e0c;color:#2a0d02}
+button.commit:hover{background:#ff7038}
+.act .hint{margin-left:auto;font-size:10px;color:var(--ink-3);letter-spacing:.04em}
+
+.foot{padding:14px;font-size:11px;color:var(--ink-2);line-height:1.65;border-top:1px solid #3a3e43}
+.foot b{color:var(--ink);font-weight:600}
+</style>
+</head>
+<body data-palette="#8e8a82,#ffb340,#ff5c1a">
+<div class="bench">
+
+  <div class="unit">
+    <div class="top">
+      <div class="brandplate">
+        <div class="n">RISK<i>MESH</i></div>
+        <div class="m">CONTROL CENTER</div>
+      </div>
+      <div class="screen">
+        <div class="lbl">Expected loss, held out</div>
+        <div class="val">INR 6,000.00</div>
+        <div class="aux">binary policy 9,392.92 · 36.1% lower</div>
+      </div>
+      <dl class="readouts">
+        <div><dt>Components</dt><dd>31</dd><div class="s">8 ring / 23 neg</div></div>
+        <div><dt>False escalations</dt><dd class="ok">0</dd><div class="s">of 6 escalated</div></div>
+        <div><dt>Rings recovered</dt><dd class="ok">8/8</dd><div class="s">none allowed</div></div>
+        <div><dt>Review rate</dt><dd>19.35%</dd><div class="s">6 of 31</div></div>
+        <div><dt>Run</dt><dd style="font-size:12px">20260824</dd><div class="s">cfg 7c1e4fb2</div></div>
+      </dl>
+    </div>
+
+    <div class="keys">
+      <div class="key">
+        <div class="keytop">
+          <div class="k"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5.2 5L20 7"/></svg>Allow</div>
+          <div class="v">19</div>
+        </div>
+        <p class="note">Cleared without review. No ring scored below the lower detent.</p>
+        <div class="rng">score &lt; 0.23</div>
+      </div>
+      <div class="key rev">
+        <div class="keytop">
+          <div class="k"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16.4v.01"/></svg>Review</div>
+          <div class="v">6</div>
+        </div>
+        <p class="note">Held for an analyst. Four households and two rings sit in this band.</p>
+        <div class="rng">0.23 to 0.33</div>
+      </div>
+      <div class="key esc">
+        <div class="keytop">
+          <div class="k"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4"/><path d="M12 17.4v.01"/></svg>Escalate</div>
+          <div class="v">6</div>
+        </div>
+        <p class="note">Every one is a true ring. Nothing legitimate reaches this key.</p>
+        <div class="rng">score &ge; 0.33</div>
+      </div>
+    </div>
+
+    <div class="split">
+      <section>
+        <div class="sh">Channels <b>31 components, by score</b></div>
+        <div style="max-height:474px;overflow:auto">
+          <div class="ch" aria-selected="true">
+            <i class="led led-e"></i>
+            <div><div class="id">c_a00533</div><div class="mt">9 acct · 101 txn · 101,761.83</div></div>
+            <div class="rt"><div class="sc">0.5246</div><div class="bd be"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3z"/></svg>Esc</div></div>
+          </div>
+          <div class="ch">
+            <i class="led led-e"></i>
+            <div><div class="id">c_a00664</div><div class="mt">8 acct · 80 txn · 62,732.04</div></div>
+            <div class="rt"><div class="sc">0.4918</div><div class="bd be"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3z"/></svg>Esc</div></div>
+          </div>
+          <div class="ch">
+            <i class="led led-e"></i>
+            <div><div class="id">c_a00576</div><div class="mt">8 acct · 84 txn · 93,358.09</div></div>
+            <div class="rt"><div class="sc">0.4356</div><div class="bd be"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3z"/></svg>Esc</div></div>
+          </div>
+          <div class="ch">
+            <i class="led led-e"></i>
+            <div><div class="id">c_a00650</div><div class="mt">5 acct · 41 txn · 86,713.89</div></div>
+            <div class="rt"><div class="sc">0.4241</div><div class="bd be"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3z"/></svg>Esc</div></div>
+          </div>
+          <div class="ch">
+            <i class="led led-e"></i>
+            <div><div class="id">c_a00557</div><div class="mt">9 acct · 89 txn · 89,120.13</div></div>
+            <div class="rt"><div class="sc">0.4118</div><div class="bd be"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3z"/></svg>Esc</div></div>
+          </div>
+          <div class="ch">
+            <i class="led led-e"></i>
+            <div><div class="id">c_a00634</div><div class="mt">5 acct · 45 txn · 42,898.90</div></div>
+            <div class="rt"><div class="sc">0.3869</div><div class="bd be"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3z"/></svg>Esc</div></div>
+          </div>
+          <div class="ch">
+            <i class="led led-r"></i>
+            <div><div class="id">c_a00727 <span class="hh">fam11</span></div><div class="mt">6 acct · 89 txn · 62,564.07</div></div>
+            <div class="rt"><div class="sc">0.3201</div><div class="bd br"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><circle cx="12" cy="12" r="9"/></svg>Rev</div></div>
+          </div>
+          <div class="ch">
+            <i class="led led-r"></i>
+            <div><div class="id">c_a00617</div><div class="mt">4 acct · 35 txn · 75,052.32</div></div>
+            <div class="rt"><div class="sc">0.3068</div><div class="bd br"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><circle cx="12" cy="12" r="9"/></svg>Rev</div></div>
+          </div>
+          <div class="ch">
+            <i class="led led-r"></i>
+            <div><div class="id">c_a00770 <span class="hh">fam18</span></div><div class="mt">8 acct · 109 txn · 134,160.77</div></div>
+            <div class="rt"><div class="sc">0.2981</div><div class="bd br"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><circle cx="12" cy="12" r="9"/></svg>Rev</div></div>
+          </div>
+          <div class="ch">
+            <i class="led led-r"></i>
+            <div><div class="id">c_a00596</div><div class="mt">5 acct · 44 txn · 53,009.91</div></div>
+            <div class="rt"><div class="sc">0.2866</div><div class="bd br"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><circle cx="12" cy="12" r="9"/></svg>Rev</div></div>
+          </div>
+          <div class="ch">
+            <i class="led led-r"></i>
+            <div><div class="id">c_a00684 <span class="hh">fam04</span></div><div class="mt">6 acct · 68 txn · 113,983.34</div></div>
+            <div class="rt"><div class="sc">0.2609</div><div class="bd br"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><circle cx="12" cy="12" r="9"/></svg>Rev</div></div>
+          </div>
+          <div class="ch">
+            <i class="led led-r"></i>
+            <div><div class="id">c_a00752 <span class="hh">fam22</span></div><div class="mt">6 acct · 75 txn · 137,988.78</div></div>
+            <div class="rt"><div class="sc">0.2503</div><div class="bd br"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><circle cx="12" cy="12" r="9"/></svg>Rev</div></div>
+          </div>
+          <div class="ch">
+            <i class="led led-a"></i>
+            <div><div class="id">c_a00788 <span class="hh">fam07</span></div><div class="mt">6 acct · 85 txn · 80,830.59</div></div>
+            <div class="rt"><div class="sc">0.2037</div><div class="bd ba"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5.2 5L20 7"/></svg>Alw</div></div>
+          </div>
+          <div class="ch">
+            <i class="led led-a"></i>
+            <div><div class="id">c_a00711 <span class="hh">fam02</span></div><div class="mt">5 acct · 55 txn · 50,830.07</div></div>
+            <div class="rt"><div class="sc">0.1956</div><div class="bd ba"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5.2 5L20 7"/></svg>Alw</div></div>
+          </div>
+          <div class="ch">
+            <i class="led led-a"></i>
+            <div><div class="id">c_a00745</div><div class="mt">3 acct · 22 txn · 18,204.11</div></div>
+            <div class="rt"><div class="sc">0.1814</div><div class="bd ba"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5.2 5L20 7"/></svg>Alw</div></div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="dh">
+          <div>
+            <h2>Shared-device cluster, 9 accounts</h2>
+            <div class="sub">c_a00533 · ring02 · test split</div>
+          </div>
+          <div class="rd"><div class="v">0.5246</div><div class="l">Escalate</div></div>
+        </div>
+
+        <div class="gw">
+          <svg class="g" viewBox="0 0 520 220" role="img"
+            aria-label="Nine accounts a00533 through a00541 wired to one shared device d_ring02, six of them converging on merchant m000.">
+            <g stroke="#ff5c1a" stroke-width="1.4" opacity=".55">
+              <path d="M260 108 L74 30"/><path d="M260 108 L74 69"/><path d="M260 108 L74 108"/>
+              <path d="M260 108 L74 147"/><path d="M260 108 L74 186"/>
+              <path d="M260 108 L446 30"/><path d="M260 108 L446 69"/>
+              <path d="M260 108 L446 147"/><path d="M260 108 L446 186"/>
+            </g>
+            <path d="M292 108 L414 108" stroke="#75716b" stroke-width="1.2" stroke-dasharray="4 3"/>
+            <g fill="#d6d2ca" stroke="#9c988f" stroke-width="1">
+              <rect x="52" y="20" width="44" height="21" rx="2"/><rect x="52" y="59" width="44" height="21" rx="2"/>
+              <rect x="52" y="98" width="44" height="21" rx="2"/><rect x="52" y="137" width="44" height="21" rx="2"/>
+              <rect x="52" y="176" width="44" height="21" rx="2"/>
+              <rect x="424" y="20" width="44" height="21" rx="2"/><rect x="424" y="59" width="44" height="21" rx="2"/>
+              <rect x="424" y="137" width="44" height="21" rx="2"/><rect x="424" y="176" width="44" height="21" rx="2"/>
+            </g>
+            <g font-family="'Spline Sans Mono',monospace" font-size="10" fill="#1a1c1e" text-anchor="middle">
+              <text x="74" y="35">533</text><text x="74" y="74">534</text><text x="74" y="113">535</text>
+              <text x="74" y="152">536</text><text x="74" y="191">537</text>
+              <text x="446" y="35">538</text><text x="446" y="74">539</text>
+              <text x="446" y="152">540</text><text x="446" y="191">541</text>
+            </g>
+            <rect x="204" y="92" width="112" height="32" rx="2" fill="#ff5c1a"/>
+            <text x="260" y="105" text-anchor="middle" font-family="'Spline Sans Mono',monospace" font-size="8.5" fill="#2a0d02" letter-spacing="1.6">DEVICE</text>
+            <text x="260" y="118" text-anchor="middle" font-family="'Spline Sans Mono',monospace" font-size="10" fill="#2a0d02" font-weight="600">d_ring02</text>
+            <rect x="406" y="95" width="92" height="26" rx="2" fill="#1c1f22" stroke="#43474c"/>
+            <text x="452" y="112" text-anchor="middle" font-family="'Spline Sans Mono',monospace" font-size="9.5" fill="#a4a099">m000 6/9</text>
+          </svg>
+          <p class="gc">Nine accounts on one device. Six hit merchant <b>m000 within 30 minutes</b>,
+          median account age <b>10 days</b>. Each account keeps its own IP, which is the tell that
+          separates this from a household.</p>
+        </div>
+
+        <div class="dials">
+          <div class="dial">
+            <div><div class="nm">device_sharing</div><div class="dt">9 accounts share d_ring02</div></div>
+            <div class="rt"><div class="v">0.1777</div><div class="w">w 0.2444</div></div>
+            <div class="detent"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div>
+          </div>
+          <div class="dial">
+            <div><div class="nm">temporal_burst</div><div class="dt">6/9 accounts at one merchant in 30 min</div></div>
+            <div class="rt"><div class="v">0.1736</div><div class="w">w 0.2778</div></div>
+            <div class="detent"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div>
+          </div>
+          <div class="dial">
+            <div><div class="nm">account_newness</div><div class="dt">median account age 10 days</div></div>
+            <div class="rt"><div class="v">0.1049</div><div class="w">w 0.1111</div></div>
+            <div class="detent"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i></div>
+          </div>
+          <div class="dial">
+            <div><div class="nm">failure_refund_rate</div><div class="dt">25% against 14% baseline</div></div>
+            <div class="rt"><div class="v">0.0326</div><div class="w">w 0.1333</div></div>
+            <div class="detent"><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          </div>
+          <div class="dial">
+            <div><div class="nm">instrument_sharing</div><div class="dt">2 accounts share pi_ring02</div></div>
+            <div class="rt"><div class="v">0.0181</div><div class="w">w 0.1444</div></div>
+            <div class="detent"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          </div>
+          <div class="dial">
+            <div><div class="nm">merchant_concentration</div><div class="dt">20 of 101 transactions at m000</div></div>
+            <div class="rt"><div class="v">0.0176</div><div class="w">w 0.0889</div></div>
+            <div class="detent"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          </div>
+          <div class="dial off">
+            <div><div class="nm">ip_sharing</div><div class="dt">1 account · zero-weighted, RISK-001</div></div>
+            <div class="rt"><div class="v">0.0000</div><div class="w">w 0.0000</div></div>
+            <div class="detent"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          </div>
+        </div>
+
+        <div class="act">
+          <button class="commit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4"/></svg>Escalate</button>
+          <button><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>Watch</button>
+          <button><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v13H8l-4 4z"/></svg>Review</button>
+          <button><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5.2 5L20 7"/></svg>Allow</button>
+          <span class="hint">audit trail · no auto-block</span>
+        </div>
+      </section>
+    </div>
+
+    <p class="foot">
+      <b>Cost model, dataset-derived.</b> Review INR 500.00 (20 analyst-minutes at 1500/hour).
+      Missed ring 74,645.29, median ring exposure. Wrong escalation 848.23, one review plus 2%
+      friction. The 88:1 ratio between the last two is what pushes the lower detent down to 0.23.
+      Flag-everything would cost 35,009.29 at a 100% review rate.
+    </p>
+  </div>
+</div>
+</body>
+</html>

@@ -289,7 +289,9 @@ def test_12_to_17_pipeline(cfg: Config, run_a: dict, cands, labels) -> None:
 
 def test_18_reproducible_outputs(run_a: dict, run_b: dict) -> None:
     files = ["transactions.csv", "labels.csv", "components.csv",
-             "integrity_report.json", "eval_report.json", "threshold.json"]
+             "integrity_report.json", "eval_report.json", "threshold.json",
+             "graph_edges.json", "weight_policy.json",
+             "abstention_policy.json"]
     for name in files:
         a, b = run_a["dir"] / name, run_b["dir"] / name
         assert a.exists(), f"{name} was never written"

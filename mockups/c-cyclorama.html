@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RiskMesh - Direction C: Cyclorama</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --night:#080b11; --deep:#0e131c; --panel:#141b27; --panel-2:#1b2432; --edge:#26303f; --edge-2:#334156;
+  --ink:#e8edf4; --ink-2:#9fadc0; --ink-3:#6b7a8e;
+  --allow:#4b8fd4; --review:#e0a34a; --escalate:#f2506b;
+  --sans:"Archivo",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:ui-monospace,"SFMono-Regular","Cascadia Mono","Consolas",monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--night);color:var(--ink);font:400 14px/1.5 var(--sans);
+  font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+::selection{background:#2d4a6b;color:#fff}
+:focus-visible{outline:2px solid var(--review);outline-offset:3px}
+::-webkit-scrollbar{width:12px}
+::-webkit-scrollbar-track{background:var(--deep)}
+::-webkit-scrollbar-thumb{background:var(--edge);border:3px solid var(--deep);border-radius:6px}
+::-webkit-scrollbar-thumb:hover{background:var(--edge-2)}
+
+/* cue label: the lighting-plot stencil */
+.cue{font:600 10px/1 var(--sans);letter-spacing:.22em;text-transform:uppercase;color:var(--ink-3)}
+
+.stage{max-width:1320px;margin:0 auto;padding:0 24px 72px}
+
+/* the cyclorama: night at the top, day at the bottom of the header */
+header{position:relative;padding:34px 0 0;
+  background:linear-gradient(180deg,var(--night) 0%,#0d1420 46%,#122033 74%,#17293f 100%);
+  margin:0 -24px;padding-left:24px;padding-right:24px;border-bottom:1px solid var(--edge)}
+.hrow{display:flex;justify-content:space-between;align-items:flex-start;gap:32px;flex-wrap:wrap}
+h1{font:600 21px/1.2 var(--sans);letter-spacing:-.01em}
+h1 em{font-style:normal;color:var(--ink-3);font-weight:400}
+.lede{color:var(--ink-2);font-size:13px;max-width:60ch;margin-top:7px}
+.plot{font:400 11px/1.7 var(--mono);color:var(--ink-3);text-align:right;white-space:nowrap}
+.plot b{color:var(--ink-2);font-weight:400}
+
+/* headline figures ruled, not carded */
+.figs{display:flex;flex-wrap:wrap;margin:26px -24px 0;border-top:1px solid var(--edge)}
+.figs>div{flex:1 1 0;min-width:150px;padding:14px 24px;border-right:1px solid var(--edge)}
+.figs>div:last-child{border-right:0}
+.figs dt{margin-bottom:5px}
+.figs dd{font:600 25px/1 var(--mono);letter-spacing:-.02em}
+.figs .sub{font-size:11px;color:var(--ink-3);margin-top:5px}
+.figs .lit{color:var(--allow)}
+
+/* horizon: the three bands as light phases */
+.horizon{margin:28px 0 0}
+.hz-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px}
+.hz{display:flex;height:96px;border:1px solid var(--edge);overflow:hidden;position:relative}
+.hz>i{position:relative;display:block;overflow:hidden}
+.hz .z-allow{flex:19;background:linear-gradient(180deg,#0f1a29,#16283f)}
+.hz .z-rev{flex:6;background:linear-gradient(180deg,#2b2438,#5a3f47)}
+.hz .z-esc{flex:6;background:linear-gradient(180deg,#4a2436,#8e3a4e)}
+.hz>i .lbl{position:absolute;left:12px;top:11px}
+.hz>i .lbl .k{font:600 10px/1 var(--sans);letter-spacing:.2em;text-transform:uppercase}
+.hz>i .lbl .n{font:600 27px/1 var(--mono);margin-top:9px;display:block}
+.hz>i .lbl .s{font-size:11px;color:var(--ink-2);margin-top:5px;display:block}
+.z-allow .k{color:var(--allow)} .z-rev .k{color:var(--review)} .z-esc .k{color:var(--escalate)}
+.hz .mark{position:absolute;top:0;bottom:0;width:1px;background:var(--edge-2)}
+.hz-scale{display:flex;justify-content:space-between;margin-top:7px;font:400 10px/1 var(--mono);color:var(--ink-3)}
+
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.12fr);gap:28px;margin-top:34px;align-items:start}
+@media(max-width:1060px){.split{grid-template-columns:1fr}}
+
+.block{border:1px solid var(--edge);background:var(--panel)}
+.block>.bh{padding:12px 16px;border-bottom:1px solid var(--edge);display:flex;
+  justify-content:space-between;align-items:center;background:var(--panel-2)}
+
+/* queue as cue list */
+.cues{list-style:none}
+.cues li{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;
+  padding:11px 16px;border-bottom:1px solid var(--edge);cursor:pointer;transition:background .16s}
+.cues li:last-child{border-bottom:0}
+.cues li:hover{background:var(--panel-2)}
+.cues li[aria-selected=true]{background:#1d2a3d;box-shadow:inset 3px 0 0 var(--escalate)}
+/* a lamp casts light onto the surface beside it; it does not wear a halo */
+.cues li{position:relative}
+.lamp{width:9px;height:34px;flex:none;border-radius:1px}
+.lamp::after{content:"";position:absolute;left:16px;top:0;bottom:0;width:120px;pointer-events:none}
+.l-e{background:var(--escalate)}
+.l-e::after{background:linear-gradient(90deg,rgba(242,80,107,.16),transparent 78%)}
+.l-r{background:var(--review)}
+.l-r::after{background:linear-gradient(90deg,rgba(224,163,74,.12),transparent 78%)}
+.l-a{background:#2f4560}
+.cid{font:500 13px/1 var(--mono)}
+.cmeta{font-size:11px;color:var(--ink-3);margin-top:4px}
+.cright{text-align:right}
+.cright .sc{font:600 16px/1 var(--mono)}
+.cright .st{font:600 10px/1 var(--sans);letter-spacing:.16em;text-transform:uppercase;margin-top:5px;
+  display:inline-flex;align-items:center;gap:4px}
+.st svg{width:10px;height:10px}
+.e{color:var(--escalate)}.r{color:var(--review)}.a{color:var(--ink-3)}
+.hh{display:inline-block;font-size:10px;color:var(--ink-2);border:1px solid var(--edge-2);
+  padding:1px 5px;margin-left:7px;letter-spacing:.04em}
+
+/* detail */
+.dh{padding:16px;border-bottom:1px solid var(--edge);display:flex;justify-content:space-between;
+  gap:20px;align-items:flex-start;flex-wrap:wrap;background:linear-gradient(180deg,#1a2637,var(--panel))}
+.dh h2{font:600 17px/1.25 var(--sans)}
+.dh .sub{font:400 12px/1 var(--mono);color:var(--ink-3);margin-top:6px}
+.dh .big{font:600 30px/1 var(--mono);color:var(--escalate);text-align:right;letter-spacing:-.02em}
+.dh .bigl{margin-top:6px;text-align:right}
+
+.gwrap{padding:16px;border-bottom:1px solid var(--edge)}
+svg.g{width:100%;height:auto;display:block}
+.gcap{font-size:12px;color:var(--ink-2);line-height:1.6;margin-top:12px}
+.gcap b{color:var(--ink);font-weight:600}
+
+.sig{padding:4px 0}
+.sig .row{display:grid;grid-template-columns:1fr auto;gap:4px 16px;padding:11px 16px;
+  border-bottom:1px solid var(--edge)}
+.sig .row:last-child{border-bottom:0}
+.sig .nm{font-weight:600;font-size:13px}
+.sig .dt{font-size:11px;color:var(--ink-3);margin-top:2px}
+.sig .rt{text-align:right}
+.sig .v{font:600 14px/1 var(--mono)}
+.sig .w{font:400 11px/1 var(--mono);color:var(--ink-3);margin-top:4px}
+.beam{grid-column:1/-1;height:3px;background:var(--deep);margin-top:8px;position:relative;overflow:hidden}
+.beam i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,#6b2b3d,var(--escalate))}
+.sig .row.dim .nm,.sig .row.dim .dt,.sig .row.dim .v{color:var(--ink-3)}
+.sig .row.dim .beam i{background:var(--edge-2)}
+
+.act{display:flex;gap:9px;padding:16px;flex-wrap:wrap;align-items:center;border-top:1px solid var(--edge);background:var(--panel-2)}
+button{font:600 12px/1 var(--sans);letter-spacing:.04em;padding:10px 15px;border:1px solid var(--edge-2);
+  background:transparent;color:var(--ink);cursor:pointer;display:inline-flex;gap:7px;align-items:center;
+  transition:border-color .16s,background .16s}
+button:hover{border-color:var(--ink-3);background:var(--panel)}
+button:active{transform:translateY(1px)}
+button svg{width:13px;height:13px}
+button.go{background:var(--escalate);border-color:var(--escalate);color:#2a0710}
+button.go:hover{background:#ff6a80;border-color:#ff6a80}
+.act .hint{margin-left:auto;font-size:11px;color:var(--ink-3)}
+
+.tail{margin-top:34px;border-top:1px solid var(--edge);padding-top:20px;display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:24px}
+.tail p{font-size:12px;color:var(--ink-2);line-height:1.65}
+.tail h3{margin-bottom:8px}
+.tail b{color:var(--ink);font-weight:600}
+</style>
+</head>
+<body data-palette="#4b8fd4,#e0a34a,#f2506b">
+<div class="stage">
+
+  <header>
+    <div class="hrow">
+      <div>
+        <h1>RiskMesh <em>/ Risk Control Center</em></h1>
+        <p class="lede">Held-out period, days 24 to 30. Thirty-one connected components lit by
+          the frozen A_baseline policy. Nothing here is blocked automatically.</p>
+      </div>
+      <div class="plot">
+        seed <b>20260824</b><br>
+        config <b>7c1e4fb2b329796c</b><br>
+        policy <b>A_baseline</b><br>
+        bands <b>0.23 / 0.33</b>
+      </div>
+    </div>
+
+    <dl class="figs">
+      <div><dt class="cue">Expected loss</dt><dd class="num">6,000.00</dd><div class="sub">binary policy 9,392.92</div></div>
+      <div><dt class="cue">Escalated in error</dt><dd class="num lit">0</dd><div class="sub">of 6 escalations</div></div>
+      <div><dt class="cue">Rings recovered</dt><dd class="num lit">8 / 8</dd><div class="sub">none missed at allow</div></div>
+      <div><dt class="cue">Referred to review</dt><dd class="num">19.35%</dd><div class="sub">6 of 31 components</div></div>
+    </dl>
+  </header>
+
+  <section class="horizon">
+    <div class="hz-head">
+      <h2 class="cue">Disposition by score</h2>
+      <span class="num" style="font-size:11px;color:var(--ink-3)">31 components</span>
+    </div>
+    <div class="hz">
+      <i class="z-allow">
+        <span class="lbl"><span class="k">Allow</span><span class="n">19</span><span class="s">no ring below 0.23</span></span>
+      </i>
+      <i class="z-rev">
+        <span class="lbl"><span class="k">Review</span><span class="n">6</span><span class="s">4 households, 2 rings</span></span>
+      </i>
+      <i class="z-esc">
+        <span class="lbl"><span class="k">Escalate</span><span class="n">6</span><span class="s">all 6 are true rings</span></span>
+      </i>
+    </div>
+    <div class="hz-scale"><span>0.000</span><span>0.230</span><span>0.330</span><span>1.000</span></div>
+  </section>
+
+  <div class="split">
+
+    <section class="block">
+      <div class="bh"><h2 class="cue">Queue</h2><span class="num" style="font-size:11px;color:var(--ink-3)">by score</span></div>
+      <ul class="cues">
+        <li aria-selected="true">
+          <i class="lamp l-e"></i>
+          <div><div class="cid">c_a00533</div><div class="cmeta">9 accounts · 101 txns · INR 101,761.83</div></div>
+          <div class="cright"><div class="sc">0.5246</div><div class="st e"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4"/></svg>Escalate</div></div>
+        </li>
+        <li>
+          <i class="lamp l-e"></i>
+          <div><div class="cid">c_a00664</div><div class="cmeta">8 accounts · 80 txns · INR 62,732.04</div></div>
+          <div class="cright"><div class="sc">0.4918</div><div class="st e"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4"/></svg>Escalate</div></div>
+        </li>
+        <li>
+          <i class="lamp l-e"></i>
+          <div><div class="cid">c_a00576</div><div class="cmeta">8 accounts · 84 txns · INR 93,358.09</div></div>
+          <div class="cright"><div class="sc">0.4356</div><div class="st e"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4"/></svg>Escalate</div></div>
+        </li>
+        <li>
+          <i class="lamp l-e"></i>
+          <div><div class="cid">c_a00650</div><div class="cmeta">5 accounts · 41 txns · INR 86,713.89</div></div>
+          <div class="cright"><div class="sc">0.4241</div><div class="st e"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4"/></svg>Escalate</div></div>
+        </li>
+        <li>
+          <i class="lamp l-e"></i>
+          <div><div class="cid">c_a00557</div><div class="cmeta">9 accounts · 89 txns · INR 89,120.13</div></div>
+          <div class="cright"><div class="sc">0.4118</div><div class="st e"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4"/></svg>Escalate</div></div>
+        </li>
+        <li>
+          <i class="lamp l-e"></i>
+          <div><div class="cid">c_a00634</div><div class="cmeta">5 accounts · 45 txns · INR 42,898.90</div></div>
+          <div class="cright"><div class="sc">0.3869</div><div class="st e"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4"/></svg>Escalate</div></div>
+        </li>
+        <li>
+          <i class="lamp l-r"></i>
+          <div><div class="cid">c_a00727 <span class="hh">household fam11</span></div><div class="cmeta">6 accounts · 89 txns · INR 62,564.07</div></div>
+          <div class="cright"><div class="sc">0.3201</div><div class="st r"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/></svg>Review</div></div>
+        </li>
+        <li>
+          <i class="lamp l-r"></i>
+          <div><div class="cid">c_a00617</div><div class="cmeta">4 accounts · 35 txns · INR 75,052.32</div></div>
+          <div class="cright"><div class="sc">0.3068</div><div class="st r"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/></svg>Review</div></div>
+        </li>
+        <li>
+          <i class="lamp l-r"></i>
+          <div><div class="cid">c_a00770 <span class="hh">household fam18</span></div><div class="cmeta">8 accounts · 109 txns · INR 134,160.77</div></div>
+          <div class="cright"><div class="sc">0.2981</div><div class="st r"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/></svg>Review</div></div>
+        </li>
+        <li>
+          <i class="lamp l-r"></i>
+          <div><div class="cid">c_a00596</div><div class="cmeta">5 accounts · 44 txns · INR 53,009.91</div></div>
+          <div class="cright"><div class="sc">0.2866</div><div class="st r"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/></svg>Review</div></div>
+        </li>
+        <li>
+          <i class="lamp l-a"></i>
+          <div><div class="cid">c_a00788 <span class="hh">household fam07</span></div><div class="cmeta">6 accounts · 85 txns · INR 80,830.59</div></div>
+          <div class="cright"><div class="sc">0.2037</div><div class="st a"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5.2 5L20 7"/></svg>Allow</div></div>
+        </li>
+        <li>
+          <i class="lamp l-a"></i>
+          <div><div class="cid">c_a00711 <span class="hh">household fam02</span></div><div class="cmeta">5 accounts · 55 txns · INR 50,830.07</div></div>
+          <div class="cright"><div class="sc">0.1956</div><div class="st a"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5.2 5L20 7"/></svg>Allow</div></div>
+        </li>
+      </ul>
+    </section>
+
+    <section class="block">
+      <div class="dh">
+        <div>
+          <h2>Shared-device cluster, 9 accounts</h2>
+          <div class="sub">c_a00533 · ring02 · test split</div>
+        </div>
+        <div>
+          <div class="big">0.5246</div>
+          <div class="bigl cue" style="color:var(--escalate)">Escalate</div>
+        </div>
+      </div>
+
+      <div class="gwrap">
+        <svg class="g" viewBox="0 0 560 236" role="img"
+          aria-label="Nine accounts a00533 through a00541 all connect to one shared device d_ring02; six of them converge on merchant m000 within thirty minutes.">
+          <g stroke="#f2506b" stroke-width="1.5" opacity=".5">
+            <path d="M280 118 L82 34"/><path d="M280 118 L82 76"/><path d="M280 118 L82 118"/>
+            <path d="M280 118 L82 160"/><path d="M280 118 L82 202"/>
+            <path d="M280 118 L478 34"/><path d="M280 118 L478 76"/><path d="M280 118 L478 160"/>
+            <path d="M280 118 L478 202"/>
+          </g>
+          <path d="M310 118 L448 118" stroke="#6b7a8e" stroke-width="1.3" stroke-dasharray="5 4"/>
+          <g stroke="#f2506b" stroke-width="1.4" fill="#141b27">
+            <circle cx="82" cy="34" r="16"/><circle cx="82" cy="76" r="16"/><circle cx="82" cy="118" r="16"/>
+            <circle cx="82" cy="160" r="16"/><circle cx="82" cy="202" r="16"/>
+            <circle cx="478" cy="34" r="16"/><circle cx="478" cy="76" r="16"/>
+            <circle cx="478" cy="160" r="16"/><circle cx="478" cy="202" r="16"/>
+          </g>
+          <g font-family="ui-monospace,monospace" font-size="10" fill="#e8edf4" text-anchor="middle">
+            <text x="82" y="38">533</text><text x="82" y="80">534</text><text x="82" y="122">535</text>
+            <text x="82" y="164">536</text><text x="82" y="206">537</text>
+            <text x="478" y="38">538</text><text x="478" y="80">539</text>
+            <text x="478" y="164">540</text><text x="478" y="206">541</text>
+          </g>
+          <rect x="224" y="100" width="112" height="36" fill="#8e3a4e" stroke="#f2506b" stroke-width="1.5"/>
+          <text x="280" y="115" text-anchor="middle" class="cue" font-family="Archivo,sans-serif" font-size="9" fill="#ffd0d8" letter-spacing="2">DEVICE</text>
+          <text x="280" y="129" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10.5" fill="#fff">d_ring02</text>
+          <rect x="440" y="104" width="104" height="28" fill="#1b2432" stroke="#334156"/>
+          <text x="492" y="122" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#9fadc0">m000 · 6/9</text>
+        </svg>
+        <p class="gcap">Nine accounts, one device. Six converge on merchant <b>m000 inside thirty
+        minutes</b>, and the median account is <b>10 days old</b>. No shared address: each account holds
+        its own IP, which is what separates this from a household.</p>
+      </div>
+
+      <div class="sig">
+        <div class="row">
+          <div><div class="nm">Device sharing</div><div class="dt">9 accounts share device d_ring02</div></div>
+          <div class="rt"><div class="v">0.1777</div><div class="w">w 0.2444</div></div>
+          <div class="beam"><i style="width:100%"></i></div>
+        </div>
+        <div class="row">
+          <div><div class="nm">Temporal burst</div><div class="dt">6/9 accounts at one merchant within 30 minutes</div></div>
+          <div class="rt"><div class="v">0.1736</div><div class="w">w 0.2778</div></div>
+          <div class="beam"><i style="width:98%"></i></div>
+        </div>
+        <div class="row">
+          <div><div class="nm">Account newness</div><div class="dt">median account age 10 days</div></div>
+          <div class="rt"><div class="v">0.1049</div><div class="w">w 0.1111</div></div>
+          <div class="beam"><i style="width:59%"></i></div>
+        </div>
+        <div class="row">
+          <div><div class="nm">Failure / refund rate</div><div class="dt">25% against a 14% baseline</div></div>
+          <div class="rt"><div class="v">0.0326</div><div class="w">w 0.1333</div></div>
+          <div class="beam"><i style="width:18%"></i></div>
+        </div>
+        <div class="row">
+          <div><div class="nm">Instrument sharing</div><div class="dt">2 accounts share instrument pi_ring02</div></div>
+          <div class="rt"><div class="v">0.0181</div><div class="w">w 0.1444</div></div>
+          <div class="beam"><i style="width:10%"></i></div>
+        </div>
+        <div class="row">
+          <div><div class="nm">Merchant concentration</div><div class="dt">20 of 101 transactions at m000</div></div>
+          <div class="rt"><div class="v">0.0176</div><div class="w">w 0.0889</div></div>
+          <div class="beam"><i style="width:10%"></i></div>
+        </div>
+        <div class="row dim">
+          <div><div class="nm">IP sharing</div><div class="dt">1 account on ip_travel314 · zero-weighted, RISK-001</div></div>
+          <div class="rt"><div class="v">0.0000</div><div class="w">w 0.0000</div></div>
+          <div class="beam"><i style="width:2%"></i></div>
+        </div>
+      </div>
+
+      <div class="act">
+        <button class="go"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4"/></svg>Escalate</button>
+        <button><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>Watch</button>
+        <button><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v13H8l-4 4z"/></svg>Manual review</button>
+        <button><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5.2 5L20 7"/></svg>Allow</button>
+        <span class="hint">recorded to audit trail</span>
+      </div>
+    </section>
+  </div>
+
+  <div class="tail">
+    <div>
+      <h3 class="cue">Why a review band</h3>
+      <p>All four legitimate households that the previous binary policy escalated in error now fall
+      inside the review band instead. Escalations on this split are <b>6 of 6 true rings</b>.</p>
+    </div>
+    <div>
+      <h3 class="cue">What review costs</h3>
+      <p>A review is priced at <b>INR 500.00</b>, a missed ring at <b>74,645.29</b>, a wrongly escalated
+      account at <b>848.23</b>. All three derive from this dataset's own exposure figures.</p>
+    </div>
+    <div>
+      <h3 class="cue">What this is not</h3>
+      <p>Held-out expected loss is <b>33% higher</b> than the validation figure the band was chosen on.
+      That gap is small-sample variance across 23 negatives, and the held-out number is the one to quote.</p>
+    </div>
+  </div>
+</div>
+</body>
+</html>

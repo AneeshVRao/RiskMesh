@@ -881,3 +881,112 @@ intervals, the full baseline suite.
 **Open decisions carried forward:** D1 and D2 in `deferred_decisions.md`. They are
 coupled — removing weight from one signal raises the other's share — and neither
 was resolved by the weight search.
+
+---
+
+## Tier 1 — investigator console API (DONE)
+
+The four locked UI mockups needed real data. The API design pass is recorded in
+`design-api/` (published canvas); this section records the decisions that
+changed the repo.
+
+### The governing rule
+
+**The API never re-scores.** `riskmesh.score` is imported nowhere under
+`riskmesh/api/`. `out/components.csv` is the scorer's own output and the API
+reads it. A live re-score would let the number on screen drift from the number
+in the frozen record, and every other discipline in this project rests on those
+being the same number.
+
+Six of the eight PRD endpoints are pure file reads. The API's total arithmetic
+is: `contribution = round(w * norm, 6)`, a two-compare band assignment, a sort,
+two multiplies for the loss-ladder bounds, and one audit append.
+
+### Dependency decision — FastAPI and uvicorn
+
+`requirements.txt` says not to add a dependency without moving the decision here
+first. Doing that now.
+
+**Added:** `fastapi`, `uvicorn`. **Why:** the PRD names FastAPI explicitly in
+Technical Specifications, and the console is a graded deliverable.
+
+**What is preserved:** Tier 0's zero-dependency guarantee is intact.
+`python -m riskmesh` and `tests/test_riskmesh.py` still import nothing outside
+the stdlib, so "reproducible from a clean environment" still holds for the
+benchmark itself. The new dependency is confined to the API layer, and within
+that layer only `routes.py` and `main.py` touch FastAPI — `artifacts.py`,
+`bands.py`, `payloads.py` and `audit.py` are stdlib-only and are tested by
+`tests/test_api.py` without a web server running.
+
+### Three new pipeline outputs (6 files -> 9)
+
+- **`out/graph_edges.json`** — account-to-shared-attribute adjacency per
+  component, for the UI graph. Built in `__main__.py` rather than live in the
+  API so it sits inside the fingerprinted, reproducible pipeline. Written for
+  **all** components, not only flagged ones: the restriction saved 112 KB of
+  309 KB and would have coupled the file to a threshold, so that a future
+  `t_lo` below the binary threshold would 404 on reviewed components.
+- **`out/weight_policy.json`** and **`out/abstention_policy.json`** — byte
+  copies (`shutil.copyfile`) of the frozen records in `experiments/`, so `out/`
+  is the single directory the API reads. `experiments/` is provenance, not a
+  runtime source. Never a JSON round-trip: re-serialising could reorder keys and
+  break byte-for-byte reproducibility on a file whose content never changed.
+
+  The abstention copy was found by the clean-checkout verification, not by
+  design: `out/` is gitignored and `abstention_policy.json` is written by its own
+  freeze stage, so after `rm -rf out && python -m riskmesh` the API could not
+  start — and its error message told the user to run the very command that had
+  just failed to produce the file. A fresh clone plus one command now leaves
+  `out/` complete.
+
+All three are covered by `test_18_reproducible_outputs`, which now asserts **9**
+files reproduce byte-for-byte at the same seed.
+
+### The weights the API uses are Config's, not weight_policy.json's
+
+Found while implementing, and it matters. `weight_policy.json` rounds its
+weights to 4dp for display — A_baseline's sum to **0.9999**, not 1.0. Computing
+contributions from that copy drifts from the frozen score by up to **6e-5 on 60
+of 100 components**. Small, but it is exactly the "screen disagrees with the
+record" failure this design exists to prevent.
+
+`Config().weights` is the authoritative source: it is what `score.py` read, and
+it is what `config_fingerprint` is derived from, so the startup fingerprint
+assertion already guards it. Importing `Config` is not importing the scorer.
+With it, the contribution sum reproduces the frozen score to 6e-17.
+`weight_policy.json` remains the provenance record, served verbatim by
+`/benchmark`, rounding and all.
+
+### peer_rule — frozen
+
+`nearest_opposite_label_prefer_family`. Same split, opposite label, prefer
+`has_family` (the panel is ring vs *household*), minimise score distance,
+tiebreak on higher score then lexicographic `component_id`. A documented
+heuristic, not a derived optimum. Verified: yields `c_a00533 -> c_a00727`, zero
+distance ties on the frozen data, identical across 50 shuffles of input order.
+The tiebreaks never fire today and are specified anyway.
+
+### Audit trail — append-only JSONL
+
+`out/audit_log.jsonl`, the only mutable state in the system. Chosen over SQLite:
+one writer, append-then-tail-N, a nested evidence snapshot that is already JSON,
+and every other artifact here is an inspectable file. Switch to SQLite on any of
+— more than one writer process, queries across components, or mutable records.
+The whole surface is `append()` and `tail()`, so that swap stays in one file.
+
+`POST /rings/{id}/review` blocks nothing and changes no frozen artifact. The
+evidence snapshot is embedded rather than referenced, so the record still says
+what the analyst actually saw after the pipeline re-freezes.
+
+### `/explain` — contract only, deliberately not built
+
+Per the PRD's Tier 1 fallback rule this is the first thing to cut. The endpoint
+exists and returns the **deterministic** composition of the scorer's own
+`detail` strings with `fallback_used: true`. No model is wired.
+
+The grounding contract if it is ever built: the request carries a component id
+and no numbers, so a client cannot induce a claim the detector never made; every
+numeric token in generated text must appear in the evidence block or the
+generation is rejected; the action is never in the model's output path. Honest
+limit — that validation cannot catch a fluent misattribution of intent, which is
+the real argument for leaving the deterministic path in place.

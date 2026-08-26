@@ -1,0 +1,231 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@400;500;600;700&display=swap">
+  <style>
+:root{--bg:#fff;--fill:#f4f5f7;--fill-2:#eceef1;--line:#c9ced6;--line-2:#e3e6ea;
+--ink:#111418;--ink-2:#474e57;--ink-3:#767d87;--red:#d81f26;--amber:#8f5400;
+--quiet:#5c6670;--green:#046b4a;
+--sans:"Barlow Semi Condensed",ui-sans-serif,system-ui,-apple-system,sans-serif;
+--mono:ui-monospace,"Cascadia Mono","Consolas",monospace}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--fill);color:var(--ink);font:400 13px/1.4 var(--sans);
+font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+a{color:var(--red)}a:hover{color:#a8171d}
+.pg{padding:14px}
+.hd{background:var(--bg);border:1px solid var(--line);margin-bottom:10px}
+.hd1{display:flex;align-items:baseline;gap:10px;padding:7px 11px;border-bottom:1px solid var(--line-2)}
+.mk{font-weight:700;font-size:16px;letter-spacing:-.02em}
+.mk i{color:var(--red);font-style:normal}
+.hd1 .ti{font-size:13px;font-weight:600;color:var(--ink-2)}
+.hd1 .mt{margin-left:auto;font:400 11px var(--mono);color:var(--ink-3)}
+.hd2{display:flex;flex-wrap:wrap}
+.hd2 div{padding:5px 11px;border-right:1px solid var(--line-2);font-size:11px;color:var(--ink-2)}
+.hd2 b{font-family:var(--mono);color:var(--ink);font-weight:600}
+.mod{background:var(--bg);border:1px solid var(--line);margin-bottom:10px}
+.mod>h2{font-size:11px;font-weight:600;border-bottom:1px solid var(--line);display:flex;align-items:stretch}
+.mod>h2 .tab{background:var(--red);color:#fff;padding:4px 9px;white-space:nowrap}
+.mod>h2 .rest{padding:4px 9px;color:var(--ink-3);font-weight:400;font-family:var(--mono);
+font-size:10px;align-self:center;margin-left:auto}
+.mod.q>h2 .tab{background:var(--ink)}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-3);font-weight:600;
+text-align:left;padding:4px 8px;background:var(--fill);border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:5px 8px;border-bottom:1px solid var(--line-2);vertical-align:top}
+td.m{font-family:var(--mono);font-size:11px;white-space:nowrap}
+.why{font-size:11px;color:var(--ink-2);line-height:1.45}
+.p{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.03em;padding:1px 5px;
+text-transform:uppercase}
+.p-r{background:var(--quiet);color:#fff}
+.p-d{background:var(--amber);color:#fff}
+.p-w{background:var(--red);color:#fff}
+.p-c{background:var(--green);color:#fff}
+.cap{font-size:11px;color:var(--ink-2);line-height:1.5;padding:7px 10px}
+.cap b{color:var(--ink)}
+.lede{font-size:12px;color:var(--ink-2);line-height:1.5;padding:8px 10px 0}
+.lede b{color:var(--ink)}
+pre{font:400 11px/1.55 var(--mono);padding:9px 11px;overflow-x:auto;background:#fbfbfc;
+border-bottom:1px solid var(--line-2);color:var(--ink-2)}
+pre b{color:var(--ink);font-weight:600}
+pre .k{color:var(--red)}
+pre .c{color:var(--ink-3);font-style:italic}
+code{font:400 11px var(--mono);background:var(--fill);border:1px solid var(--line-2);padding:0 4px}
+.note{background:#fdf3e0;border-bottom:1px solid var(--line-2);padding:8px 10px;font-size:11px;
+color:var(--ink-2);line-height:1.5}
+.note .h{display:inline-block;font-weight:700;background:var(--amber);color:#fff;text-transform:uppercase;
+letter-spacing:.04em;font-size:10px;padding:1px 5px;margin-bottom:5px}
+.note b{color:var(--ink)}
+  </style>
+</helmet>
+<div class="pg">
+  <div class="hd">
+    <div class="hd1"><span class="mk">RISK<i>MESH</i></span>
+      <span class="ti">Backend design &middot; endpoint map</span>
+      <span class="mt">design pass &middot; no implementation</span></div>
+    <div class="hd2">
+      <div>Endpoints <b>8</b></div>
+      <div>Pure reads <b>6</b></div>
+      <div>Derived <b>1</b></div>
+      <div>Writes <b>1</b></div>
+      <div>New scoring <b>0</b></div>
+      <div>Pipeline outputs <b>6 &rarr; 8</b></div>
+    </div>
+  </div>
+
+  <div class="mod">
+    <h2><span class="tab">The governing rule</span><span class="rest">why the API computes almost nothing</span></h2>
+    <p class="lede">Every score in this system is <b>frozen</b>. <code>out/components.csv</code> is
+    the scorer's own output for all 100 candidate components, carrying <code>raw</code>,
+    <code>norm</code> and <code>detail</code> for each of the 7 signals. The API's job is to
+    <b>read and reshape</b> that, never to re-run <code>score_component()</code>.</p>
+    <p class="cap">A live re-score would be the single most dangerous thing this service could do:
+    it would let the number on screen drift from the number in the frozen record, and the whole
+    project's discipline rests on those being the same number. <b>The scorer is not imported by the
+    API at all.</b> If a score needs to change, the pipeline re-runs and re-freezes; the API just
+    reads whatever is on disk.</p>
+  </div>
+
+  <div class="mod">
+    <h2><span class="tab">8 endpoints</span><span class="rest">source artifact &rarr; kind</span></h2>
+    <table>
+      <thead><tr><th>Endpoint</th><th>Serves</th><th>Reads</th><th>Kind</th></tr></thead>
+      <tbody>
+        <tr><td class="m">GET /rings</td>
+          <td class="why">Control Center queue, Investigator picker</td>
+          <td class="m">components.csv<br>abstention_policy.json</td>
+          <td><span class="p p-r">Read</span></td></tr>
+        <tr><td class="m">GET /rings/{id}</td>
+          <td class="why">Ring header rail</td>
+          <td class="m">components.csv<br>abstention_policy.json</td>
+          <td><span class="p p-r">Read</span></td></tr>
+        <tr><td class="m">GET /rings/{id}/evidence</td>
+          <td class="why">Investigator: decomposition, graph, comparison, trail</td>
+          <td class="m">components.csv<br>weight_policy.json<br>graph_edges.json &middot; audit_log.jsonl</td>
+          <td><span class="p p-d">Derive</span></td></tr>
+        <tr><td class="m">POST /rings/{id}/review</td>
+          <td class="why">Escalate / Watch / Review / Allow buttons</td>
+          <td class="m">audit_log.jsonl</td>
+          <td><span class="p p-w">Write</span></td></tr>
+        <tr><td class="m">GET /metrics</td>
+          <td class="why">Control Center triage tiles + rail</td>
+          <td class="m">eval_report.json<br>abstention_policy.json</td>
+          <td><span class="p p-r">Read</span></td></tr>
+        <tr><td class="m">GET /threshold-analysis</td>
+          <td class="why">Threshold &amp; Cost tab, entire</td>
+          <td class="m">abstention_policy.json<br>threshold.json</td>
+          <td><span class="p p-r">Read</span></td></tr>
+        <tr><td class="m">GET /benchmark</td>
+          <td class="why">Benchmark tab, entire</td>
+          <td class="m">eval_report.json<br>integrity_report.json<br>weight_policy.json</td>
+          <td><span class="p p-r">Read</span></td></tr>
+        <tr><td class="m">POST /explain</td>
+          <td class="why">Plain-language narration (Should-have)</td>
+          <td class="m">evidence block, server-side</td>
+          <td><span class="p p-c">Cut first</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="mod q">
+    <h2><span class="tab">The complete new-computation list</span><span class="rest">5 items, all trivial</span></h2>
+    <table>
+      <thead><tr><th>Operation</th><th>Why it isn't already on disk</th><th>Cost</th></tr></thead>
+      <tbody>
+        <tr><td class="why"><b>contribution</b> = weight &times; norm</td>
+          <td class="why">components.csv stores raw and norm; weights live in weight_policy.json.
+            Same formula as <code>score.py</code> line 176, rounded to 6dp.</td>
+          <td class="m">1 multiply</td></tr>
+        <tr><td class="why"><b>action</b> from score</td>
+          <td class="why">Band lives in abstention_policy.json; the CSV predates it.
+            <code>score &lt; t_lo</code> allow, <code>&lt; t_hi</code> review, else escalate.</td>
+          <td class="m">2 compares</td></tr>
+        <tr><td class="why"><b>rank</b> within split</td>
+          <td class="why">Presentation only &mdash; sort by score desc.</td>
+          <td class="m">1 sort</td></tr>
+        <tr><td class="why"><b>loss ladder</b> rows</td>
+          <td class="why">Flag-nothing = 8&times;C_fn, flag-everything = 23&times;C_fp + 31&times;C_review.
+            Bounds, not policy.</td>
+          <td class="m">2 multiplies</td></tr>
+        <tr><td class="why"><b>audit append</b></td>
+          <td class="why">The only mutable state in the system.</td>
+          <td class="m">1 line write</td></tr>
+      </tbody>
+    </table>
+    <p class="cap">Nothing here touches the graph builder, the scorer, the weight search, or the
+    cost model. <b>Six of eight endpoints are a file read and a key rename.</b></p>
+  </div>
+
+  <div class="mod q">
+    <h2><span class="tab">Resolved &middot; two new pipeline outputs</span><span class="rest">out/ becomes the single runtime source</span></h2>
+    <p class="lede"><b>Decided:</b> the API reads <code>out/</code> and only <code>out/</code>.
+    <code>experiments/</code> is provenance and history, never a runtime data source, and the API
+    special-cases nothing.</p>
+    <table>
+      <thead><tr><th>New file in out/</th><th>Written by</th><th>How</th></tr></thead>
+      <tbody>
+        <tr><td class="m">out/weight_policy.json</td>
+          <td class="why"><code>__main__.py</code>, standard run</td>
+          <td class="why"><b>Byte copy</b> of <code>experiments/weight_policy.json</code> via
+            <code>shutil.copyfile</code>. <b>Never a json round-trip</b> &mdash; re-serialising
+            could reorder keys or change spacing and break byte-for-byte reproducibility on a
+            file whose content did not change.</td></tr>
+        <tr><td class="m">out/graph_edges.json</td>
+          <td class="why"><code>__main__.py</code>, standard run</td>
+          <td class="why">Adjacency built from the same in-memory components the scorer already
+            holds, for <b>flagged components only</b> (score &ge; t_lo). Sorted node and edge
+            lists so the serialisation is stable.</td></tr>
+      </tbody>
+    </table>
+    <p class="cap">Both are generated inside the fingerprinted pipeline, so they inherit the same
+    reproducibility guarantee as everything else. The graph is never reconstructed live in the
+    API &mdash; that would put untested derivation on the request path and outside the
+    fingerprint.</p>
+  </div>
+
+  <div class="mod q">
+    <h2><span class="tab">Reproducibility test</span><span class="rest">test_18 &middot; 6 files &rarr; 8</span></h2>
+    <table>
+      <thead><tr><th>Site</th><th>Change</th></tr></thead>
+      <tbody>
+        <tr><td class="m">tests/test_riskmesh.py<br>test_18_reproducible_outputs</td>
+          <td class="why">Append <code>"weight_policy.json"</code> and
+            <code>"graph_edges.json"</code> to the <code>files</code> list. The assertion message
+            reads <code>f"18 all {len(files)} output files..."</code>, so it updates itself to
+            <b>8</b> with no other edit.</td></tr>
+        <tr><td class="m">riskmesh/__main__.py</td>
+          <td class="why">Final line <code>print(f"wrote 6 files to {out}")</code> &rarr;
+            <b>8</b>.</td></tr>
+      </tbody>
+    </table>
+    <p class="cap">Both new files are covered by the <b>same byte-for-byte, two-runs-at-one-seed
+    assertion</b> as transactions.csv, labels.csv, components.csv, integrity_report.json,
+    eval_report.json and threshold.json. <b>An output the API depends on that the reproducibility
+    test does not cover would be a hole in the guarantee</b> &mdash; the UI would be reading a
+    file nothing proves is stable.</p>
+    <div class="note">
+      <span class="h">Note</span><br>
+      <code>out/abstention_policy.json</code> is written by the separate abstention freeze, not by
+      <code>__main__.py</code>, and is correctly <b>not</b> in test_18's list. These two new files
+      are different: they are <code>__main__.py</code> outputs and belong in it.
+    </div>
+  </div>
+
+  <div class="mod">
+    <h2><span class="tab">Fingerprint discipline</span><span class="rest">structural, not advisory</span></h2>
+    <p class="cap">Every artifact carries <code>config_fingerprint</code>. On startup the loader
+    asserts all of them agree, and <b>refuses to start</b> if they do not &mdash; the same
+    raise-don't-warn rule <code>select_threshold()</code> and
+    <code>select_abstention_band()</code> already follow. A mixed-vintage API serving
+    eval_report from one run and components.csv from another would be silently, invisibly wrong.
+    Every response echoes the fingerprint so the UI can display which frozen run it is showing.</p>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

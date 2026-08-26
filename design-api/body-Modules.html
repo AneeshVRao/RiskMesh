@@ -1,0 +1,109 @@
+<div class="pg">
+  <div class="hd">
+    <div class="hd1"><span class="mk">RISK<i>MESH</i></span>
+      <span class="ti">Module structure &amp; build order</span>
+      <span class="mt">one file per concern</span></div>
+    <div class="hd2">
+      <div>New modules <b>8</b></div>
+      <div>Touch disk <b>2</b></div>
+      <div>Import score.py <b>0</b></div>
+      <div>Deps <b>fastapi, uvicorn</b></div>
+    </div>
+  </div>
+
+  <div class="mod">
+    <h2><span class="tab">riskmesh/api/</span><span class="rest">mirrors config.py / generate.py / score.py</span></h2>
+<pre><b>riskmesh/api/</b>
+  <b>__init__.py</b>
+  <b>main.py</b>       <span class="c">FastAPI app, CORS for the static UI, router mounts,</span>
+                <span class="c">startup artifact load + fingerprint assertion</span>
+  <b>artifacts.py</b>  <span class="c">THE ONLY READER of frozen files. Loads once at</span>
+                <span class="c">startup, caches, exposes typed accessors.</span>
+  <b>schemas.py</b>    <span class="c">Pydantic response models = the wire contract</span>
+  <b>bands.py</b>      <span class="c">score -&gt; allow|review|escalate, and contribution</span>
+                <span class="c">= round(w * norm, 6). The 2 derived rules, isolated.</span>
+  <b>rings.py</b>      <span class="c">GET /rings, /rings/{id}, /rings/{id}/evidence</span>
+  <b>analysis.py</b>   <span class="c">GET /metrics, /threshold-analysis, /benchmark</span>
+  <b>audit.py</b>      <span class="c">THE ONLY WRITER. append() + tail(). Owns JSONL.</span>
+  <b>review.py</b>     <span class="c">POST /rings/{id}/review -&gt; audit.append()</span>
+  <b>explain.py</b>    <span class="c">POST /explain. Stub returning fallback_used:true</span>
+                <span class="c">until and unless there is time.</span></pre>
+    <p class="cap">Two modules touch the filesystem and <b>nothing else does</b>:
+    <code>artifacts.py</code> reads, <code>audit.py</code> writes. Every route module consumes typed
+    objects. That is what makes the &ldquo;the API never re-scores&rdquo; rule checkable rather
+    than merely intended &mdash; <code>riskmesh.score</code> appears in no import line under
+    <code>api/</code>.</p>
+  </div>
+
+  <div class="mod">
+    <h2><span class="tab">Why these seams</span><span class="rest">each module is one reason to change</span></h2>
+    <table>
+      <thead><tr><th>Module</th><th>Exists because</th></tr></thead>
+      <tbody>
+        <tr><td class="m">artifacts.py</td><td class="why">If the frozen files move or gain a field,
+          exactly one file changes. It is also where the fingerprint assertion lives, so a
+          mixed-vintage load cannot reach a route.</td></tr>
+        <tr><td class="m">bands.py</td><td class="why">Holds the only two formulas the API owns.
+          Isolating them means they can be unit-tested against
+          <code>abstention.py</code>'s own values &mdash; the API's band logic must agree with the
+          pipeline's, and a test can prove it does.</td></tr>
+        <tr><td class="m">audit.py</td><td class="why">The single writer, behind
+          <code>append()</code> / <code>tail()</code>. This is the seam that makes the
+          JSONL&rarr;SQLite swap a one-file change if it ever becomes necessary.</td></tr>
+        <tr><td class="m">schemas.py</td><td class="why">The response contract is the thing the
+          four UI pages actually depend on. Keeping it in one file means the mockups' data needs
+          and the API's output can be diffed by reading one screen.</td></tr>
+        <tr><td class="m">explain.py</td><td class="why">Separate so it can be deleted, or left as
+          a permanent fallback stub, without touching a route the UI depends on.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="mod q">
+    <h2><span class="tab">Pipeline additions</span><span class="rest">resolved &middot; both covered by test_18</span></h2>
+    <table>
+      <thead><tr><th>New artifact</th><th>Written by</th><th>Why not live</th></tr></thead>
+      <tbody>
+        <tr><td class="m">out/graph_edges.json</td>
+          <td class="why"><code>__main__.py</code>, flagged components only</td>
+          <td class="why">Graph construction belongs inside the fingerprinted pipeline. Building
+            adjacency live would put untested derivation on the request path, outside the
+            reproducibility guarantee. <b>Added to test_18.</b></td></tr>
+        <tr><td class="m">out/weight_policy.json</td>
+          <td class="why"><code>__main__.py</code>, <code>shutil.copyfile</code></td>
+          <td class="why"><b>Resolved:</b> the API reads <code>out/</code> only.
+            <code>experiments/</code> is provenance, not a runtime source. Byte copy, never a
+            json round-trip. <b>Added to test_18.</b></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="mod">
+    <h2><span class="tab">Build order</span><span class="rest">when implementation starts</span></h2>
+    <table>
+      <thead><tr><th>#</th><th>Step</th><th>Unblocks</th></tr></thead>
+      <tbody>
+        <tr><td class="m">0</td><td class="why"><b>Pipeline first:</b> emit graph_edges.json +
+            weight_policy.json, extend test_18 to 8 files, update the &ldquo;wrote N files&rdquo; line</td>
+          <td class="why">Everything downstream; do this before any API code</td></tr>
+        <tr><td class="m">1</td><td class="why"><code>artifacts.py</code> + fingerprint assertion + <code>schemas.py</code></td>
+          <td class="why">Everything</td></tr>
+        <tr><td class="m">2</td><td class="why"><code>bands.py</code> + a test asserting it agrees with <code>abstention.py</code></td>
+          <td class="why">Correct actions everywhere</td></tr>
+        <tr><td class="m">3</td><td class="why"><code>analysis.py</code> &mdash; 3 endpoints, pure reads</td>
+          <td class="why">Threshold &amp; Cost, Benchmark tabs entire</td></tr>
+        <tr><td class="m">4</td><td class="why"><code>rings.py</code> list + detail</td>
+          <td class="why">Control Center queue</td></tr>
+        <tr><td class="m">5</td><td class="why"><code>/evidence</code> + the frozen peer_rule</td>
+          <td class="why">Investigator tab</td></tr>
+        <tr><td class="m">6</td><td class="why"><code>audit.py</code> + <code>review.py</code></td>
+          <td class="why">Action buttons</td></tr>
+        <tr><td class="m">7</td><td class="why"><code>explain.py</code> &mdash; only if slack remains</td>
+          <td class="why">Narration polish</td></tr>
+      </tbody>
+    </table>
+    <p class="cap">Steps 3 and 4 make <b>two of the four tabs fully live</b> against real data with
+    nothing but file reads and key renames. That is the cheapest possible path to a demo that is
+    genuinely wired rather than mocked, and it is worth doing before the graph work in step 5.</p>
+  </div>
+</div>

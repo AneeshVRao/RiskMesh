@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RiskMesh - Four Directions</title>
+<style>
+:root{
+  --bg:#f6f6f4; --panel:#fff; --line:#d7d9d4; --ink:#15181a; --ink-2:#565d5f; --ink-3:#868c8e;
+  --a:#6b4fa8;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);
+  font:400 15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  -webkit-font-smoothing:antialiased}
+.w{max-width:1180px;margin:0 auto;padding:48px 24px 80px}
+h1{font-size:27px;font-weight:650;letter-spacing:-.02em}
+.lede{color:var(--ink-2);max-width:70ch;margin-top:10px}
+.lede b{color:var(--ink);font-weight:600}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:16px;margin-top:32px}
+a.card{display:block;background:var(--panel);border:1px solid var(--line);padding:18px;
+  text-decoration:none;color:inherit;transition:border-color .16s,transform .16s}
+a.card:hover{border-color:var(--ink-2);transform:translateY(-2px)}
+a.card:active{transform:translateY(0)}
+.sw{display:flex;height:34px;border:1px solid var(--line);overflow:hidden;margin-bottom:14px}
+.sw i{flex:1}
+h2{font-size:17px;font-weight:650;letter-spacing:-.01em}
+.world{font-size:12px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.09em;margin-top:5px}
+.card p{font-size:13px;color:var(--ink-2);margin-top:10px;line-height:1.55}
+dl.f{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:12px;margin-top:13px;
+  padding-top:12px;border-top:1px solid var(--line)}
+dl.f dt{color:var(--ink-3)}
+dl.f dd{color:var(--ink-2)}
+.note{margin-top:34px;background:var(--panel);border:1px solid var(--line);padding:18px}
+.note h3{font-size:14px;font-weight:650;margin-bottom:8px}
+.note p{font-size:13px;color:var(--ink-2);max-width:82ch}
+.note p+p{margin-top:9px}
+.note code{font:400 12px ui-monospace,monospace;background:var(--bg);border:1px solid var(--line);padding:1px 4px}
+:focus-visible{outline:2px solid var(--a);outline-offset:3px}
+</style>
+</head>
+<body>
+<div class="w">
+  <h1>RiskMesh investigator console</h1>
+  <p class="lede"><b>Direction B (Mosaic) is the selected direction.</b> The four console tabs are
+  built out below. Every figure is read from the frozen held-out run: <b>expected loss 6,000.00</b>
+  against the binary policy's 9,392.92, <b>zero escalated false positives</b>, 6 of 31 components
+  referred to review. The three original alternates are kept underneath for reference.</p>
+
+  <div class="grid">
+    <a class="card" href="b-mosaic.html">
+      <div class="sw"><i style="background:#fff"></i><i style="background:#5c6670"></i><i style="background:#8f5400"></i><i style="background:#d81f26"></i></div>
+      <h2>Control Center</h2>
+      <div class="world">Locked · first-glance summary</div>
+      <p>Triage hero tiles, the ranked component queue, the ring-versus-household panel that
+      explains the review band, and the cost model row.</p>
+    </a>
+    <a class="card" href="investigator.html">
+      <div class="sw"><i style="background:#fff"></i><i style="background:#5c6670"></i><i style="background:#8f5400"></i><i style="background:#d81f26"></i></div>
+      <h2>Investigator</h2>
+      <div class="world">Ring details · polished</div>
+      <p>Component picker, the full ring graph, score decomposition summing to 0.5246, and the
+      raw / normalised / weight / contribution evidence ledger per signal.</p>
+    </a>
+    <a class="card" href="threshold-cost.html">
+      <div class="sw"><i style="background:#fff"></i><i style="background:#5c6670"></i><i style="background:#8f5400"></i><i style="background:#d81f26"></i></div>
+      <h2>Threshold &amp; Cost</h2>
+      <div class="world">Reference view</div>
+      <p>Cost derivation traceable to dataset exposure, the expected-loss ladder, the 2,992-band
+      search with 2,159 refused, and the D3 sensitivity correction.</p>
+    </a>
+    <a class="card" href="benchmark.html">
+      <div class="sw"><i style="background:#fff"></i><i style="background:#5c6670"></i><i style="background:#8f5400"></i><i style="background:#d81f26"></i></div>
+      <h2>Benchmark</h2>
+      <div class="world">Reference view</div>
+      <p>Confusion matrix, split protocol, the six-check non-triviality panel, single-signal
+      shortcut F1s, and the weight search with three gate refusals.</p>
+    </a>
+  </div>
+
+  <h1 style="font-size:19px;margin-top:44px">Original four directions</h1>
+  <p class="lede">Kept for reference. Mosaic was chosen and refined; the other three are unchanged.</p>
+
+  <div class="grid">
+    <a class="card" href="a-assay.html">
+      <div class="sw"><i style="background:#eef0ef"></i><i style="background:#03855c"></i><i style="background:#6b4fa8"></i><i style="background:#c0271d"></i></div>
+      <h2>A · Assay</h2>
+      <div class="world">Clinical diagnostic report</div>
+      <p>Reference ranges, flagged analytes, specimen IDs. The three tiers read as in range,
+      indeterminate, out of range. A lab report never treats the patient; it reports to someone who decides.</p>
+      <dl class="f">
+        <dt>Ground</dt><dd>Light, cool paper</dd>
+        <dt>Type</dt><dd>Libre Franklin + mono</dd>
+        <dt>Density</dt><dd>Medium-high</dd>
+        <dt>Graph</dt><dd>Hub and spoke, ruled</dd>
+      </dl>
+    </a>
+
+    <a class="card" href="b-mosaic.html">
+      <div class="sw"><i style="background:#fff"></i><i style="background:#5c6670"></i><i style="background:#b06800"></i><i style="background:#d81f26"></i></div>
+      <h2>B · Mosaic</h2>
+      <div class="world">Japanese high-density web</div>
+      <p>Hairline module mosaic, red header tabs, tiny type, nothing wasted. Everything on one
+      screen at once, including the ring-versus-household comparison that explains the review band.</p>
+      <dl class="f">
+        <dt>Ground</dt><dd>White, hairline modules</dd>
+        <dt>Type</dt><dd>Barlow Semi Condensed</dd>
+        <dt>Density</dt><dd>Maximum</dd>
+        <dt>Graph</dt><dd>Compact, inline</dd>
+      </dl>
+    </a>
+
+    <a class="card" href="c-cyclorama.html">
+      <div class="sw"><i style="background:#0e131c"></i><i style="background:#4b8fd4"></i><i style="background:#e0a34a"></i><i style="background:#f2506b"></i></div>
+      <h2>C · Cyclorama</h2>
+      <div class="world">Stage lighting, night to day</div>
+      <p>The triage bands are horizon bands of light. Queue rows carry a lamp that casts onto the
+      row beside it. Fewer things per screen, each one larger and more deliberate.</p>
+      <dl class="f">
+        <dt>Ground</dt><dd>Dark, graded</dd>
+        <dt>Type</dt><dd>Archivo, wide-tracked caps</dd>
+        <dt>Density</dt><dd>Low-medium</dd>
+        <dt>Graph</dt><dd>Large, centred</dd>
+      </dl>
+    </a>
+
+    <a class="card" href="d-bench.html">
+      <div class="sw"><i style="background:#26292d"></i><i style="background:#d6d2ca"></i><i style="background:#ffb340"></i><i style="background:#ff5c1a"></i></div>
+      <h2>D · Bench</h2>
+      <div class="world">Creator hardware instrument</div>
+      <p>Gunmetal chassis, keycap dispositions, an amber status screen showing one value at a time,
+      and detent meters for each signal. One safety-orange key commits. Buttons physically travel.</p>
+      <dl class="f">
+        <dt>Ground</dt><dd>Dark chassis, bone caps</dd>
+        <dt>Type</dt><dd>Spline Sans Mono</dd>
+        <dt>Density</dt><dd>Medium</dd>
+        <dt>Graph</dt><dd>Wired, keycap nodes</dd>
+      </dl>
+    </a>
+  </div>
+
+  <div class="note">
+    <h3>What is real and what is not</h3>
+    <p><b>Real:</b> every component ID, score, account count, transaction count, exposure figure and
+    signal value is read from <code>out/components.csv</code> on the frozen test split. The graph in
+    each mockup draws the actual nine accounts of <code>ring02</code> against their shared device
+    <code>d_ring02</code>. Signal names, weights, contributions and detail strings come from
+    <code>score_component()</code> as it exists today, including <code>ip_sharing</code> sitting at
+    weight zero per RISK-001.</p>
+    <p><b>Not real:</b> nothing is wired. These are static files. Selection, hover and button states
+    are styled but inert, and the audit-trail line is a label rather than a behaviour.</p>
+    <p><b>Not yet drawn:</b> Threshold &amp; Cost Analysis and Evaluation / Benchmark are named in
+    the navigation but not built. The PRD scopes them as functional reference views rather than
+    polished screens, so they are worth designing once a direction is chosen.</p>
+  </div>
+</div>
+</body>
+</html>

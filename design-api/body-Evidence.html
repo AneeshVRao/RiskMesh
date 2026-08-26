@@ -1,0 +1,175 @@
+<div class="pg">
+  <div class="hd">
+    <div class="hd1"><span class="mk">RISK<i>MESH</i></span>
+      <span class="ti">GET /rings/{id}/evidence &middot; response shape</span>
+      <span class="mt">walked against the Investigator tab</span></div>
+    <div class="hd2">
+      <div>Blocks <b>7</b></div>
+      <div>Panels served <b>6</b></div>
+      <div>From CSV <b>5</b></div>
+      <div>Derived <b>2</b></div>
+    </div>
+  </div>
+
+  <div class="mod">
+    <h2><span class="tab">Panel &rarr; block</span><span class="rest">every region of the Investigator screen</span></h2>
+    <table>
+      <thead><tr><th>Investigator region</th><th>JSON block</th><th>Source</th></tr></thead>
+      <tbody>
+        <tr><td class="why">Top rail &mdash; id, ring, score, disposition, accounts, txns, exposure, rank</td>
+          <td class="m">summary</td><td class="m">components.csv row</td></tr>
+        <tr><td class="why">Score decomposition bar + legend</td>
+          <td class="m">decomposition.signals[]</td><td class="m">csv + weights</td></tr>
+        <tr><td class="why">Evidence ledger &mdash; raw / norm / weight / contrib + detail</td>
+          <td class="m">decomposition.signals[]</td><td class="m">same array</td></tr>
+        <tr><td class="why">Ring cluster graph &mdash; accounts, device, instrument, merchant</td>
+          <td class="m">graph.nodes / graph.edges</td><td class="m">graph_edges.json</td></tr>
+        <tr><td class="why">Ring vs household comparison panel</td>
+          <td class="m">comparison.subject / .peer</td><td class="m">2 csv rows</td></tr>
+        <tr><td class="why">Audit trail block</td>
+          <td class="m">audit[]</td><td class="m">audit_log.jsonl</td></tr>
+      </tbody>
+    </table>
+    <p class="cap">One request fills the whole screen. The decomposition bar and the ledger table are
+    the <b>same array</b> rendered twice &mdash; the client must never receive two lists that could
+    disagree.</p>
+  </div>
+
+  <div class="mod">
+    <h2><span class="tab">Response</span><span class="rest">c_a00533, real values</span></h2>
+<pre>{
+  <span class="k">"component_id"</span>: <b>"c_a00533"</b>,
+  <span class="k">"config_fingerprint"</span>: <b>"7c1e4fb2b329796c"</b>,   <span class="c">// echoed on every response</span>
+  <span class="k">"split"</span>: <b>"test"</b>,
+  <span class="k">"score"</span>: <b>0.5246</b>,
+  <span class="k">"action"</span>: <b>"escalate"</b>,               <span class="c">// derived: band compare</span>
+  <span class="k">"band"</span>: { <span class="k">"t_lo"</span>: 0.23, <span class="k">"t_hi"</span>: 0.33 },
+  <span class="k">"rank"</span>: { <span class="k">"position"</span>: 1, <span class="k">"of"</span>: 31 },
+
+  <span class="k">"summary"</span>: {
+    <span class="k">"size"</span>: 9, <span class="k">"n_txns"</span>: 101, <span class="k">"exposure"</span>: 101761.83,
+    <span class="k">"ring_id"</span>: <b>"ring02"</b>, <span class="k">"is_positive"</span>: true, <span class="k">"has_family"</span>: false
+  },
+
+  <span class="k">"decomposition"</span>: {
+    <span class="k">"score"</span>: 0.5246,
+    <span class="k">"headroom"</span>: 0.4754,             <span class="c">// 1 - score, for the bar's empty tail</span>
+    <span class="k">"signals"</span>: [                    <span class="c">// ordered by contribution desc</span>
+      {
+        <span class="k">"name"</span>: <b>"device_sharing"</b>,
+        <span class="k">"raw"</span>: 9,                   <span class="c">// device_sharing_raw</span>
+        <span class="k">"normalized"</span>: 0.7271,        <span class="c">// device_sharing_norm</span>
+        <span class="k">"weight"</span>: 0.2444,            <span class="c">// weight_policy.json A_baseline</span>
+        <span class="k">"contribution"</span>: 0.1777,      <span class="c">// DERIVED: round(w * norm, 6)</span>
+        <span class="k">"detail"</span>: <b>"9 accounts share device d_ring02"</b>,
+        <span class="k">"weighted"</span>: true
+      },
+      <span class="c">/* temporal_burst, account_newness, failure_refund_rate,
+         instrument_sharing, merchant_concentration ... */</span>
+      {
+        <span class="k">"name"</span>: <b>"ip_sharing"</b>,
+        <span class="k">"raw"</span>: 1, <span class="k">"normalized"</span>: 0.0,
+        <span class="k">"weight"</span>: 0.0, <span class="k">"contribution"</span>: 0.0,
+        <span class="k">"detail"</span>: <b>"1 accounts share IP ip_ring02a"</b>,
+        <span class="k">"weighted"</span>: <b>false</b>,            <span class="c">// renders greyed in the ledger</span>
+        <span class="k">"note"</span>: <b>"RISK-001"</b>            <span class="c">// zero-weighted, not omitted</span>
+      }
+    ]
+  },
+
+  <span class="k">"graph"</span>: {
+    <span class="k">"nodes"</span>: [
+      { <span class="k">"id"</span>: <b>"a00533"</b>,   <span class="k">"type"</span>: <b>"account"</b> },
+      { <span class="k">"id"</span>: <b>"d_ring02"</b>, <span class="k">"type"</span>: <b>"device"</b>,     <span class="k">"degree"</span>: 9 },
+      { <span class="k">"id"</span>: <b>"pi_ring02"</b>,<span class="k">"type"</span>: <b>"instrument"</b>, <span class="k">"degree"</span>: 2 },
+      { <span class="k">"id"</span>: <b>"m000"</b>,     <span class="k">"type"</span>: <b>"merchant"</b>,   <span class="k">"burst"</span>: <b>"6/9"</b> }
+    ],
+    <span class="k">"edges"</span>: [
+      { <span class="k">"from"</span>: <b>"a00533"</b>, <span class="k">"to"</span>: <b>"d_ring02"</b>, <span class="k">"kind"</span>: <b>"device"</b> }
+    ]
+  },
+
+  <span class="k">"comparison"</span>: {
+    <span class="k">"subject"</span>: { <span class="k">"component_id"</span>: <b>"c_a00533"</b>, <span class="k">"label"</span>: <b>"ring02"</b>,
+                  <span class="k">"score"</span>: 0.5246, <span class="k">"action"</span>: <b>"escalate"</b>,
+                  <span class="k">"accounts"</span>: 9, <span class="k">"median_account_age_days"</span>: 10,
+                  <span class="k">"burst"</span>: <b>"6/9"</b>, <span class="k">"distinct_ips"</span>: 9,
+                  <span class="k">"shared_instruments"</span>: 2, <span class="k">"refund_rate"</span>: 0.25 },
+    <span class="k">"peer"</span>:    { <span class="k">"component_id"</span>: <b>"c_a00727"</b>, <span class="k">"label"</span>: <b>"fam11"</b>,
+                  <span class="k">"score"</span>: 0.3201, <span class="k">"action"</span>: <b>"review"</b>,
+                  <span class="k">"accounts"</span>: 6, <span class="k">"median_account_age_days"</span>: 240,
+                  <span class="k">"burst"</span>: <b>"2/6"</b>, <span class="k">"distinct_ips"</span>: 1,
+                  <span class="k">"shared_instruments"</span>: 6, <span class="k">"refund_rate"</span>: 0.35 },
+    <span class="k">"peer_rule"</span>: <b>"nearest_opposite_label_prefer_family"</b>,   <span class="c">// frozen, see below</span>
+    <span class="k">"separating_fields"</span>: [<b>"median_account_age_days"</b>, <b>"burst"</b>, <b>"distinct_ips"</b>]
+  },
+
+  <span class="k">"audit"</span>: [ <span class="c">/* newest first, see the Review artboard */</span> ]
+}</pre>
+  </div>
+
+  <div class="mod q">
+    <h2><span class="tab">Three shape decisions</span><span class="rest">and what each prevents</span></h2>
+    <table>
+      <thead><tr><th>Decision</th><th>Reason</th></tr></thead>
+      <tbody>
+        <tr><td class="why"><b>signals is an array, not an object</b></td>
+          <td class="why">The ledger and the bar are both <b>ordered by contribution</b>. An object
+            makes order a client concern and invites two panels disagreeing. The server owns the order.</td></tr>
+        <tr><td class="why"><b>ip_sharing is present with weighted:false</b></td>
+          <td class="why">Never filtered out. The zero-weighted signal is a <b>finding</b>
+            (RISK-001), not an absence &mdash; the UI greys it, and dropping it server-side would
+            hide the most interesting thing on the panel.</td></tr>
+        <tr><td class="why"><b>separating_fields is server-computed</b></td>
+          <td class="why">The comparison panel highlights exactly the fields that differ
+            materially. Deciding that client-side would embed analysis in CSS.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="mod">
+    <h2><span class="tab">peer_rule &middot; frozen</span><span class="rest">a documented heuristic, not an implicit default</span></h2>
+    <p class="lede"><b>Rule: nearest-scoring opposite-label component within the same split,
+    preferring hard negatives.</b> This is a <b>heuristic choice</b>, not a derived optimum
+    &mdash; recorded here for the same reason every other choice in this project is recorded, so
+    a reader can disagree with it explicitly rather than discover it by reading code.</p>
+    <table>
+      <thead><tr><th>#</th><th>Step</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td class="m">1</td><td class="why">Same <code>split</code> as the subject</td>
+          <td class="why">Never compare across the split boundary.</td></tr>
+        <tr><td class="m">2</td><td class="why">Opposite <code>is_positive</code>; exclude self</td>
+          <td class="why">The panel's whole point is ring versus not-ring.</td></tr>
+        <tr><td class="m">3</td><td class="why"><b>Prefer <code>has_family == 1</code></b> if any exist</td>
+          <td class="why">The panel is &ldquo;ring vs <b>household</b>&rdquo;. A generic background
+            negative would not tell the story; the hard negative is the instructive foil. Only
+            ever binds when the peer is a negative.</td></tr>
+        <tr><td class="m">4</td><td class="why">Minimise <code>|score_subject &minus; score_peer|</code>, rounded to 9dp</td>
+          <td class="why">Nearest in score is the hardest case to tell apart. Rounding avoids
+            float-representation ties.</td></tr>
+        <tr><td class="m">5</td><td class="why"><b>Tiebreak A</b> &mdash; higher score wins</td>
+          <td class="why">Two peers equidistant above and below: prefer the harder one.</td></tr>
+        <tr><td class="m">6</td><td class="why"><b>Tiebreak B</b> &mdash; lexicographically smallest <code>component_id</code></td>
+          <td class="why">Total order. Guarantees one answer even on exact score ties, and makes
+            the result independent of row order in the CSV.</td></tr>
+      </tbody>
+    </table>
+    <div class="note">
+      <span class="h">Verified against the frozen data</span><br>
+      Run over all 12 flagged test components: yields <b>c_a00533 &rarr; c_a00727</b> as the
+      mockups show, <b>zero distance ties</b> occur, and the selection is <b>identical across 50
+      shuffles</b> of the input order. Steps 5 and 6 never fire on today's data &mdash; they are
+      specified anyway, because a different seed could produce a tie and that is exactly the kind
+      of thing that should not be discovered at implementation time.
+    </div>
+    <p class="cap"><b>Known consequence:</b> all six escalated rings resolve to the same peer,
+    c_a00727 &mdash; it is the highest-scoring family negative in the split, so it is genuinely the
+    nearest foil for each of them. The comparison panel therefore shows the same household on six
+    different ring pages. That is correct under the rule and arguably desirable (one stable
+    reference point), but it is a consequence worth knowing rather than a surprise.</p>
+    <p class="cap">Because every input is a frozen artifact and the rule is a total order, the peer
+    is <b>reproducible run-to-run at the same seed</b> without needing to be precomputed. If that
+    ever stops holding, the fallback is to freeze one designated foil per flagged component into
+    <code>graph_edges.json</code>'s sibling record.</p>
+  </div>
+</div>

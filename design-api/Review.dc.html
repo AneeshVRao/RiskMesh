@@ -1,0 +1,184 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@400;500;600;700&display=swap">
+  <style>
+:root{--bg:#fff;--fill:#f4f5f7;--fill-2:#eceef1;--line:#c9ced6;--line-2:#e3e6ea;
+--ink:#111418;--ink-2:#474e57;--ink-3:#767d87;--red:#d81f26;--amber:#8f5400;
+--quiet:#5c6670;--green:#046b4a;
+--sans:"Barlow Semi Condensed",ui-sans-serif,system-ui,-apple-system,sans-serif;
+--mono:ui-monospace,"Cascadia Mono","Consolas",monospace}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--fill);color:var(--ink);font:400 13px/1.4 var(--sans);
+font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+a{color:var(--red)}a:hover{color:#a8171d}
+.pg{padding:14px}
+.hd{background:var(--bg);border:1px solid var(--line);margin-bottom:10px}
+.hd1{display:flex;align-items:baseline;gap:10px;padding:7px 11px;border-bottom:1px solid var(--line-2)}
+.mk{font-weight:700;font-size:16px;letter-spacing:-.02em}
+.mk i{color:var(--red);font-style:normal}
+.hd1 .ti{font-size:13px;font-weight:600;color:var(--ink-2)}
+.hd1 .mt{margin-left:auto;font:400 11px var(--mono);color:var(--ink-3)}
+.hd2{display:flex;flex-wrap:wrap}
+.hd2 div{padding:5px 11px;border-right:1px solid var(--line-2);font-size:11px;color:var(--ink-2)}
+.hd2 b{font-family:var(--mono);color:var(--ink);font-weight:600}
+.mod{background:var(--bg);border:1px solid var(--line);margin-bottom:10px}
+.mod>h2{font-size:11px;font-weight:600;border-bottom:1px solid var(--line);display:flex;align-items:stretch}
+.mod>h2 .tab{background:var(--red);color:#fff;padding:4px 9px;white-space:nowrap}
+.mod>h2 .rest{padding:4px 9px;color:var(--ink-3);font-weight:400;font-family:var(--mono);
+font-size:10px;align-self:center;margin-left:auto}
+.mod.q>h2 .tab{background:var(--ink)}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-3);font-weight:600;
+text-align:left;padding:4px 8px;background:var(--fill);border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:5px 8px;border-bottom:1px solid var(--line-2);vertical-align:top}
+td.m{font-family:var(--mono);font-size:11px;white-space:nowrap}
+.why{font-size:11px;color:var(--ink-2);line-height:1.45}
+.p{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.03em;padding:1px 5px;
+text-transform:uppercase}
+.p-r{background:var(--quiet);color:#fff}
+.p-d{background:var(--amber);color:#fff}
+.p-w{background:var(--red);color:#fff}
+.p-c{background:var(--green);color:#fff}
+.cap{font-size:11px;color:var(--ink-2);line-height:1.5;padding:7px 10px}
+.cap b{color:var(--ink)}
+.lede{font-size:12px;color:var(--ink-2);line-height:1.5;padding:8px 10px 0}
+.lede b{color:var(--ink)}
+pre{font:400 11px/1.55 var(--mono);padding:9px 11px;overflow-x:auto;background:#fbfbfc;
+border-bottom:1px solid var(--line-2);color:var(--ink-2)}
+pre b{color:var(--ink);font-weight:600}
+pre .k{color:var(--red)}
+pre .c{color:var(--ink-3);font-style:italic}
+code{font:400 11px var(--mono);background:var(--fill);border:1px solid var(--line-2);padding:0 4px}
+.note{background:#fdf3e0;border-bottom:1px solid var(--line-2);padding:8px 10px;font-size:11px;
+color:var(--ink-2);line-height:1.5}
+.note .h{display:inline-block;font-weight:700;background:var(--amber);color:#fff;text-transform:uppercase;
+letter-spacing:.04em;font-size:10px;padding:1px 5px;margin-bottom:5px}
+.note b{color:var(--ink)}
+  </style>
+</helmet>
+<div class="pg">
+  <div class="hd">
+    <div class="hd1"><span class="mk">RISK<i>MESH</i></span>
+      <span class="ti">POST /rings/{id}/review &middot; audit trail &amp; storage</span>
+      <span class="mt">the only writer in the system</span></div>
+    <div class="hd2">
+      <div>Mutates frozen data <b>never</b></div>
+      <div>Blocks a payment <b>never</b></div>
+      <div>Store <b>JSONL</b></div>
+      <div>Writers <b>1</b></div>
+      <div>New deps <b>0</b></div>
+    </div>
+  </div>
+
+  <div class="mod">
+    <h2><span class="tab">What it does</span><span class="rest">and the three things it does not</span></h2>
+    <p class="lede">It appends one line to an audit log and returns it. That is the whole endpoint.
+    The UI already says <b>&ldquo;written to audit trail &middot; no auto-block&rdquo;</b> under
+    the action bar, and the backend must make that literally true rather than aspirational.</p>
+    <table>
+      <thead><tr><th>Does</th><th>Does not</th></tr></thead>
+      <tbody>
+        <tr><td class="why">Append a timestamped record with an evidence snapshot</td>
+          <td class="why"><b>Not</b> change the component's score, band, or action</td></tr>
+        <tr><td class="why">Record whether the analyst agreed with the system</td>
+          <td class="why"><b>Not</b> block, decline, or hold any payment</td></tr>
+        <tr><td class="why">Return the written record for optimistic UI append</td>
+          <td class="why"><b>Not</b> write to any file under <code>out/</code> that the pipeline owns</td></tr>
+      </tbody>
+    </table>
+    <p class="cap">An escalation <b>opens a case</b>. Nothing downstream of this service consumes
+    the log; it exists so a decision made today stays explicable after the scorer changes.</p>
+  </div>
+
+  <div class="mod">
+    <h2><span class="tab">Request &amp; record</span><span class="rest">out/audit_log.jsonl, one line per action</span></h2>
+<pre><span class="c">// POST /rings/c_a00533/review</span>
+{ <span class="k">"action"</span>: <b>"escalate"</b>,        <span class="c">// allow | watch | review | escalate</span>
+  <span class="k">"analyst"</span>: <b>"demo"</b>,
+  <span class="k">"note"</span>: <b>null</b> }
+
+<span class="c">// appended verbatim to out/audit_log.jsonl, and returned 201</span>
+{
+  <span class="k">"ts"</span>: <b>"2026-08-26T14:03:48Z"</b>,         <span class="c">// UTC, ISO-8601</span>
+  <span class="k">"component_id"</span>: <b>"c_a00533"</b>,
+  <span class="k">"analyst_action"</span>: <b>"escalate"</b>,
+  <span class="k">"analyst"</span>: <b>"demo"</b>,
+  <span class="k">"note"</span>: <b>null</b>,
+
+  <span class="c">// --- what the system said at decision time -----------------</span>
+  <span class="k">"score"</span>: 0.5246,
+  <span class="k">"band"</span>: { <span class="k">"t_lo"</span>: 0.23, <span class="k">"t_hi"</span>: 0.33 },
+  <span class="k">"system_action"</span>: <b>"escalate"</b>,
+  <span class="k">"agreed_with_system"</span>: <b>true</b>,        <span class="c">// the one derived field</span>
+  <span class="k">"config_fingerprint"</span>: <b>"7c1e4fb2b329796c"</b>,
+
+  <span class="c">// --- evidence as it stood, not a pointer to it -------------</span>
+  <span class="k">"evidence_sha256"</span>: <b>"a3f1c8..."</b>,
+  <span class="k">"evidence_snapshot"</span>: {
+    <span class="k">"signals"</span>: [ <span class="c">/* the decomposition array, verbatim */</span> ],
+    <span class="k">"summary"</span>: { <span class="k">"size"</span>: 9, <span class="k">"n_txns"</span>: 101, <span class="k">"exposure"</span>: 101761.83 }
+  }
+}</pre>
+    <p class="cap">The snapshot is <b>embedded, not referenced</b>. A foreign key into
+    components.csv would silently change meaning the next time the pipeline re-freezes; the point
+    of an audit trail is that it still says what the analyst actually saw. The
+    <code>evidence_sha256</code> lets you detect that the live evidence has since moved without
+    having to diff the whole block.</p>
+  </div>
+
+  <div class="mod q">
+    <h2><span class="tab">Storage</span><span class="rest">recommendation: append-only JSONL</span></h2>
+    <table>
+      <thead><tr><th>Consideration</th><th>JSONL</th><th>SQLite</th></tr></thead>
+      <tbody>
+        <tr><td class="why">Access pattern &mdash; append, then tail-N per component</td>
+          <td class="why"><b>Native.</b> Append is one <code>write()</code>.</td>
+          <td class="why">Works, but the index earns nothing at this row count.</td></tr>
+        <tr><td class="why">Nested evidence_snapshot</td>
+          <td class="why"><b>Natural.</b> It is already JSON.</td>
+          <td class="why">A TEXT column holding JSON &mdash; SQLite as a filesystem.</td></tr>
+        <tr><td class="why">Fits the project's existing discipline</td>
+          <td class="why"><b>Yes.</b> Everything else is JSON/CSV on disk: greppable, diffable, committable.</td>
+          <td class="why">Introduces the one opaque binary in an otherwise inspectable tree.</td></tr>
+        <tr><td class="why">Dependencies &amp; lifecycle</td>
+          <td class="why"><b>stdlib json.</b> No connection, no migration, no schema DDL.</td>
+          <td class="why">stdlib too, but adds connection handling and a schema to version.</td></tr>
+        <tr><td class="why">Concurrent writers</td>
+          <td class="why">One process, single append. Fine.</td>
+          <td class="why"><b>Wins here</b> &mdash; but there is only ever one writer.</td></tr>
+      </tbody>
+    </table>
+    <p class="cap"><b>Recommendation: <code>out/audit_log.jsonl</code>, append-only.</b>
+    A demo writes tens of records, one process, appends only, and reads them back newest-first for
+    one component. Every advantage SQLite has over a flat file &mdash; indexes, transactions,
+    concurrent writers, query planning &mdash; is an advantage over a problem this service does not
+    have. The flat file is also the only option a judge can <code>cat</code>.</p>
+    <div class="note">
+      <span class="h">When this flips</span><br>
+      Switch to SQLite the moment any of these becomes true: <b>more than one writer process</b>,
+      a need to <b>query across components</b> (&ldquo;every escalation last week&rdquo;), or
+      <b>mutable records</b> (edit or retract a decision). None are in Tier 1 scope. Writing the
+      reader in <code>audit.py</code> behind two functions &mdash; <code>append(record)</code> and
+      <code>tail(component_id, n)</code> &mdash; keeps that swap to a single file.
+    </div>
+  </div>
+
+  <div class="mod">
+    <h2><span class="tab">Durability</span><span class="rest">honest about what append-only guarantees</span></h2>
+    <p class="cap">Open in <code>"a"</code> mode, write <b>one</b> <code>json.dumps()</code> line
+    with no embedded newlines, flush. A torn write can only ever corrupt the final line, and the
+    reader skips unparsable lines rather than failing the request &mdash; so a crash mid-append
+    costs at most the record being written, never the history. That is the correct trade at demo
+    scale, and it is a deliberate ceiling rather than an oversight.</p>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
