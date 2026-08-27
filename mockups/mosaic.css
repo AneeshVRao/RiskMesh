@@ -140,3 +140,11 @@ button.go:hover{background:#b5171d;border-color:#b5171d}
 .cmp dt{color:var(--ink-3)}
 .cmp dd{font-family:var(--mono);font-weight:600;color:var(--ink-2)}
 .cmp .hi{color:var(--red)}
+
+/* live-API status, appended to the top rail by api.js */
+.apist{margin-left:12px;font:600 10px/1 var(--sans);letter-spacing:.03em;
+  text-transform:uppercase;padding:3px 6px;white-space:nowrap;align-self:center}
+.apist.wait{background:var(--fill-2);color:var(--ink-3)}
+.apist.live{background:#046b4a;color:#fff}
+.apist.down{background:var(--amber);color:#fff;text-transform:none;letter-spacing:0;
+  font-weight:500}

@@ -65,7 +65,7 @@
 .trail b{color:var(--ink)}
 </style>
 </head>
-<body data-palette="#5c6670,#8f5400,#d81f26">
+<body data-palette="#5c6670,#8f5400,#d81f26" data-page="investigator">
 <div class="wrap">
 
   <div class="rail">
@@ -81,21 +81,21 @@
       <div class="meta">seed 20260824 · cfg 7c1e4fb2b329796c<br>A_baseline · bands 0.23 / 0.33 · test days 24-30</div>
     </div>
     <div class="rail-2">
-      <div>Component <b>c_a00533</b></div>
+      <div>Component <b data-b="ev.component_id">c_a00533</b></div>
       <div>Ring <b>ring02</b></div>
-      <div>Score <b>0.5246</b></div>
+      <div>Score <b data-b="ev.score" data-f="f4">0.5246</b></div>
       <div>Disposition <b>ESCALATE</b></div>
-      <div>Accounts <b>9</b></div>
-      <div>Transactions <b>101</b></div>
-      <div>Exposure <b>101,761.83</b></div>
-      <div class="ok">Rank <b>1 of 31</b></div>
+      <div>Accounts <b data-b="ev.summary.size">9</b></div>
+      <div>Transactions <b data-b="ev.summary.n_txns">101</b></div>
+      <div>Exposure <b data-b="ev.summary.exposure" data-f="money">101,761.83</b></div>
+      <div class="ok">Rank <b data-b="ev.rank.position">1</b> of <b data-b="ev.rank.of">31</b></div>
     </div>
   </div>
 
   <div class="mosaic">
 
     <section class="mod c3">
-      <h2><span class="tab">Components</span><span class="rest">12 flagged</span></h2>
+      <h2><span class="tab">Components</span><span class="rest"><span data-b="flagged">12</span> flagged</span></h2>
       <div class="pick">
         <div class="hdg">Escalate · 6</div>
         <a href="#" aria-current="true">
@@ -213,7 +213,7 @@
         <thead><tr>
           <th>Signal</th><th>Raw</th><th>Norm</th><th>Weight</th><th>Contrib</th>
         </tr></thead>
-        <tbody>
+        <tbody id="ledger-body">
           <tr><td><span class="sw" style="background:#d81f26"></span><span class="nm">device_sharing</span>
             <div class="dt">9 accounts share d_ring02</div></td>
             <td>9</td><td>0.7273</td><td>0.2444</td><td>0.1778</td></tr>
@@ -236,7 +236,7 @@
             <div class="dt">zero-weighted — RISK-001</div></td>
             <td>1</td><td>0.0000</td><td>0.0000</td><td>0.0000</td></tr>
         </tbody>
-        <tfoot><tr><td>Component score</td><td colspan="3"></td><td>0.5246</td></tr></tfoot>
+        <tfoot><tr><td>Component score</td><td colspan="3"></td><td id="ledger-total">0.5246</td></tr></tfoot>
       </table>
       <p class="cap"><b>ip_sharing carries weight zero.</b> It scored higher on family clusters
       than on rings — households share a router, rings do not. Rather than let a mis-signed
@@ -247,9 +247,9 @@
     <section class="mod q c7">
       <h2><span class="tab">Ring vs household</span><span class="rest">why this one escalates and that one waits</span></h2>
       <div class="split2">
-        <div>
+        <div data-cmp="subject">
           <h3 style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px;color:var(--ink-2)">
-            <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--red);margin-right:5px"></span>c_a00533 · ring02 · escalate 0.5246</h3>
+            <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--red);margin-right:5px"></span><span class="cmph">c_a00533 · ring02 · escalate 0.5246</span></h3>
           <dl class="kv">
             <dt>Accounts</dt><dd>9</dd>
             <dt>Median account age</dt><dd class="hi">10 d</dd>
@@ -260,9 +260,9 @@
             <dt>Exposure</dt><dd>101,761.83</dd>
           </dl>
         </div>
-        <div>
+        <div data-cmp="peer">
           <h3 style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px;color:var(--ink-2)">
-            <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--amber);margin-right:5px"></span>c_a00727 · family · review 0.3201</h3>
+            <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--amber);margin-right:5px"></span><span class="cmph">c_a00727 · family · review 0.3201</span></h3>
           <dl class="kv">
             <dt>Accounts</dt><dd>6</dd>
             <dt>Median account age</dt><dd class="lo">240 d</dd>
@@ -297,5 +297,6 @@
 
   </div>
 </div>
+<script src="api.js"></script>
 </body>
 </html>

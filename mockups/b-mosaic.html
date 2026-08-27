@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="mosaic.css">
 </head>
-<body data-palette="#5c6670,#8f5400,#d81f26">
+<body data-palette="#5c6670,#8f5400,#d81f26" data-page="control-center">
 <div class="wrap">
 
   <div class="rail">
@@ -25,15 +25,15 @@
       <div class="meta">seed 20260824 · cfg 7c1e4fb2b329796c<br>A_baseline · bands 0.23 / 0.33 · test days 24-30</div>
     </div>
     <div class="rail-2">
-      <div>Components <b>31</b></div>
+      <div>Components <b data-b="total">31</b></div>
       <div>Rings <b>8</b></div>
       <div>Negatives <b>23</b></div>
       <div>Households <b>8</b></div>
-      <div>Expected loss <b>6,000.00</b></div>
-      <div>Binary policy <b>9,392.92</b></div>
-      <div class="ok">False escalations <b>0</b></div>
-      <div class="ok">Rings recovered <b>8/8</b></div>
-      <div>Review rate <b>19.35%</b></div>
+      <div>Expected loss <b data-b="m.cost.expected_loss" data-f="money">6,000.00</b></div>
+      <div>Binary policy <b data-b="m.cost.binary_baseline" data-f="money">9,392.92</b></div>
+      <div class="ok">False escalations <b data-b="m.quality.escalated_false_positives">0</b></div>
+      <div class="ok">Rings recovered <b data-b="m.quality.rings_recovered">8</b>/<b data-b="m.quality.rings_in_test">8</b></div>
+      <div>Review rate <b data-b="m.triage.review_rate" data-f="pct2">19.35%</b></div>
     </div>
   </div>
 
@@ -45,13 +45,13 @@
       flagged as a ring <b>was</b> a ring — the borderline cases, mostly family households, went to
       an analyst instead of a customer.</p>
       <dl class="figs hero">
-        <div><dt>Escalate</dt><dd class="red">6</dd><div class="sub">all 6 are true rings</div></div>
-        <div><dt>Review</dt><dd class="amber">6</dd><div class="sub">4 households, 2 rings</div></div>
-        <div><dt>Allow</dt><dd>19</dd><div class="sub">0 rings missed</div></div>
+        <div><dt>Escalate</dt><dd class="red" data-b="m.triage.escalate">6</dd><div class="sub" data-b="m.narration.escalate">all 6 are true rings</div></div>
+        <div><dt>Review</dt><dd class="amber" data-b="m.triage.review">6</dd><div class="sub" data-b="m.narration.review">4 households, 2 rings</div></div>
+        <div><dt>Allow</dt><dd data-b="m.triage.allow">19</dd><div class="sub" data-b="m.narration.allow">0 rings missed</div></div>
       </dl>
       <dl class="figs meta">
-        <div><dt>Expected loss</dt><dd>6,000.00</dd><div class="sub">was 9,392.92 binary</div></div>
-        <div><dt>Saved</dt><dd class="good">3,392.92</dd><div class="sub">36.1% lower</div></div>
+        <div><dt>Expected loss</dt><dd data-b="m.cost.expected_loss" data-f="money">6,000.00</dd><div class="sub">was <span data-b="m.cost.binary_baseline" data-f="money">9,392.92</span> binary</div></div>
+        <div><dt>Saved</dt><dd class="good" data-b="saved" data-f="money">3,392.92</dd><div class="sub"><span data-b="savedPct" data-f="pct1">36.1%</span> lower</div></div>
       </dl>
       <div class="bands">
         <div class="bandbar">
@@ -59,7 +59,7 @@
           <i class="b-rev"><span>REVIEW · 6</span></i>
           <i class="b-esc"><span>ESCALATE · 6</span></i>
         </div>
-        <div class="bandnote"><span>score 0.000</span><span>t_lo 0.23</span><span>t_hi 0.33</span><span>1.000</span></div>
+        <div class="bandnote"><span>score 0.000</span><span>t_lo <span data-b="m.band.t_lo">0.23</span></span><span>t_hi <span data-b="m.band.t_hi">0.33</span></span><span>1.000</span></div>
       </div>
     </section>
 
@@ -102,7 +102,7 @@
           <th>Component</th><th>Band</th><th class="r">Score</th><th class="r">Acc</th>
           <th class="r">Txn</th><th class="r">Exposure</th><th>Label</th>
         </tr></thead>
-        <tbody>
+        <tbody id="queue-body">
           <tr aria-selected="true"><td class="id">c_a00533</td><td><span class="tag t-e"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3z"/><path d="M12 11v3"/></svg>Esc</span></td><td class="r sc">0.5246</td><td class="r">9</td><td class="r">101</td><td class="r">101,761.83</td><td>ring02</td></tr>
           <tr><td class="id">c_a00664</td><td><span class="tag t-e"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3z"/><path d="M12 11v3"/></svg>Esc</span></td><td class="r sc">0.4918</td><td class="r">8</td><td class="r">80</td><td class="r">62,732.04</td><td>ring23</td></tr>
           <tr><td class="id">c_a00576</td><td><span class="tag t-e"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3z"/><path d="M12 11v3"/></svg>Esc</span></td><td class="r sc">0.4356</td><td class="r">8</td><td class="r">84</td><td class="r">93,358.09</td><td>ring08</td></tr>
@@ -180,17 +180,18 @@
     <section class="mod q c12">
       <h2><span class="tab">Cost model</span><span class="rest">dataset-derived, INR</span></h2>
       <dl class="figs">
-        <div><dt>Manual review</dt><dd>500.00</dd><div class="sub">20 analyst-min @ 1500/hr</div></div>
-        <div><dt>False negative</dt><dd>74,645.29</dd><div class="sub">median ring exposure</div></div>
-        <div><dt>False positive</dt><dd>848.23</dd><div class="sub">review + 2% friction</div></div>
-        <div><dt>FN : FP ratio</dt><dd>88 : 1</dd><div class="sub">drives a low threshold</div></div>
-        <div><dt>Flag-everything</dt><dd>35,009.29</dd><div class="sub">100% review rate</div></div>
-        <div><dt>This policy</dt><dd class="good">6,000.00</dd><div class="sub">19.35% review rate</div></div>
-        <div><dt>Validation loss</dt><dd>4,500.00</dd><div class="sub">held-out is 33% higher</div></div>
+        <div><dt>Manual review</dt><dd data-b="t.costs.manual_review" data-f="money">500.00</dd><div class="sub">20 analyst-min @ 1500/hr</div></div>
+        <div><dt>False negative</dt><dd data-b="t.costs.false_negative" data-f="money">74,645.29</dd><div class="sub">median ring exposure</div></div>
+        <div><dt>False positive</dt><dd data-b="t.costs.false_positive" data-f="money">848.23</dd><div class="sub">review + 2% friction</div></div>
+        <div><dt>FN : FP ratio</dt><dd><span data-b="ratio">88</span> : 1</dd><div class="sub">drives a low threshold</div></div>
+        <div><dt>Flag-everything</dt><dd data-b="ladder.flag_everything" data-f="money">35,009.29</dd><div class="sub">100% review rate</div></div>
+        <div><dt>This policy</dt><dd class="good" data-b="ladder.three_way" data-f="money">6,000.00</dd><div class="sub">19.35% review rate</div></div>
+        <div><dt>Validation loss</dt><dd data-b="t.search.validation_expected_loss" data-f="money">4,500.00</dd><div class="sub">held-out is 33% higher</div></div>
       </dl>
     </section>
 
   </div>
 </div>
+<script src="api.js"></script>
 </body>
 </html>
