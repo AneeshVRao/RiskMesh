@@ -1030,3 +1030,124 @@ numeric token in generated text must appear in the evidence block or the
 generation is rejected; the action is never in the model's output path. Honest
 limit — that validation cannot catch a fluent misattribution of intent, which is
 the real argument for leaving the deterministic path in place.
+
+## PRD rows 63 and 70 — baselines and leave-one-group-out ablation
+
+**Written before any of it was run.** The point of this section existing first is
+that the readings below are committed in advance, so whichever way the numbers
+land they get reported as-is rather than narrated into whatever supports the
+pitch. Same discipline as `experiments/ablation_temporal_burst.json`.
+
+Two PRD acceptance criteria are unmet and this closes both:
+
+- **Row 63** wants at least *random, shared-device-only, shared-IP-only,
+  transaction-level and deterministic-ring-score* baselines. What existed was
+  `shared_device_only_baseline_f1` plus per-signal best-achievable F1 — two of
+  the five, and both as *ceilings* on design data rather than frozen held-out
+  reads, so they were not comparable with the headline 0.8000.
+- **Row 70** wants *full model vs. each feature group removed*. What existed was
+  `single_signal_max_f1` — each signal **alone**, which is the inverse of an
+  ablation — plus two drop-group weight candidates inside the weight search,
+  which is a selection procedure, not a reported ablation table.
+
+### The protocol, identical for every row in both tables
+
+Unchanged from Tier 0 and non-negotiable: **each configuration selects its own
+cutoff on validation only, freezes it, and then reads test exactly once.** Twelve
+configurations means twelve independent freezes. Reusing one configuration's
+threshold on another silently leaks the comparison — that is the whole reason
+`select_threshold()` takes validation candidates as its entire input.
+
+The two tables freeze to `out/baselines.json` and `out/ablations.json`, both
+carrying `config_fingerprint`, both added to `test_18`'s byte-for-byte list
+(9 files → 11) and to the API's one-run assertion.
+
+### Row 63 — the five baselines
+
+| Baseline | Score per component | Sees the graph? |
+|---|---|---|
+| `random` | `Random(f"{seed}:{component_id}").random()` | no |
+| `shared_device_only` | raw `device_sharing` — accounts on the most-shared device | one rule from it |
+| `shared_ip_only` | raw `ip_sharing` — accounts on the most-shared non-common IP | one rule from it |
+| `transaction_level` | fraction of the component's transactions a naive per-transaction rule flags | **no** |
+| `ring_score` | the shipped weighted score | yes, fully |
+
+`random` is keyed on the component id rather than drawn from a stream, so it does
+not depend on iteration order and reproduces byte-for-byte like everything else.
+
+`transaction_level` is the control that matters most, because it is the one a
+reviewer will ask about: *would a transaction-level model have found these
+anyway?* It flags a transaction when it is a refund or a failure, or its amount
+is at/above the 95th percentile, or the account is 30 days old or younger — raw
+fields on the transaction itself, no shared-attribute counts, no component
+structure beyond which transactions are being averaged. **The amount percentile
+is computed on train+validation transactions only**; computing it over the whole
+stream would leak the test split's amount distribution into the baseline.
+
+**Cutoffs are swept in both directions.** Not a refinement — RISK-001 is exactly
+the bug where a `>=`-only sweep reported an inverted signal as useless.
+`ip_sharing` is inverted in this benchmark (rings keep separate IPs, households
+share the router), so a one-directional sweep would report the shared-IP baseline
+as far weaker than it honestly is. The direction is chosen on validation with the
+cutoff, frozen with it, and applied to test as frozen. This makes every baseline
+*stronger*, which is the conservative direction for a claim of the form "the
+system beats these".
+
+### Row 70 — the five ablation groups
+
+The PRD names device, IP, instrument, temporal and behavioural/refund. Mapped
+onto the seven signals as a **partition** — every signal belongs to exactly one
+group, so "full minus each group in turn" covers the whole scorer and no signal
+is silently ablated twice or never:
+
+| Group | Signals removed |
+|---|---|
+| `device` | `device_sharing` |
+| `ip` | `ip_sharing` |
+| `instrument` | `instrument_sharing` |
+| `temporal` | `temporal_burst` |
+| `behavioral_refund` | `failure_refund_rate`, `account_newness`, `merchant_concentration` |
+
+The three-signal behavioural group is a grouping choice and is called one: the
+split is structural (what accounts *share*) against behavioural (how accounts
+*act*). Merchant concentration sits on the behavioural side because it describes
+where the money went, not what two accounts have in common.
+
+Weights are **renormalised** after zeroing, exactly as in the temporal ablation,
+for the reason recorded there: holding the survivors fixed and letting the total
+fall below 1.0 multiplies every score by a constant, which is a change of units
+measured against a fixed threshold, not an ablation.
+
+Ablated scorers are weighted sums on the same [0, 1] scale and in the same
+orientation as the shipped model, so they use `select_threshold()` itself — the
+audited function — rather than the baselines' value sweep. "Same protocol as the
+main model" is then literally true rather than approximately true.
+
+### Committed in advance
+
+*Expected:* `ring_score` beats `random` by a wide margin; `transaction_level`
+lands well below it, because the thesis of the whole project is that coordination
+is visible in aggregate and not in any single transaction; `shared_device_only`
+lands close behind the full model, since one rule already reaches 0.7442
+achievable F1 on design data.
+
+*Predicted no-op:* the `ip` ablation must come out **exactly identical** to the
+full model, because RISK-001 already set `ip_sharing`'s weight to 0.0 and
+renormalising a zero changes nothing. If it differs at all, that is a
+renormalisation bug to fix, not a result to report.
+
+*The readings that would be uncomfortable, and are reported anyway:*
+
+- If `shared_device_only` **matches or beats** the full model on held-out F1, the
+  graph score is not earning its complexity on this benchmark and the pitch may
+  not claim it does. `max_shared_device_baseline_f1` is already a hard gate on
+  design data; this would be the held-out counterpart.
+- If any ablation **improves** held-out F1, the shipped weight vector is not the
+  best one available. It gets reported plainly.
+
+**What will not happen either way: no weight, threshold or band is re-selected on
+the basis of these held-out reads.** That is the leakage this project spent its
+whole protocol preventing, and twelve fresh test reads is precisely the situation
+where it would be tempting. These tables are a report. Any change they argue for
+is a design decision that must be made on design splits, in a separate run, with
+its own freeze.
