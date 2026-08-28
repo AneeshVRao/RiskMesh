@@ -14,7 +14,13 @@
   font-weight:600;text-align:left;padding:4px 8px;background:var(--fill);
   border-bottom:1px solid var(--line);white-space:nowrap}
 .rt th.r{text-align:right}
-.rt td{padding:5px 8px;border-bottom:1px solid var(--line-2);vertical-align:top}
+/* mosaic.css sets white-space:nowrap on every tbody td, which is right for the
+   Control Center's dense queue of ids and scores and wrong here, where the
+   first column holds a sentence. Left alone it pushed these tables past their
+   panel and the whole page scrolled sideways. .rt td.r puts nowrap back on the
+   numeric columns, where it belongs. */
+.rt td{padding:5px 8px;border-bottom:1px solid var(--line-2);vertical-align:top;
+  white-space:normal}
 .rt td.r{text-align:right;font-family:var(--mono);white-space:nowrap}
 .rt .nm{font-weight:600;font-family:var(--mono);font-size:11px}
 .rt .why{font-size:11px;color:var(--ink-2);line-height:1.45}
@@ -211,6 +217,39 @@
     </section>
 
     <section class="mod c7">
+      <h2><span class="tab">Baselines</span><span class="rest">PRD row 63 &middot; five scorers, five frozen cutoffs, one held-out read each</span></h2>
+      <table class="rt">
+        <thead><tr><th>Baseline</th><th class="r">Graph</th><th class="r">Cutoff</th>
+          <th class="r">F1</th><th class="r">FPR</th><th class="r">Hard-neg F1</th></tr></thead>
+        <tbody id="base-body">
+          <tr><td><span class="nm">transaction_level</span><div class="why">Fraction of the component&rsquo;s transactions flagged by refund, failure, high amount, or account age &le; 30d.</div></td>
+            <td class="r">none</td><td class="r">&ge; 1.0</td><td class="r bad">1.0000</td><td class="r">0.0000</td><td class="r">1.0000</td></tr>
+          <tr><td><span class="nm">ring_score</span><div class="why">The shipped weighted score over all seven signals, at the threshold frozen in out/threshold.json.</div></td>
+            <td class="r">fully</td><td class="r">&ge; 0.23</td><td class="r">0.8000</td><td class="r">0.1739</td><td class="r">0.8000</td></tr>
+          <tr><td><span class="nm">shared_device_only</span><div class="why">Accounts on the most-shared device.</div></td>
+            <td class="r">one rule</td><td class="r">&ge; 4</td><td class="r">0.6957</td><td class="r">0.3043</td><td class="r">0.6957</td></tr>
+          <tr><td><span class="nm">shared_ip_only</span><div class="why">Accounts on the most-shared non-common IP. Inverted: households share a router, rings do not.</div></td>
+            <td class="r">one rule</td><td class="r">&le; 1</td><td class="r">0.5161</td><td class="r">0.6522</td><td class="r bad">1.0000</td></tr>
+          <tr><td><span class="nm">random</span><div class="why">A score per component from a seeded generator. The floor any real detector has to clear.</div></td>
+            <td class="r">none</td><td class="r">&ge; 0.3718</td><td class="r">0.2857</td><td class="r">0.6957</td><td class="r">0.4706</td></tr>
+        </tbody>
+      </table>
+      <p class="cap" id="base-cap"><b>The graph score does not win this table, and that is the
+      finding.</b> A transaction-level rule that never touches the graph reaches held-out F1
+      <b>1.0000</b> against the shipped scorer&rsquo;s <b>0.8000</b>. One clause carries it: every
+      ring transaction in the test split comes from an account <b>&le; 25 days</b> old, while
+      negatives run to a median of <b>316</b>. The cut was fixed at 30 days before the run and any
+      value from 20 to 180 gives the same answer, so it is not a tuned constant &mdash; the
+      generator simply makes account age a giveaway.</p>
+      <p class="cap">This is a statement about <b>the benchmark</b>, not about graph detection.
+      The non-triviality panel came within 0.0088 of catching it: <code>account_newness</code>
+      alone scores 0.9412 against a 0.95 bound, and passed. Aggregating the same field per
+      transaction rather than per component clears it entirely. Fixing it means a new ring type
+      whose accounts are not uniformly young &mdash; generator work, deliberately not done this
+      close to the deadline, and named here rather than left for a judge to find.</p>
+    </section>
+
+    <section class="mod c7">
       <h2><span class="tab">Weight search</span><span class="rest">5 candidates · 3 refused by gate</span></h2>
       <table class="rt">
         <thead><tr><th>Candidate</th><th class="r">Panel</th><th class="r">Pos&lt;maxNeg</th>
@@ -240,6 +279,39 @@
       retained.</b></p>
     </section>
 
+    <section class="mod c5">
+      <h2><span class="tab">Ablation</span><span class="rest">PRD row 70 &middot; leave one group out</span></h2>
+      <table class="rt">
+        <thead><tr><th>Removed</th><th class="r">Weight</th><th class="r">F1</th>
+          <th class="r">&Delta;</th><th class="r">Hard-neg</th></tr></thead>
+        <tbody id="abl-body">
+          <tr><td><span class="nm">&mdash; full model</span><div class="why">All seven signals &middot; threshold 0.23 &middot; rings 8/8</div></td>
+            <td class="r">&mdash;</td><td class="r">0.8000</td><td class="r">&mdash;</td><td class="r">0.8000</td></tr>
+          <tr><td><span class="nm">behavioral_refund</span><div class="why">failure_refund_rate, account_newness, merchant_concentration &middot; threshold 0.22 &middot; rings 6/8</div></td>
+            <td class="r">0.3333</td><td class="r">0.6316</td><td class="r bad">-0.1684</td><td class="r">0.6316</td></tr>
+          <tr><td><span class="nm">instrument</span><div class="why">instrument_sharing &middot; threshold 0.25 &middot; rings 8/8</div></td>
+            <td class="r">0.1444</td><td class="r">0.8889</td><td class="r good">+0.0889</td><td class="r">0.8889</td></tr>
+          <tr><td><span class="nm">device</span><div class="why">device_sharing &middot; threshold 0.18 &middot; rings 8/8</div></td>
+            <td class="r">0.2444</td><td class="r">0.8000</td><td class="r">0.0000</td><td class="r">0.8000</td></tr>
+          <tr><td><span class="nm">temporal</span><div class="why">temporal_burst &middot; threshold 0.26 &middot; rings 8/8</div></td>
+            <td class="r">0.2778</td><td class="r">0.8000</td><td class="r">0.0000</td><td class="r">0.8000</td></tr>
+          <tr><td><span class="nm">ip</span><div class="why">ip_sharing &middot; weight already 0.0 (RISK-001) &middot; identical to full by construction</div></td>
+            <td class="r">0.0000</td><td class="r">0.8000</td><td class="r">0.0000</td><td class="r">0.8000</td></tr>
+        </tbody>
+      </table>
+      <p class="cap" id="abl-cap"><b>One group of five is load-bearing.</b> Removing the behavioural
+      and refund signals costs <b>0.1684</b> F1 and two of eight rings. Removing device sharing
+      (weight <b>0.2444</b>) or temporal burst (<b>0.2778</b>) costs <b>nothing</b>, and removing
+      <code>instrument_sharing</code> <b>improves</b> held-out F1 to <b>0.8889</b> &mdash;
+      consistent with RISK-004, which already filed that signal as defective, and with the weight
+      gate refusing <code>D_drop_flagged</code>.</p>
+      <p class="cap">Each row selects its own threshold on validation and reads the held-out split
+      once; six configurations, six independent freezes. The <code>ip</code> row was predicted to
+      be an exact no-op before the run, since RISK-001 zeroed that weight, and a test asserts it.
+      <b>No weight was changed on the strength of these numbers</b> &mdash; that would be selection
+      on a held-out read, which is the one thing this protocol exists to prevent.</p>
+    </section>
+
     <section class="mod q c5">
       <h2><span class="tab">Reproducibility</span><span class="rest">one command, one read</span></h2>
       <div class="repro">
@@ -248,9 +320,11 @@
         <div>python <b>3.12.10</b> · stdlib only, zero dependencies</div>
         <div>ground truth <b>≥50% of accounts in one injected ring</b></div>
       </div>
-      <p class="cap">The held-out split <b>has been read exactly once</b>, through
-      <code>evaluate_frozen_policy()</code>, after the policy was written to disk. A second read is
-      not permitted under this record. Byte-identical output is claimed <b>within one interpreter
+      <p class="cap">Every frozen configuration reads the held-out split <b>exactly once</b>,
+      after its policy is written to disk. The shipped scorer does so through
+      <code>evaluate_frozen_policy()</code>; the five baselines and six ablations above are
+      eleven further configurations, each with its own validation-selected cutoff and its own
+      single read. A second read of any one of them is not permitted under this record. Byte-identical output is claimed <b>within one interpreter
       version only</b> — CPython guarantees <code>random()</code> across versions, but not
       <code>shuffle</code>, <code>sample</code>, or <code>gauss</code>.</p>
       <p class="cap">The ≥50% ground-truth rule is a <b>labelling convention for this benchmark, not

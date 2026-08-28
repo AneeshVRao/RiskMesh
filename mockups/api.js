@@ -584,6 +584,52 @@ async function initBenchmark() {
       </tr>`).join("");
   }
 
+  /* PRD row 63. Ordered by held-out F1, best first, so a baseline that beats
+   * the shipped scorer sits above it rather than needing to be looked for. */
+  const bb = document.getElementById("base-body");
+  if (bb && b.baselines) {
+    const rows = b.baselines.baselines;
+    const ship = rows.find((r) => r.baseline === "ring_score").held_out.f1;
+    bb.innerHTML = [...rows].sort((x, y) => y.held_out.f1 - x.held_out.f1).map((r) => {
+      const h = r.held_out, hard = r.held_out_hard_negatives_only;
+      // A challenger at or above the shipped scorer is marked, not buried.
+      const beat = r.baseline !== "ring_score" && h.f1 >= ship ? " bad" : "";
+      return `<tr><td><span class="nm">${esc(r.baseline)}</span>
+        <div class="why">${esc(r.description)}</div></td>
+        <td class="r">${esc(r.uses_graph)}</td>
+        <td class="r">${r.direction === ">=" ? "≥" : "≤"} ${esc(r.cutoff)}</td>
+        <td class="r${beat}">${F.f4(h.f1)}</td>
+        <td class="r">${F.f4(h.false_positive_rate)}</td>
+        <td class="r${hard.f1 >= 1 ? " bad" : ""}">${F.f4(hard.f1)}</td></tr>`;
+    }).join("");
+  }
+
+  /* PRD row 70. Full model first, then the groups ordered by how much removing
+   * them costs -- most damaging at the top. */
+  const ab = document.getElementById("abl-body");
+  if (ab && b.ablations) {
+    const cfgs = b.ablations.configurations;
+    const full = cfgs.find((c) => c.group === "full");
+    const rest = cfgs.filter((c) => c.group !== "full")
+      .sort((x, y) => x.delta_f1 - y.delta_f1);
+    const row = (c, isFull) => {
+      const h = c.held_out, d = c.delta_f1;
+      const cls = isFull || d === 0 ? "" : d < 0 ? " bad" : " good";
+      const why = isFull
+        ? `All seven signals · threshold ${c.threshold} · rings ${h.rings_recovered}/${h.rings_in_test}`
+        : c.identical_to_full
+          ? `${esc(c.signals_removed.join(", "))} · weight already 0.0 (RISK-001) · identical to full by construction`
+          : `${esc(c.signals_removed.join(", "))} · threshold ${c.threshold} · rings ${h.rings_recovered}/${h.rings_in_test}`;
+      return `<tr><td><span class="nm">${isFull ? "— full model" : esc(c.group)}</span>
+        <div class="why">${why}</div></td>
+        <td class="r">${isFull ? "—" : F.f4(c.weight_removed)}</td>
+        <td class="r">${F.f4(h.f1)}</td>
+        <td class="r${cls}">${isFull ? "—" : (d > 0 ? "+" : "") + F.f4(d)}</td>
+        <td class="r">${F.f4(c.held_out_hard_negatives_only.f1)}</td></tr>`;
+    };
+    ab.innerHTML = row(full, true) + rest.map((c) => row(c, false)).join("");
+  }
+
   const pb = document.getElementById("panel-body");
   if (pb) {
     pb.innerHTML = Object.entries(b.panel.checks).map(([name, c]) => `

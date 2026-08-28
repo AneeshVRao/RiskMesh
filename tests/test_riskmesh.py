@@ -291,7 +291,7 @@ def test_18_reproducible_outputs(run_a: dict, run_b: dict) -> None:
     files = ["transactions.csv", "labels.csv", "components.csv",
              "integrity_report.json", "eval_report.json", "threshold.json",
              "graph_edges.json", "weight_policy.json",
-             "abstention_policy.json"]
+             "abstention_policy.json", "baselines.json", "ablations.json"]
     for name in files:
         a, b = run_a["dir"] / name, run_b["dir"] / name
         assert a.exists(), f"{name} was never written"
@@ -391,6 +391,134 @@ def test_20_abstention_binary_collapse(cfg, cands) -> None:
           "binary expected loss 5,348.23 exactly")
 
 
+def test_21_ablation_full_row_reproduces_the_shipped_eval(run_a: dict) -> None:
+    """The ablation's `full` row must equal `eval_report.json` exactly.
+
+    It is built by rescoring from scratch rather than reusing the pipeline's
+    candidates, precisely so this can be asserted. If the two disagree, then a
+    difference between ablation rows is not attributable to the removed group --
+    it could be anything the rescore path does differently -- and the whole table
+    stops meaning what it claims.
+    """
+    import json
+
+    abl = json.loads((run_a["dir"] / "ablations.json").read_text(encoding="utf-8"))
+    full = next(r for r in abl["configurations"] if r["group"] == "full")
+    shipped = run_a["eval"]["primary"]
+    for key in ("tp", "fp", "tn", "fn", "precision", "recall", "f1",
+                "false_positive_rate"):
+        assert full["held_out"][key] == shipped[key], (
+            f"ablation 'full' row disagrees with eval_report on {key}: "
+            f"{full['held_out'][key]} vs {shipped[key]} -- the rescore path does "
+            f"not reproduce the shipped scorer, so no row in this table is "
+            f"attributable to its removed group"
+        )
+    assert full["threshold"] == run_a["eval"]["threshold"]
+    check("21 ablation 'full' row reproduces eval_report.json exactly "
+          f"(F1 {full['held_out']['f1']:.4f} @ {full['threshold']})")
+
+
+def test_22_ablation_groups_partition_the_signals(run_a: dict) -> None:
+    """Every signal in exactly one group, and the predicted `ip` no-op held.
+
+    implementation_plan.md predicted before the run that ablating `ip` would come
+    out byte-identical to the full model, because RISK-001 already set that
+    weight to 0.0 and renormalising a zero changes nothing. A difference would
+    have been a renormalisation bug, not a finding -- so it is asserted rather
+    than admired.
+    """
+    import json
+
+    from riskmesh.comparisons import ABLATION_GROUPS
+
+    covered: list[str] = []
+    for group in ABLATION_GROUPS.values():
+        covered.extend(group)
+    assert sorted(covered) == sorted(SIGNALS), (
+        f"ABLATION_GROUPS does not partition SIGNALS: {sorted(covered)}"
+    )
+
+    abl = json.loads((run_a["dir"] / "ablations.json").read_text(encoding="utf-8"))
+    groups = {r["group"] for r in abl["configurations"]}
+    assert groups == {"full", *ABLATION_GROUPS}, f"missing ablation rows: {groups}"
+
+    ip = next(r for r in abl["configurations"] if r["group"] == "ip")
+    assert ip["weight_removed"] == 0.0, (
+        f"ip_sharing carries weight {ip['weight_removed']} -- RISK-001 zeroed it, "
+        f"so either the risk was reopened without updating this test or the "
+        f"weights on disk are not the ones RISK-001 left behind"
+    )
+    assert ip["identical_to_full"], (
+        "ablating ip_sharing changed the result, but its weight is 0.0 -- "
+        "renormalising a zero must be a no-op. This is a bug in _renormalised, "
+        "not a finding about the IP signal."
+    )
+    check(f"22 ablation groups partition all {len(SIGNALS)} signals; the "
+          "predicted ip no-op holds exactly")
+
+
+def test_23_baselines_cover_the_five_the_prd_names(run_a: dict) -> None:
+    """All five PRD row-63 baselines present, and none fitted on test.
+
+    The cutoff-fitting guard is asserted by calling `_freeze_cutoff` with test
+    rows and requiring it to raise. A protocol that is merely followed by
+    convention is one refactor from being broken silently.
+    """
+    import json
+
+    from riskmesh.comparisons import _freeze_cutoff
+
+    base = json.loads((run_a["dir"] / "baselines.json").read_text(encoding="utf-8"))
+    names = [b["baseline"] for b in base["baselines"]]
+    required = ["random", "shared_device_only", "shared_ip_only",
+                "transaction_level", "ring_score"]
+    assert names == required, f"expected {required}, got {names}"
+
+    for b in base["baselines"]:
+        assert b["validation_components"] > 0
+        assert b["held_out"]["tp"] + b["held_out"]["fp"] + b["held_out"]["tn"] \
+            + b["held_out"]["fn"] > 0, f"{b['baseline']} read no held-out rows"
+
+    _, _, _, _, _, cands = build(Config())
+    test_rows = [c for c in cands if c.split == "test"]
+    try:
+        _freeze_cutoff(test_rows, {c.component_id: c.score for c in test_rows})
+    except AssertionError:
+        pass
+    else:  # pragma: no cover - the guard is the point of the test
+        raise AssertionError(
+            "_freeze_cutoff accepted test candidates -- a baseline could be "
+            "fitted on held-out data without anything complaining"
+        )
+    check(f"23 all five PRD baselines present and read once; _freeze_cutoff "
+          f"refuses test rows")
+
+
+def test_24_shipped_scorer_is_not_re_swept_in_the_baseline_table(run_a: dict) -> None:
+    """The `ring_score` row is the shipped freeze, not a re-swept variant.
+
+    The four challengers sweep their cutoff over observed values, which is
+    strictly finer than select_threshold()'s 0.01 grid. Granting the incumbent
+    the same finer sweep would put a number on the Benchmark tab that differs
+    from the one in eval_report.json for the same detector -- and would flatter
+    it, since the finer sweep scored 0.8421 against the shipped 0.8000.
+    """
+    import json
+
+    base = json.loads((run_a["dir"] / "baselines.json").read_text(encoding="utf-8"))
+    ring = next(b for b in base["baselines"] if b["baseline"] == "ring_score")
+    assert ring["cutoff"] == run_a["eval"]["threshold"], (
+        f"baseline table reports the shipped scorer at cutoff {ring['cutoff']} "
+        f"but it ships at {run_a['eval']['threshold']}"
+    )
+    assert ring["held_out"]["f1"] == run_a["eval"]["primary"]["f1"], (
+        f"baseline table reports held-out F1 {ring['held_out']['f1']} for the "
+        f"shipped scorer; eval_report says {run_a['eval']['primary']['f1']}"
+    )
+    check("24 baseline table reports the shipped scorer at its own frozen "
+          f"threshold ({ring['cutoff']}, F1 {ring['held_out']['f1']:.4f})")
+
+
 # --------------------------------------------------------------------------
 
 
@@ -436,7 +564,13 @@ def main() -> int:
         print("\nabstention protocol (frozen, run, band 0.23/0.33 retained)")
         test_20_abstention_binary_collapse(cfg, cands)
 
-        print(f"\n{len(PASSED)}/21 checks passed")
+        print("\nbaselines and ablation (PRD rows 63 and 70, frozen then run)")
+        test_21_ablation_full_row_reproduces_the_shipped_eval(run_a)
+        test_22_ablation_groups_partition_the_signals(run_a)
+        test_23_baselines_cover_the_five_the_prd_names(run_a)
+        test_24_shipped_scorer_is_not_re_swept_in_the_baseline_table(run_a)
+
+        print(f"\n{len(PASSED)}/25 checks passed")
         return 0
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

@@ -1151,3 +1151,96 @@ whole protocol preventing, and twelve fresh test reads is precisely the situatio
 where it would be tempting. These tables are a report. Any change they argue for
 is a design decision that must be made on design splits, in a separate run, with
 its own freeze.
+
+### Result — RUN, and both uncomfortable readings fired
+
+Records at `out/baselines.json` and `out/ablations.json`, both in the
+byte-for-byte reproducibility test. The protocol section above was committed
+before any of this ran; nothing below was re-selected on the strength of it.
+
+**The prediction held.** Ablating `ip` came out byte-identical to the full model,
+as predicted, because RISK-001 had already zeroed that weight. `test_22` now
+asserts it rather than admiring it.
+
+#### Row 63 — the graph score does not win its own baseline table
+
+| Baseline | Sees graph | Frozen cutoff | Held-out F1 | FPR | Hard-neg F1 |
+|---|---|---|---|---|---|
+| `transaction_level` | none | ≥ 1.0 | **1.0000** | 0.0000 | 1.0000 |
+| `ring_score` | fully | ≥ 0.23 | 0.8000 | 0.1739 | 0.8000 |
+| `shared_device_only` | one rule | ≥ 4 | 0.6957 | 0.3043 | 0.6957 |
+| `shared_ip_only` | one rule | ≤ 1 | 0.5161 | 0.6522 | **1.0000** |
+| `random` | none | ≥ 0.3718 | 0.2857 | 0.6957 | 0.4706 |
+
+A transaction-level rule that never touches the graph separates the held-out
+split **perfectly**. One clause carries it: every ring transaction in the test
+split comes from an account **≤ 25 days** old, while negatives run to a median of
+**316**. No negative component is made entirely of young accounts, so
+"all transactions from accounts ≤ 30d" is an exact classifier.
+
+The 30-day cut was fixed in the protocol above before the run, and it is not a
+tuned constant — validation F1 is 1.0000 for every cut from 20 to 180 days, and
+only falls (0.8571) at 10. The record carries that sweep.
+
+**This is a statement about the benchmark, not about graph detection.** The
+non-triviality panel came within 0.0088 of catching it: `account_newness` alone
+scores 0.9412 against a 0.95 bound, and passed. Aggregating the same field per
+*transaction* rather than per component clears the bound outright. The gate was
+one aggregation away from firing, which is the most useful thing this table says.
+
+`shared_ip_only` reaching 1.0000 on the hard-negative view is the RISK-001 story
+told from the other end: sweeping both directions, "at most one account per IP"
+separates ring from household perfectly, because households share a router and
+rings do not. It is useless as a detector — 0.6522 FPR against the full negative
+set — and it is exactly why the direction sweep is not optional.
+
+**The shipped scorer is reported at its own frozen threshold**, not re-swept over
+observed values like the four challengers. The finer sweep would have scored it
+0.8421; it ships at 0.8000 and that is the number the table carries, because the
+Benchmark tab may not show two different held-out F1s for one detector. Holding
+the incumbent to the coarser grid while the challengers get the finer one errs
+against the incumbent, which is the safe direction here. `test_24` pins it.
+
+#### Row 70 — one group of five is load-bearing
+
+| Removed | Weight | Threshold | Held-out F1 | Δ | Rings | Hard-neg F1 |
+|---|---|---|---|---|---|---|
+| — full model | — | 0.23 | 0.8000 | — | 8/8 | 0.8000 |
+| `behavioral_refund` | 0.3333 | 0.22 | 0.6316 | **−0.1684** | **6/8** | 0.6316 |
+| `device` | 0.2444 | 0.18 | 0.8000 | 0.0000 | 8/8 | 0.8000 |
+| `ip` | 0.0000 | 0.23 | 0.8000 | 0.0000 | 8/8 | 0.8000 |
+| `temporal` | 0.2778 | 0.26 | 0.8000 | 0.0000 | 8/8 | 0.8000 |
+| `instrument` | 0.1444 | 0.25 | 0.8889 | **+0.0889** | 8/8 | 0.8889 |
+
+Only the behavioural and refund group costs anything: 0.1684 F1 and two of eight
+rings. The three *structural* groups — device, IP, instrument — are the ones the
+graph exists to compute, and removing them costs **nothing or less than nothing**.
+Removing `instrument_sharing` improves held-out F1 to 0.8889 and halves FPR,
+consistent with RISK-004 having already filed that signal as defective and with
+the weight gate refusing `D_drop_flagged`.
+
+Held against the temporal ablation recorded earlier in this document, the
+`temporal` row reproduces it exactly (0.8000 → 0.8000), which is a useful
+consistency check on the new code path — as is `test_21`, which asserts the
+`full` row equals `eval_report.json` cell for cell.
+
+**No weight was changed on the strength of any of this.** Six fresh held-out
+reads is precisely the situation the protocol above anticipated. Re-weighting
+because an ablation looked good on test is selection on a held-out read; if the
+`instrument` result is to be acted on, it belongs in a weight search on design
+splits with its own freeze, which is where `D_drop_flagged` already lives.
+
+#### What the two tables say together
+
+They agree, and the agreement is not flattering. The baselines say a non-graph
+rule wins outright; the ablation says the graph-structural signals are the ones
+that can be removed for free. Both point at the same cause: **this generator
+makes ring accounts uniformly young, and account age is doing the work the graph
+is credited with.** That is rows 56/58/59 — a second ring type whose accounts are
+not uniformly young — and it is deliberately not attempted this close to the
+deadline, because it re-fingerprints every number in the build.
+
+The honest claim the demo can make is the narrow one: on this benchmark, the
+three-way abstention policy and the cost model are what earn their keep, and the
+graph score is not yet shown to beat a simple attribute rule. Saying more than
+that requires the generator work.

@@ -271,6 +271,11 @@ def benchmark(arts: Artifacts) -> dict:
                 nt["hard_negatives_inside_positive_range"],
         },
         "single_signal_max_f1": nt["single_signal_max_f1"],
+        # PRD rows 63 and 70. Served verbatim: these two records exist to be
+        # read as written, and a payload builder that reshaped them would be a
+        # place for the uncomfortable rows to quietly go missing.
+        "baselines": arts.json["baselines.json"],
+        "ablations": arts.json["ablations.json"],
         "weight_search": {
             "gates": wp["gates"],
             "candidates": [

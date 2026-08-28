@@ -26,6 +26,8 @@ _FINGERPRINTED = {
     "integrity_report.json": ("reproducibility", "config_fingerprint"),
     "abstention_policy.json": ("config_fingerprint",),
     "weight_policy.json": ("config_fingerprint",),
+    "baselines.json": ("config_fingerprint",),
+    "ablations.json": ("config_fingerprint",),
 }
 _PLAIN = ("graph_edges.json",)
 

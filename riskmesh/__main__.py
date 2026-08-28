@@ -18,6 +18,7 @@ import json
 import shutil
 from pathlib import Path
 
+from .comparisons import ablation_report, baseline_report
 from .config import SIGNALS, Config
 from .evaluate import (
     build_candidates,
@@ -186,6 +187,20 @@ def main(cfg: Config | None = None, out: Path = OUT) -> dict:
         json.dumps(result, indent=2) + "\n", encoding="utf-8"
     )
 
+    # --- row 63 baselines and row 70 ablation ------------------------------
+    # After the headline read, never before it: these are twelve further frozen
+    # configurations, each selecting on validation and reading test once, and
+    # none of them may influence the shipped scorer. See implementation_plan.md,
+    # "PRD rows 63 and 70", written before any of this ran.
+    (out / "baselines.json").write_text(
+        json.dumps(baseline_report(cfg, txns, graph, candidates), indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (out / "ablations.json").write_text(
+        json.dumps(ablation_report(cfg, labels), indent=2) + "\n",
+        encoding="utf-8",
+    )
+
     p, s = result["primary"], result["secondary"]
     print(f"\nheld-out evaluation @ threshold {frozen:.2f} "
           f"(selected on validation, {meta['validation_components']} components)")
@@ -197,7 +212,7 @@ def main(cfg: Config | None = None, out: Path = OUT) -> dict:
     print(f"  account-level    P {s['precision']:.3f}  R {s['recall']:.3f}  "
           f"F1 {s['f1']:.3f}  FPR {s['false_positive_rate']:.3f}   "
           f"[{s['scored_accounts']} accounts]")
-    print(f"\nwrote 9 files to {out}")
+    print(f"\nwrote 11 files to {out}")
 
     return {"integrity": report, "eval": result, "threshold": frozen}
 
