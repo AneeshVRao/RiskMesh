@@ -82,9 +82,9 @@
     </div>
     <div class="rail-2">
       <div>Component <b data-b="ev.component_id">c_a00533</b></div>
-      <div>Ring <b>ring02</b></div>
+      <div>Ring <b id="sel-ring">ring02</b></div>
       <div>Score <b data-b="ev.score" data-f="f4">0.5246</b></div>
-      <div>Disposition <b>ESCALATE</b></div>
+      <div>Disposition <b id="sel-disp">ESCALATE</b></div>
       <div>Accounts <b data-b="ev.summary.size">9</b></div>
       <div>Transactions <b data-b="ev.summary.n_txns">101</b></div>
       <div>Exposure <b data-b="ev.summary.exposure" data-f="money">101,761.83</b></div>
@@ -132,8 +132,8 @@
     </section>
 
     <section class="mod c5">
-      <h2><span class="tab">c_a00533</span><span class="rest">ring02 · escalate · rank 1</span></h2>
-      <div class="gbig">
+      <h2><span class="tab" id="sel-id">c_a00533</span><span class="rest" id="sel-meta">ring02 · escalate · rank 1</span></h2>
+      <div class="gbig" id="graph-host">
         <svg class="g" viewBox="0 0 460 250" role="img"
           aria-label="Nine accounts a00533 to a00541 all connected to one shared device d_ring02. Six of the nine also converge on merchant m000 within a 30 minute window. Two of the nine additionally share payment instrument pi_ring02.">
           <g stroke="#d81f26" stroke-width="1.3" opacity=".55">
@@ -171,7 +171,7 @@
           <text x="230" y="243" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#767d87">9 accounts · 1 device · 1 instrument pair · 6/9 to one merchant in 30 min</text>
         </svg>
       </div>
-      <p class="cap">Nine accounts on one device. Six hit merchant <b>m000</b> within 30 minutes,
+      <p class="cap" id="graph-cap">Nine accounts on one device. Six hit merchant <b>m000</b> within 30 minutes,
       median account age <b>10 days</b>. Each account keeps its own IP, which is the tell that
       separates this from a household — a real family shares the router, not just the handset.</p>
       <div class="act">
@@ -184,7 +184,7 @@
     </section>
 
     <section class="mod c4">
-      <h2><span class="tab">Score decomposition</span><span class="rest">0.5246 = Σ w·x</span></h2>
+      <h2><span class="tab">Score decomposition</span><span class="rest"><span id="sel-score">0.5246</span> = Σ w·x</span></h2>
       <div class="decomp">
         <div class="dbar">
           <i style="flex:1778;background:#d81f26"><span>.1778</span></i>

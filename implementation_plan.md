@@ -990,6 +990,34 @@ sets `agreed_with_system: false`, which is the disagreement the trail exists to
 capture. Verified by `mockups/verify-actions.mjs`, whose negative control aborts
 the POST in the browser and asserts the screen refuses to show a record.
 
+### Ring selection and the graph renderer
+
+One function, `selectComponent(id)`, owns everything a component shows. It
+fetches `/rings/{id}/evidence` once and redraws the graph, the signal ledger,
+the score decomposition, the ring-vs-household comparison, the audit trail and
+the action bar from that single response — so no panel can be left holding the
+previous component's numbers. The Control Center's queue and the Investigator's
+picker both route through it, which is why they cannot disagree about what
+"selected" means. The Control Center opens on `rings[0]` rather than a
+hardcoded id: `/rings` is ordered by score, so the queue and the detail panel
+agree by construction.
+
+The graph is drawn from the `graph` block in that payload — the frozen
+`out/graph_edges.json` — in three columns, shared attributes → accounts →
+merchants, which is the order the finding is argued in. The layout is
+arithmetic, not a force simulation: identical input must give an identical
+picture, or the drawing cannot be checked against the API the way every other
+number on screen is. `mockups/verify-selection.mjs` does exactly that — it reads
+the node ids, degrees and edge count back out of the painted SVG and compares
+them to the API's answer for that id, across four components, and its negative
+control rewrites a degree in flight to prove the drawing follows the payload.
+
+One honest asymmetry the caption states outright: the graph draws every
+attribute shared by two or more accounts, including infrastructure the hygiene
+rule caps (`ip_nat*`), while `ip_sharing` skips capped IPs. A household can
+therefore show nine IP boxes and still score 6 on that signal. The node count
+is structure, not the signal.
+
 ### `/explain` — contract only, deliberately not built
 
 Per the PRD's Tier 1 fallback rule this is the first thing to cut. The endpoint

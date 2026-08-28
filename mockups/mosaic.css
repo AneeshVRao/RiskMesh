@@ -87,6 +87,9 @@ thead th.r{text-align:right}
 tbody td{padding:3px 8px;border-bottom:1px solid var(--line-2);white-space:nowrap}
 tbody td.r{text-align:right;font-family:var(--mono)}
 tbody tr:hover{background:#fff8f8;box-shadow:inset 0 0 0 1px var(--line)}
+tbody tr[data-cid]{cursor:pointer}
+tbody tr[data-cid]:not([aria-selected]):hover{background:#fff8f8}
+tbody tr[data-cid]:focus-visible{outline:2px solid var(--red);outline-offset:-2px}
 tbody tr[aria-selected=true]{background:#ffe0e0;box-shadow:inset 3px 0 0 var(--red)}
 tbody tr[aria-selected=true] td{font-weight:600;color:var(--ink)}
 tbody tr{cursor:pointer}

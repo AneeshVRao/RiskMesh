@@ -84,10 +84,12 @@ function labelCell(r) {
 
 /* --- Control Center ----------------------------------------------------- */
 async function initControlCenter() {
-  const [m, t, rings, ev] = await Promise.all([
+  const [m, t, rings] = await Promise.all([
     j("/metrics"), j("/threshold-analysis"), j("/rings"),
-    j("/rings/c_a00533/evidence"),
   ]);
+  // Open on the top-ranked component rather than a hardcoded id: /rings is
+  // ordered by score, so the queue and the detail panel agree by construction.
+  const ev = await selectComponent(rings.rings[0].component_id);
   const ladder = Object.fromEntries(t.ladder.map((r) => [r.policy, r.expected_loss]));
   const view = {
     m, t,
@@ -119,8 +121,9 @@ async function initControlCenter() {
   // queue
   const tb = document.getElementById("queue-body");
   if (tb) {
-    tb.innerHTML = rings.rings.map((r, i) => `
-      <tr${i === 0 ? ' aria-selected="true"' : ""}>
+    tb.innerHTML = rings.rings.map((r) => `
+      <tr data-cid="${esc(r.component_id)}" tabindex="0"${
+        r.component_id === CURRENT ? ' aria-selected="true"' : ""}>
         <td class="id">${esc(r.component_id)}</td>
         <td>${tag(r.action)}</td>
         <td class="r sc">${F.f4(r.score)}</td>
@@ -131,9 +134,7 @@ async function initControlCenter() {
       </tr>`).join("");
   }
 
-  renderLedger(ev, document.querySelector("table.ev"));
-  CURRENT = ev.component_id;
-  renderAudit(ev.audit);   // no trail on this page; this sets the button state
+  wireSelection();
   wireActions();
   banner("live", `live · ${m.config_fingerprint} · ${rings.total_in_split} components`);
 }
@@ -152,6 +153,207 @@ function renderLedger(ev, table) {
       </div></td>
     </tr>`).join("");
   table.innerHTML = rows;
+}
+
+/* --- ring graph --------------------------------------------------------- */
+/* Drawn from the `graph` block in the evidence payload -- the same
+ * out/graph_edges.json the pipeline froze -- so the picture belongs to whichever
+ * component is selected instead of being one component someone drew by hand.
+ *
+ * Three columns, left to right: shared attributes -> accounts -> merchants.
+ * That is the order the finding is actually argued in ("one device carries nine
+ * accounts, and those accounts converge on one merchant"), and it keeps the
+ * widest column to 11 rows on this data.
+ *
+ * The layout is arithmetic, not a force simulation. Identical input has to give
+ * an identical picture or the drawing cannot be checked against the API the way
+ * every other number on screen is.
+ */
+const KIND = {
+  device: { color: "#d81f26", op: 0.9, w: 1.6 },
+  instrument: { color: "#a8171d", op: 0.9, w: 1.6 },
+  ip: { color: "#8f5400", op: 0.75, w: 1.2 },
+  merchant: { color: "#5c6670", op: 0.22, w: 0.8 },
+};
+const COLUMN = { device: 0, instrument: 1, ip: 2 };
+const G = { BW: 88, BH: 20, PITCH: 26, TOP: 28, PAD: 12, W: 470,
+  X: { left: 4, mid: 191, right: 378 } };
+
+const byId = (a, b) => (a.id < b.id ? -1 : 1);
+const merchants = (g) => g.nodes.filter((n) => n.type === "merchant")
+  .sort((a, b) => b.degree - a.degree || byId(a, b));
+const shared = (g) => g.nodes.filter((n) => n.type !== "merchant")
+  .sort((a, b) => COLUMN[a.type] - COLUMN[b.type] || b.degree - a.degree || byId(a, b));
+
+function renderGraph(ev, host) {
+  if (!host || !ev.graph) return;
+  const g = ev.graph;
+  const left = shared(g), right = merchants(g), accts = g.accounts;
+  // Floor the row count so the panel does not resize under the cursor while an
+  // analyst clicks down the queue. Columns are centred, so a small component
+  // sits in the middle of a steady frame instead of snapping the page shorter.
+  const rows = Math.max(left.length, accts.length, right.length, 9);
+  const H = G.TOP + rows * G.PITCH + G.PAD;
+
+  const P = new Map();
+  const lay = (items, x) => {
+    const top = G.TOP + ((rows - items.length) * G.PITCH) / 2;
+    items.forEach((it, i) => {
+      const y = top + i * G.PITCH;
+      P.set(typeof it === "string" ? it : it.id, { x, y, cy: y + G.BH / 2 });
+    });
+  };
+  lay(left, G.X.left);
+  lay(accts, G.X.mid);
+  lay(right, G.X.right);
+
+  // Edge thickness follows transaction count; merchant edges are the numerous
+  // low-weight ones and stay faint so the structural links stay readable.
+  const maxTxn = g.edges.reduce((m, e) => Math.max(m, e.txns), 1);
+  const wires = g.edges.map((e) => {
+    const k = KIND[e.kind] || KIND.merchant;
+    const a = P.get(e.account), n = P.get(e.node);
+    if (!a || !n) return "";
+    const [s, t] = e.kind === "merchant" ? [a, n] : [n, a];
+    const x1 = s.x + G.BW, x2 = t.x, m = (x1 + x2) / 2;
+    const w = (k.w * (0.5 + 0.5 * (e.txns / maxTxn))).toFixed(2);
+    return `<path d="M${x1} ${s.cy}C${m} ${s.cy} ${m} ${t.cy} ${x2} ${t.cy}" `
+      + `fill="none" stroke="${k.color}" stroke-width="${w}" opacity="${k.op}"/>`;
+  }).join("");
+
+  const box = (id, stroke, label, heavy) => {
+    const p = P.get(id);
+    return `<rect x="${p.x}" y="${p.y}" width="${G.BW}" height="${G.BH}" fill="#fff" `
+      + `stroke="${stroke}" stroke-width="${heavy ? 1.8 : 1.2}"/>`
+      + `<text x="${p.x + G.BW / 2}" y="${p.y + 14}" text-anchor="middle" `
+      + `font-family="ui-monospace,monospace" font-size="11" fill="#111418">${esc(label)}</text>`;
+  };
+  const boxes =
+    left.map((n) => box(n.id, KIND[n.type].color, `${n.id} ×${n.degree}`,
+      n.degree === accts.length)).join("")
+    + accts.map((a) => box(a, "#767d87", a)).join("")
+    + right.map((n) => box(n.id, KIND.merchant.color, `${n.id} ×${n.degree}`)).join("");
+
+  const head = (x, t, n) => (n ? `<text x="${x}" y="15" font-family="ui-monospace,monospace" `
+    + `font-size="10" fill="#767d87">${t}</text>` : "");
+  const heads = head(G.X.left, "SHARED ATTRIBUTES", left.length)
+    + head(G.X.mid, "ACCOUNTS", accts.length)
+    + head(G.X.right, "MERCHANTS", right.length);
+
+  const top = left[0];
+  const alt = `Component ${ev.component_id}: ${accts.length} accounts, ${left.length} shared `
+    + `attribute nodes, ${right.length} merchants, ${g.edges.length} links. `
+    + (top ? `Most shared: ${top.type} ${top.id}, on ${top.degree} of ${accts.length} accounts.`
+      : "No shared attributes.");
+
+  host.innerHTML = `<svg class="g" viewBox="0 0 ${G.W} ${H}" role="img" `
+    + `aria-label="${esc(alt)}">${heads}${wires}${boxes}</svg>`;
+}
+
+function graphCaption(ev) {
+  const g = ev.graph, n = g.accounts.length;
+  const top = shared(g).slice().sort((a, b) => b.degree - a.degree)[0];
+  const m = merchants(g)[0];
+  const out = [`<b>${n}</b> accounts · <b>${g.nodes.length}</b> shared nodes · `
+    + `<b>${g.edges.length}</b> links.`];
+  if (top) {
+    out.push(`Strongest link: ${esc(top.type)} <b>${esc(top.id)}</b> on `
+      + `<b>${top.degree}</b> of ${n} accounts.`);
+  }
+  if (m) out.push(`Busiest merchant <b>${esc(m.id)}</b> takes <b>${m.degree}</b>.`);
+  // Said plainly because the two panels genuinely count different things: a
+  // household can show nine IP boxes here and still score 6 on ip_sharing.
+  out.push("Only attributes shared by two or more accounts are drawn, capped "
+    + "infrastructure (<b>ip_nat*</b>) included — the ip_sharing signal skips "
+    + "capped IPs, so the node count here is not the signal.");
+  return out.join(" ");
+}
+
+/* --- component selection ------------------------------------------------- */
+/* One function knows how to draw a component, so the Control Center and the
+ * Investigator cannot drift apart about what "selected" means. Everything it
+ * renders comes from the single /rings/{id}/evidence response for that id --
+ * no panel is left holding the previous component's numbers. */
+function setText(id, v) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = v;
+}
+
+function ringLabel(ev) {
+  return ev.summary.ring_id || (ev.summary.has_family ? "family" : "unlabelled");
+}
+
+async function selectComponent(id) {
+  const ev = await j(`/rings/${encodeURIComponent(id)}/evidence`);
+  CURRENT = ev.component_id;
+  bind({ ev, cmp: ev.comparison });
+
+  renderGraph(ev, document.getElementById("graph-host"));
+  const cap = document.getElementById("graph-cap");
+  if (cap) cap.innerHTML = graphCaption(ev);
+  renderLedger(ev, document.querySelector("table.ev"));
+  renderLedgerFull(ev);
+  renderDecomposition(ev);
+  renderComparison(ev.comparison);
+  renderAudit(ev.audit);
+
+  setText("sel-id", ev.component_id);
+  setText("sel-meta", `${ringLabel(ev)} · ${ev.summary.size} accounts · ${ev.action}`);
+  setText("sel-ring", ringLabel(ev));
+  setText("sel-disp", ev.action.toUpperCase());
+  setText("sel-score", F.f4(ev.decomposition.score));
+
+  // Queue rows style off [aria-selected=true] and picker links off
+  // [aria-current]; toggleAttribute would set a valueless attribute and miss
+  // the first selector, so set the value explicitly.
+  const marker = (el) => (el.tagName === "A" ? "aria-current" : "aria-selected");
+  document.querySelectorAll("[data-cid]").forEach((el) => {
+    if (el.dataset.cid === ev.component_id) el.setAttribute(marker(el), "true");
+    else el.removeAttribute(marker(el));
+  });
+  return ev;
+}
+
+async function pickTo(id) {
+  try {
+    const ev = await selectComponent(id);
+    if (document.body.dataset.page === "investigator") {
+      banner("live", `live · ${ev.config_fingerprint} · ${ev.component_id}`);
+    }
+  } catch (err) {
+    banner("down", `could not load ${id} — ${err.message}`);
+  }
+}
+
+/* Delegated, so a re-rendered queue or picker keeps working. */
+function wireSelection() {
+  const pick = document.querySelector(".pick");
+  if (pick && !pick.dataset.wired) {
+    pick.dataset.wired = "1";
+    pick.addEventListener("click", (e) => {
+      const a = e.target.closest("a[data-cid]");
+      if (!a) return;
+      e.preventDefault();
+      pickTo(a.dataset.cid);
+    });
+  }
+  const tb = document.getElementById("queue-body");
+  if (tb && !tb.dataset.wired) {
+    tb.dataset.wired = "1";
+    tb.addEventListener("click", (e) => {
+      const tr = e.target.closest("tr[data-cid]");
+      if (tr) pickTo(tr.dataset.cid);
+    });
+    // Table rows are not focusable by default, and a queue you can only reach
+    // with a mouse is not a queue an analyst can work.
+    tb.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      const tr = e.target.closest("tr[data-cid]");
+      if (!tr) return;
+      e.preventDefault();
+      pickTo(tr.dataset.cid);
+    });
+  }
 }
 
 /* --- action bar --------------------------------------------------------- */
@@ -199,9 +401,10 @@ function wireActions() {
 
 /* --- Investigator ------------------------------------------------------- */
 async function initInvestigator() {
-  const [rings, ev] = await Promise.all([j("/rings"), j("/rings/c_a00533/evidence")]);
+  const rings = await j("/rings");
   const flagged = rings.rings.filter((r) => r.action !== "allow");
-  bind({ ev, rings, cmp: ev.comparison, flagged: flagged.length });
+  bind({ rings, flagged: flagged.length });
+  const ev = await selectComponent(flagged[0].component_id);
 
   // picker
   const pick = document.querySelector(".pick");
@@ -209,7 +412,8 @@ async function initInvestigator() {
     const group = (action, title) => {
       const rows = flagged.filter((r) => r.action === action);
       return `<div class="hdg">${title} · ${rows.length}</div>` + rows.map((r) => `
-        <a href="#"${r.component_id === ev.component_id ? ' aria-current="true"' : ""}>
+        <a href="#" data-cid="${esc(r.component_id)}"${
+          r.component_id === CURRENT ? ' aria-current="true"' : ""}>
           <span class="pid">${esc(r.component_id)}</span>
           <span class="psc">${F.f4(r.score)}</span>
           <span class="plb">${esc(r.label || "family")} · ${r.size} accounts</span>
@@ -219,11 +423,7 @@ async function initInvestigator() {
     pick.innerHTML = group("escalate", "Escalate") + group("review", "Review");
   }
 
-  renderDecomposition(ev);
-  renderLedgerFull(ev);
-  renderComparison(ev.comparison);
-  CURRENT = ev.component_id;
-  renderAudit(ev.audit);
+  wireSelection();
   wireActions();
   banner("live", `live · ${ev.config_fingerprint} · ${ev.component_id}`);
 }
