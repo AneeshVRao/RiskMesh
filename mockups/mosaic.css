@@ -127,7 +127,15 @@ button:active{transform:translateY(1px)}
 button svg{width:12px;height:12px}
 button.go{background:var(--red);border-color:var(--red);color:#fff}
 button.go:hover{background:#b5171d;border-color:#b5171d}
+/* A recorded decision is a state, not an absence: the button stays legible and
+   stops responding. Grey-on-grey would say "broken" where this says "done". */
+button:disabled{background:var(--fill-2);border-color:var(--line-2);color:var(--ink-2);cursor:default}
+button:disabled:hover{border-color:var(--line-2)}
+button:disabled:active{transform:none}
+button.go:disabled{background:var(--fill-2);border-color:var(--line-2);color:var(--ink-2)}
 .act .hint{margin-left:auto;font-size:10px;color:var(--ink-3)}
+.act .hint.done{color:var(--ink);font-weight:600}
+.act .hint.bad{color:var(--red);font-weight:600}
 
 .cmp{display:grid;grid-template-columns:1fr 1fr;gap:0}
 .cmp>div{padding:7px 10px}

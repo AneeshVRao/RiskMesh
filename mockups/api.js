@@ -132,6 +132,9 @@ async function initControlCenter() {
   }
 
   renderLedger(ev, document.querySelector("table.ev"));
+  CURRENT = ev.component_id;
+  renderAudit(ev.audit);   // no trail on this page; this sets the button state
+  wireActions();
   banner("live", `live · ${m.config_fingerprint} · ${rings.total_in_split} components`);
 }
 
@@ -149,6 +152,49 @@ function renderLedger(ev, table) {
       </div></td>
     </tr>`).join("");
   table.innerHTML = rows;
+}
+
+/* --- action bar --------------------------------------------------------- */
+/* The one write path in the whole console. A click posts to
+ * /rings/{id}/review, and then the trail is RE-READ from the server rather than
+ * patched in place: what you see after a click is what actually persisted to
+ * out/audit_log.jsonl, so a write that silently failed cannot look like one
+ * that succeeded. Button state is derived from that same server copy, which is
+ * why it survives a reload. */
+let CURRENT = null;
+let AUDIT = [];
+
+function wireActions() {
+  const bar = document.querySelector(".act");
+  if (!bar || bar.dataset.wired) return;
+  bar.dataset.wired = "1";
+  bar.addEventListener("click", async (ev) => {
+    const btn = ev.target.closest("button[data-act]");
+    if (!btn || btn.disabled || !CURRENT) return;
+    const hint = bar.querySelector(".hint");
+    const act = btn.dataset.act;
+    bar.querySelectorAll("button[data-act]").forEach((b) => (b.disabled = true));
+    hint.className = "hint";
+    hint.textContent = "recording…";
+    try {
+      const path = `/rings/${encodeURIComponent(CURRENT)}/review`;
+      const r = await fetch(API + path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: act, analyst: "demo" }),
+      });
+      if (!r.ok) throw new Error(`${path} -> ${r.status}`);
+      const fresh = await j(`/rings/${encodeURIComponent(CURRENT)}/evidence`);
+      renderAudit(fresh.audit);
+      hint.className = "hint done";
+      hint.textContent =
+        `recorded ${act} · ${fresh.audit[0].ts} · out/audit_log.jsonl`;
+    } catch (err) {
+      renderAudit(AUDIT); // restore the state the server last confirmed
+      hint.className = "hint bad";
+      hint.textContent = `not recorded — ${err.message}`;
+    }
+  });
 }
 
 /* --- Investigator ------------------------------------------------------- */
@@ -176,7 +222,9 @@ async function initInvestigator() {
   renderDecomposition(ev);
   renderLedgerFull(ev);
   renderComparison(ev.comparison);
+  CURRENT = ev.component_id;
   renderAudit(ev.audit);
+  wireActions();
   banner("live", `live · ${ev.config_fingerprint} · ${ev.component_id}`);
 }
 
@@ -248,19 +296,35 @@ function renderComparison(cmp) {
 }
 
 function renderAudit(audit) {
+  AUDIT = audit || [];
+  // An action already on the server's record for this component cannot be
+  // recorded twice; changing your mind to a different action still can be.
+  const done = new Set(AUDIT.map((a) => a.analyst_action));
+  document.querySelectorAll(".act button[data-act]").forEach((b) => {
+    b.disabled = done.has(b.dataset.act);
+    b.title = b.disabled ? "already recorded for this component" : "";
+  });
+
   const host = document.querySelector(".trail");
   if (!host) return;
-  if (!audit || !audit.length) {
+  if (!AUDIT.length) {
     host.innerHTML =
       '<div>No analyst actions recorded yet. Actions post to ' +
       '<b>/rings/{id}/review</b> and append to out/audit_log.jsonl.</div>';
     return;
   }
-  host.innerHTML = audit.map((a) => `
+  host.innerHTML = AUDIT.map((a) => {
+    const s = a.evidence_snapshot || {};
+    const sum = s.summary || {};
+    return `
     <div><b>${esc(a.ts)}</b> · ${esc(a.component_id)} · score <b>${F.f4(a.score)}</b>
       · band ${a.band.t_lo}/${a.band.t_hi} · analyst <b>${esc(a.analyst_action)}</b>
-      ${a.agreed_with_system ? "" : "· <b>overrode</b> system " + a.system_action}
-      · cfg ${esc(a.config_fingerprint)}</div>`).join("");
+      ${a.agreed_with_system ? "" : "· <b>overrode</b> system " + esc(a.system_action)}
+      · cfg ${esc(a.config_fingerprint)}</div>
+    <div>evidence snapshot · ${(s.signals || []).length} signals ·
+      ${esc(sum.size)} accounts · ${esc(sum.n_txns)} txns ·
+      sha ${esc(String(a.evidence_sha256).slice(0, 12))}</div>`;
+  }).join("");
 }
 
 /* --- Threshold & Cost --------------------------------------------------- */

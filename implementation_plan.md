@@ -978,6 +978,18 @@ The whole surface is `append()` and `tail()`, so that swap stays in one file.
 evidence snapshot is embedded rather than referenced, so the record still says
 what the analyst actually saw after the pipeline re-freezes.
 
+**The action bar posts and then re-reads.** A click POSTs, then re-fetches
+`/rings/{id}/evidence` and renders the trail from *that* — never from the POST
+body and never from optimistic local state. The cost is one extra round trip;
+the gain is that a write which did not land cannot look like one that did. The
+same rule drives button state: an action already on the server's record for the
+component is disabled, so the state survives a reload and is shared between the
+Control Center and the Investigator, because neither page owns it. Changing your
+mind to a *different* action stays available — recording `allow` over `escalate`
+sets `agreed_with_system: false`, which is the disagreement the trail exists to
+capture. Verified by `mockups/verify-actions.mjs`, whose negative control aborts
+the POST in the browser and asserts the screen refuses to show a record.
+
 ### `/explain` — contract only, deliberately not built
 
 Per the PRD's Tier 1 fallback rule this is the first thing to cut. The endpoint
