@@ -55,9 +55,14 @@ function bind(data, root = document) {
 function banner(state, detail) {
   let el = document.getElementById("api-status");
   if (!el) {
+    // The console pages carry a .rail-1; the landing page carries a .top.
+    // Without a host there is nowhere honest to say "these numbers are stale",
+    // so bail rather than throw and take the rest of the page down with it.
+    const host = document.querySelector(".rail-1, .top");
+    if (!host) return;
     el = document.createElement("div");
     el.id = "api-status";
-    document.querySelector(".rail-1").appendChild(el);
+    host.appendChild(el);
   }
   el.className = "apist " + state;
   el.textContent = detail;
@@ -264,7 +269,7 @@ function graphCaption(ev) {
   // Said plainly because the two panels genuinely count different things: a
   // household can show nine IP boxes here and still score 6 on ip_sharing.
   out.push("Only attributes shared by two or more accounts are drawn, capped "
-    + "infrastructure (<b>ip_nat*</b>) included — the ip_sharing signal skips "
+    + "infrastructure (<b>ip_nat*</b>) included. The ip_sharing signal skips "
     + "capped IPs, so the node count here is not the signal.");
   return out.join(" ");
 }
@@ -311,7 +316,56 @@ async function selectComponent(id) {
     if (el.dataset.cid === ev.component_id) el.setAttribute(marker(el), "true");
     else el.removeAttribute(marker(el));
   });
+
+  renderExplain(ev.component_id); // deliberately not awaited -- see below
   return ev;
+}
+
+/* --- grounded narration (POST /explain) ---------------------------------- */
+/* Fired after the deterministic panels are already on screen, and deliberately
+ * NOT awaited. The PRD makes the explanation non-blocking: a narration layer
+ * that is slow, or a model that is not wired at all, must never delay or gate
+ * the detector's own evidence.
+ *
+ * The request carries only a component id. The server reads the frozen
+ * evidence itself, so nothing the page holds can induce a sentence the
+ * detector never supported -- that is the grounding contract, and the source
+ * line under the sentence is it made visible.
+ *
+ * A stale response is dropped rather than rendered: click twice down the queue
+ * and the slower reply would otherwise print the previous component's sentence
+ * under the new component's numbers, which in an evidence UI is worse than
+ * showing nothing. */
+function renderExplain(id) {
+  const host = document.getElementById("explain");
+  if (!host) return;
+  const text = host.querySelector(".ntext");
+  const src = host.querySelector(".nsrc");
+  host.classList.remove("bad");
+  text.textContent = "…";
+  src.textContent = "reading frozen evidence";
+  fetch(API + "/explain", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ component_id: id }),
+  })
+    .then((r) => {
+      if (!r.ok) throw new Error(`/explain -> ${r.status}`);
+      return r.json();
+    })
+    .then((x) => {
+      if (CURRENT !== id) return;
+      text.textContent = x.text;
+      src.textContent = `grounded in ${x.grounded_in.join(", ")} · ${
+        x.fallback_used ? "deterministic fallback, no model called" : "model narration"
+      }`;
+    })
+    .catch((err) => {
+      if (CURRENT !== id) return;
+      text.textContent = "";
+      host.classList.add("bad");
+      src.textContent = `narration unavailable — ${err.message}`;
+    });
 }
 
 async function pickTo(id) {
@@ -643,7 +697,32 @@ async function initBenchmark() {
 }
 
 /* --- boot --------------------------------------------------------------- */
+/* --- landing page -------------------------------------------------------- */
+/* The hero draws the real top-ranked component rather than a picture of one,
+ * using the same renderGraph() the Investigator uses. If this page and the
+ * console ever disagree about what the top component looks like, one of them
+ * is lying, and sharing the renderer is what makes that impossible. */
+async function initHome() {
+  const [m, rings] = await Promise.all([j("/metrics"), j("/rings")]);
+  bind(m);
+
+  const top = rings.rings[0];
+  if (!top) throw new Error("/rings returned no components");
+  const ev = await j(`/rings/${encodeURIComponent(top.component_id)}/evidence`);
+
+  setText("hero-id", ev.component_id);
+  setText("hero-score", F.f4(ev.decomposition.score));
+  renderGraph(ev, document.getElementById("hero-graph"));
+  const cap = document.getElementById("hero-cap");
+  if (cap) cap.innerHTML = graphCaption(ev);
+  setText("fp", `seed 20260824 · cfg ${ev.config_fingerprint}`);
+
+  // The fingerprint is already printed in the masthead beside this chip.
+  banner("live", "live");
+}
+
 const PAGES = {
+  home: initHome,
   "control-center": initControlCenter,
   investigator: initInvestigator,
   threshold: initThreshold,

@@ -185,6 +185,12 @@
 
     <section class="mod c4">
       <h2><span class="tab">Score decomposition</span><span class="rest"><span id="sel-score">0.5246</span> = Σ w·x</span></h2>
+      <!-- POST /explain. Static text is the skeleton, replaced on first select;
+           the source line below it is the grounding contract made visible. -->
+      <p class="narr" id="explain"><b>Why:</b> <span class="ntext">9 accounts share
+        device d_ring02. 6/9 accounts at one merchant within 30 minutes. median
+        account age 10 days.</span><span class="nsrc">grounded in device_sharing,
+        temporal_burst, account_newness · deterministic fallback, no model called</span></p>
       <div class="decomp">
         <div class="dbar">
           <i style="flex:1778;background:#d81f26"><span>.1778</span></i>

@@ -159,3 +159,13 @@ button.go:disabled{background:var(--fill-2);border-color:var(--line-2);color:var
 .apist.live{background:#046b4a;color:#fff}
 .apist.down{background:var(--amber);color:#fff;text-transform:none;letter-spacing:0;
   font-weight:500}
+
+/* POST /explain narration. Sits above the decomposition it narrates, and
+   carries its own provenance line: which signals the sentence was built from,
+   and whether a model produced it. A narration that cannot say what it is
+   grounded in is the thing the PRD's grounding contract exists to forbid. */
+.narr{padding:7px 10px;border-bottom:1px solid var(--line-2);background:var(--fill);
+  font-size:12px;line-height:1.45;color:var(--ink-2)}
+.narr b{color:var(--ink);font-weight:600}
+.narr .nsrc{display:block;margin-top:3px;font:400 10px/1.4 var(--mono);color:var(--ink-3)}
+.narr.bad .nsrc{color:var(--red)}
