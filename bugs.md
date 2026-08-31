@@ -608,12 +608,12 @@ pre-declared plan met evidence it did not anticipate, and the evidence wins.
   funding-network ring type: a configurable fraction of rings
   (`p_ring_instrument_funded`, tuned to 0.7) are now pool-funded through a
   small shared-instrument pool (`ring_instrument_pool_size = 4`) instead of the
-  flat 2-3-sharer partial overlap, alongside the majority of rings left
+  flat 2-3-sharer partial overlap, alongside the minority of rings left
   unchanged. A new always-on signal, `instrument_pool_concentration`, scores
   it — accounts-per-distinct-instrument in the pool, the same mechanic E6
-  measured, but applied to a minority of rings rather than all of them, which
-  was the failure mode E6 was rejected for (over-separating a benchmark whose
-  only positive class was the device ring).
+  measured, but applied to a majority-but-not-all fraction of rings rather
+  than all of them, which was the failure mode E6 was rejected for
+  (over-separating a benchmark whose only positive class was the device ring).
 
   **Measured, the same way RISK-003's tables were: rescoring and comparing
   per-signal means on train+validation.** `instrument_pool_concentration`

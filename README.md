@@ -64,45 +64,53 @@ Four screens, all reading the same frozen artifacts:
 
 Three findings that a demo could hide and this one does not.
 
-**1. The graph score now beats the strongest non-graph rule — this took two
+**1. The graph score now beats the strongest non-graph rule — this took three
 phases to get right, and the fix is narrower than it sounds.** The original
 build found a transaction-level baseline — "every transaction from an account
 under 30 days old" — separating the held-out split perfectly (F1 1.0000)
 where the ring scorer reached 0.8000, because every ring account was uniformly
-young. Phase 10 added a second ring mechanism (a minority of rings funded
-through a shared instrument pool, drawing signup age from a much wider range)
-specifically to break that confound, and Phase 11 re-ran the weight search and
-abstention protocols against the settled result. On the current benchmark,
-`transaction_level` reaches held-out F1 **0.7143** and the shipped `ring_score`
-reaches **0.8750** — the graph wins the comparison this build was built to
-win. It is not a clean sweep: `transaction_level` still beats two of the
-graph's own one-rule challengers, `shared_device_only` (0.6957) and
-`shared_ip_only` (0.5000). See `implementation_plan.md` "Phase 10-11" for the
-full table and the account-age-cut sensitivity that confirms the mechanism.
+young. Phase 10 added a second ring mechanism (a majority of rings, tuned to
+70%, funded through a shared instrument pool, drawing signup age from a much
+wider range) specifically to break that confound; Phase 11 re-ran the weight
+search and abstention protocols against the settled result; Phase 12 then
+found and fixed an RNG-isolation bug in that same mechanism
+(`riskmesh/generate.py`) and re-ran both protocols again. On the current
+benchmark, `transaction_level` reaches held-out F1 **0.5833** and the shipped
+`ring_score` reaches **0.7778** — the graph wins the comparison this build was
+built to win, by a wider margin than Phase 10/11 reported. It is not a clean
+sweep: `shared_device_only` (0.6957) still trails the graph score, but this
+run it also beats `transaction_level` (0.5833) — a naive per-transaction rule
+is no longer even the strongest non-graph baseline. See
+`implementation_plan.md` "Phase 10-12" for the full table and the
+account-age-cut sensitivity that confirms the mechanism.
 
-**2. The structural signals are still mostly the removable ones, but not the
-same ones.** Leave-one-group-out, re-run on the current benchmark: removing
-`ip` costs nothing (RISK-001 already zeroed it), removing `instrument` costs
-−0.0972 F1, and removing `device` now *improves* held-out F1 to **0.9333** —
-a different structural group than the original run's `instrument` finding.
-Only the behavioural/refund group remains clearly load-bearing (−0.1691 F1,
-2 of 8 rings lost). No weight was changed on the strength of this — re-weighting
-on a held-out read is exactly the selection this benchmark is built to rule out.
+**2. No structural or behavioural group is shown to cost held-out F1 when
+removed, this run.** Leave-one-group-out, re-run on the current benchmark:
+removing `ip` and `instrument` cost nothing (unchanged F1), and removing
+`device`, `temporal`, or `behavioral_refund` all *improve* held-out F1 (to
+0.8750, 0.8421, and 0.8750 respectively) — a different, and notably weaker,
+result than the original run's `instrument` finding or Phase 10/11's
+`behavioral_refund` finding, both of which showed a group costing F1 when
+removed. No weight was changed on the strength of this — re-weighting on a
+held-out read is exactly the selection this benchmark is built to rule out,
+and a table where every row ties or improves is itself a finding to report
+rather than to quietly stop mentioning.
 
-**3. The weight search itself moved the scorer, on its own criterion, not by
-hand.** The Phase 11 re-run of `weight_search_protocol.md` did not retain the
-hand-set incumbent: `D_drop_flagged` — which zeros `instrument_sharing` and
+**3. The weight search confirmed the hand-set incumbent outright, in one pass,
+this time.** The Phase 12 re-run of `weight_search_protocol.md` did not need
+to fold anything back: `D_drop_flagged` — which zeros `instrument_sharing` and
 `merchant_concentration`, the two signals RISK-004 and RISK-002 had flagged —
-tied `A_baseline` on validation expected loss and won the tie-break on a
-sharper difficulty margin. That vector was folded into `Config()`'s defaults
-per the protocol's own re-freeze rule, so those two signals now carry weight
-0.00 as the *shipped* default, not a rejected experiment. `temporal_burst`
-(0.309, `deferred_decisions.md` D1, still open) remains the largest weight and
-still has not been shown to separate rings from families rather than from
+still ties `A_baseline` exactly on validation expected loss, but it is a
+no-op this time (those two signals are *already* zero in the current
+`A_baseline`, folded in during Phase 11), so with no sharper difficulty
+margin to win the tie-break on, the tie resolves to the incumbent and the
+search converges on the first pass. `temporal_burst` (0.309,
+`deferred_decisions.md` D1, still open) remains the largest weight and still
+has not been shown to separate rings from families rather than from
 background.
 
 The honest claim this build supports: **the three-way abstention policy, the
-cost model, and — as of Phase 11 — the graph score's win over the strongest
+cost model, and — as of Phase 12 — the graph score's win over the strongest
 non-graph baseline all earn their keep on this benchmark.** Anything stronger
 about a general graph-vs-transaction claim still needs more ring types.
 
@@ -118,7 +126,7 @@ about a general graph-vs-transaction claim still needs more ring types.
 | `graph_edges.json` | Typed nodes, degrees and edges per component — what the UI draws. |
 | `integrity_report.json` | Cardinalities, reuse histograms, class balance, non-triviality panel. |
 | `threshold.json` | The binary threshold, selected on validation, frozen before test is read. |
-| `weight_policy.json` | The weight search: five candidates, two gate refusals. |
+| `weight_policy.json` | The weight search: five candidates, three gate refusals. |
 | `abstention_policy.json` | The Allow / Review / Escalate band. |
 | `eval_report.json` | Held-out metrics at the frozen threshold. |
 | `baselines.json` | The five PRD baselines, each with its own frozen cutoff. |
@@ -144,7 +152,7 @@ and *usually* a coordinated burst. Usually is the point: 30% of rings never
 burst, refund rates vary per ring, and members keep their own traffic. A ring
 that always does everything is separable by one rule.
 
-**A minority of rings (70%, Phase 10) are additionally pool-funded.** Instead
+**A majority of rings (70%, Phase 10) are additionally pool-funded.** Instead
 of the flat partial-instrument overlap above, a hybrid ring funds every member
 through a small shared pool of instruments, and draws signup age from a much
 wider range (5-400 days) rather than uniformly young. This exists specifically
@@ -265,79 +273,95 @@ while inverted, which is exactly what the hard-failure guard exists to catch.
 ## Current figures
 
 After `rm -rf out && python -m riskmesh`. Fingerprint `c3ee14627c2c2ce2`,
-seed 20260824, Python 3.12.10. Re-frozen in Phase 11 against the Phase 10
-benchmark (hybrid pool-funded rings, the 8th signal, the D3 cost-model fix) —
-every figure below moved from the pre-Phase-10 numbers.
+seed 20260824, Python 3.12.10. Re-frozen in Phase 12 after fixing a real
+RNG-isolation bug in `_inject_rings` (`riskmesh/generate.py`'s module
+comment) that Phase 10 introduced — the fingerprint is unchanged (it hashes
+config fields, not generator code) but every figure below moved anyway,
+because the fix changes actual generator output.
 
-**Dataset** — 6,059 transactions, 801 accounts, 973 devices, 910 IPs, 776
-instruments, 40 merchants. 24 rings (70% hybrid pool-funded), 24 families. 105
-candidate components (393 singletons dropped), largest 9 accounts (1.1%), 20
-NAT IPs capped. Non-triviality verdict **PASS**; shared-device baseline F1
-0.7442.
+**Dataset** — 6,052 transactions, 799 accounts, 996 devices, 916 IPs, 739
+instruments, 40 merchants. 24 rings (70% hybrid pool-funded — a majority, not
+a minority), 24 families. 100 candidate components (402 singletons dropped),
+largest 9 accounts (1.1%), 20 NAT IPs capped. Non-triviality verdict **PASS**;
+shared-device baseline F1 0.7442.
 
 **Operating point.** Weight policy re-run (`weight_search_protocol.md`,
-Phase 11) against five pre-declared candidates behind three hard feasibility
-gates: `D_drop_flagged` tied the hand-set incumbent exactly and won the
-tie-break on a sharper difficulty margin, so it was folded into
-`Config()._default_weights()` as the new `A_baseline` and the search re-run to
-a fixed point (converged in one extra iteration). Held out at threshold 0.14,
-one read: precision 0.6154, recall 1.0000, F1 0.7619, FPR 0.2083, ring
-recovery 8/8, expected loss **8,041.65**.
+Phase 12) against five pre-declared candidates behind three hard feasibility
+gates: `A_baseline` won outright in a single pass this time — `D_drop_flagged`
+still ties it exactly (it is a no-op: the current `A_baseline` already
+carries `instrument_sharing`/`merchant_concentration` at weight 0.00 from
+Phase 11's fold-back), but with no sharper `positives_below_max_negative` to
+win the tie-break on, the tie resolves to the incumbent and the fold-back
+rule never triggers. Three of five candidates are now refused by the
+difficulty gate (`B_equal`, `C_separation_proportional`, `E_drop_temporal`),
+against two in Phase 10/11. Held out at threshold 0.18, one read: precision
+0.7000, recall 0.8750, F1 0.7778, FPR 0.1304, ring recovery 7/8, expected loss
+**74,595.13**.
 
 > How to describe this: we established an explicit cost model and selected
 > among integrity-valid policies under it. Not "optimized to minimize the cost
-> of missed fraud" — the winner's loss-minimising point has fn = 0, so `C_fn`
-> is multiplied by zero and never enters the total. The gate structure did
-> real work; the false-negative cost it was derived from currently
-> contributes nothing to why this policy won.
+> of missed fraud" — the winner's *validation* operating point has fn = 0, so
+> `C_fn` never enters the validation total. Held-out is a different story this
+> run: one missed ring alone (`C_fn` 68,399.84) accounts for most of the
+> 74,595.13 figure above, which is why a single point estimate at this cost
+> ratio should always be read next to the sensitivity table, not instead of it.
 
 **Decision policy.** A three-way band layered on the frozen scorer, which is
 unchanged and not reopened:
 
 ```
-score < 0.14          -> Allow
-0.14 <= score < 0.23  -> Review     (deferred to a human, no automatic action)
-score >= 0.23         -> Escalate
+score < 0.18   -> Allow
+score >= 0.18  -> Escalate      (Review is empty: t_lo == t_hi == 0.18)
 ```
 
 Both boundaries were freely searched behind a pre-declared 25% review-coverage
-gate, minimised on validation, frozen to disk before test was read. Held out,
-one read: expected loss **6,808.33** against the binary policy's 8,041.65 on
-the identical rows, at a 15.6% review rate — a **15.3%** reduction. Unlike the
-original run, this is not a clean sweep: 4 of the binary policy's 5 false
-positives (all family) land in the review band, but the 5th escalates in the
-three-way policy too. Escalate precision 0.8750, FPR 0.0417, recall 0.8750,
-with the remaining ring deferred rather than missed.
+gate, minimised on validation, frozen to disk before test was read. This run
+the search lands on a **degenerate band** — `t_lo = t_hi = 0.18` — because
+`A_baseline` reaches a perfect validation confusion matrix (fn = 0 *and*
+fp = 0) at that threshold, leaving Review nothing to rescue or waive on
+either side. Held out, one read: expected loss **74,595.13**, bit-for-bit
+identical to the binary policy on the same rows — a **0%** change, not a
+reduction. Every held-out error (3 family false positives, 1 missed ring)
+sits either well inside Escalate or before Allow's boundary; none of them are
+the near-miss case a review band exists to catch on this particular draw.
 
 `deferred_decisions.md` D3 (the review-cost double-charge) is **resolved**, not
-a caveat, as of Phase 10 — the 15.3% figure is the only number now, not two
-under separate accountings. The review tier still assumes an analyst resolves
-a deferred case correctly — a stated assumption, not a measurement.
+a caveat, as of Phase 10 — there is one cost model to report, which this run's
+finding (three-way == binary exactly) demonstrates rather than complicates.
+The review tier still assumes an analyst resolves a deferred case correctly —
+a stated assumption, not a measurement.
 
 **Baselines** (each at its own frozen cutoff, held-out F1):
 
 | Baseline | Sees graph | F1 | FPR |
 |---|---|---|---|
-| `ring_score` | fully | **0.8750** | 0.0417 |
-| `transaction_level` | none | 0.7143 | 0.0417 |
-| `shared_device_only` | one rule | 0.6957 | 0.2917 |
-| `shared_ip_only` | one rule | 0.5000 | 0.6667 |
-| `random` | none | 0.2000 | 0.0417 |
+| `ring_score` | fully | **0.7778** | 0.1304 |
+| `transaction_level` | none | 0.5833 | 0.3913 |
+| `shared_device_only` | one rule | 0.6957 | 0.3043 |
+| `shared_ip_only` | one rule | 0.5161 | 0.6522 |
+| `random` | none | 0.0000 | 0.0000 |
 
-The shipped scorer now beats every other baseline outright, reversing the
-pre-Phase-10 finding that a non-graph rule won. See "Read this before the
-numbers" above and `implementation_plan.md` "Phase 10-11" for the full story.
+The shipped scorer still beats every other baseline outright, but
+`transaction_level` has fallen behind `shared_device_only` too this run — it
+is no longer even the strongest non-graph baseline, a further move in the
+same direction as the pre-Phase-10 reversal. See "Read this before the
+numbers" above and `implementation_plan.md` "Phase 10-12" for the full story.
 
 **Ablations** (leave-one-group-out, each with its own frozen threshold):
 
 | Removed | F1 | Δ | Rings found |
 |---|---|---|---|
-| — full model | 0.8750 | — | 7/8 |
-| `behavioral_refund` | 0.7059 | **−0.1691** | **6/8** |
-| `device` | 0.9333 | **+0.0583** | 7/8 |
-| `ip` | 0.8750 | 0.0000 | 7/8 |
-| `temporal` | 0.8421 | −0.0329 | 8/8 |
-| `instrument` | 0.7778 | **−0.0972** | 7/8 |
+| — full model | 0.7778 | — | 7/8 |
+| `behavioral_refund` | 0.8750 | **+0.0972** | 7/8 |
+| `device` | 0.8750 | **+0.0972** | 7/8 |
+| `ip` | 0.7778 | 0.0000 | 7/8 |
+| `temporal` | 0.8421 | **+0.0643** | 8/8 |
+| `instrument` | 0.7778 | 0.0000 | 7/8 |
+
+**No group's removal costs held-out F1 this run** — every row ties or
+improves on the full model. This is a different result from Phase 10/11,
+where `behavioral_refund` and `instrument` both cost F1 when removed; no
+weight was changed on the strength of either reading, per the same rule.
 
 ---
 

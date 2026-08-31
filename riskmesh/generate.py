@@ -312,13 +312,23 @@ def _inject_rings(
         shared_device = f"d_ring{r:02d}"
         refund_rate = rng.uniform(cfg.ring_refund_rate_min, cfg.ring_refund_rate_max)
         bursts = rng.random() >= cfg.p_ring_no_burst
-        # Phase 10: a minority of rings are pool-funded (RISK-004's E6,
-        # restarted as a real mechanism -- see config.py). A hybrid ring's
+        # Phase 10: a fraction of rings (currently a majority -- see
+        # `p_ring_instrument_funded` in config.py) are pool-funded (RISK-004's
+        # E6, restarted as a real mechanism). A hybrid ring's
         # members draw signup age from a much wider range instead of the
         # uniform thin-history window, which is what breaks the
         # account-age <= 30 days confound (README finding #1).
         is_hybrid = (cfg.ring_instrument_pool_size > 0
                      and rng.random() < cfg.p_ring_instrument_funded)
+        # The two signup-day branches below draw from different-width ranges
+        # (5..400 vs 1..20). `randint`/`randrange` use rejection sampling, so
+        # the NUMBER of underlying words they consume varies with both the
+        # range and the value drawn -- a second instance of the exact isolation
+        # trap this phase exists to fix, just harder to spot than an extra
+        # method call. A dedicated per-ring `Random` sidesteps it the same way
+        # `pool_rng`/`share_rng` do below, rather than relying on both branches
+        # happening to cost the same number of words.
+        signup_rng = random.Random(cfg.seed * 49_979_687 + r)
 
         members: list[Account] = []
         for _ in range(size):
@@ -328,10 +338,10 @@ def _inject_rings(
                 # except a hybrid ring's mix of fresh mules and older
                 # compromised/synthetic accounts (Phase 10).
                 signup_day=(
-                    day_lo - rng.randint(cfg.ring_hybrid_signup_min_days,
-                                          cfg.ring_hybrid_signup_max_days)
+                    day_lo - signup_rng.randint(cfg.ring_hybrid_signup_min_days,
+                                                 cfg.ring_hybrid_signup_max_days)
                     if is_hybrid else
-                    day_lo - rng.randint(1, 20)
+                    day_lo - signup_rng.randint(1, 20)
                 ),
                 kind="ring",
             )
@@ -348,13 +358,38 @@ def _inject_rings(
         # Instrument mechanism: exactly one of the two applies per ring, never
         # both (Phase 10).
         #
+        # The sharers/share_rng draws below happen unconditionally, every ring,
+        # same as before Phase 10 -- `is_hybrid` only decides which mechanism's
+        # RESULT gets applied, not how many random calls happen. The main
+        # stream, and therefore the family injector that runs next, only
+        # diverges from before by the `is_hybrid` draw itself (see the
+        # RNG-stream note in experiment.py). Getting this wrong (drawing
+        # `sharers` only in the `else` branch) makes the main stream's
+        # consumption depend on `is_hybrid`, a data-dependent branch -- exactly
+        # the E3 trap experiment.py's module docstring names.
+        #
+        # Partial instrument overlap. Originally a flat 2-3 members however
+        # large the ring was, which is RISK-004: a household's shared card
+        # reaches every member, a ring's reached at most three, so the hard
+        # negative outscored the positive on instrument_sharing.
+        # ring_instrument_share scales the sharer count with ring size
+        # instead.
+        sharers = rng.sample(members, min(len(members), rng.randint(2, 3)))
+        if cfg.ring_instrument_share > 0:
+            share_rng = random.Random(cfg.seed * 15_485_863 + r)
+            sharers = share_rng.sample(
+                members,
+                min(len(members),
+                    max(2, round(cfg.ring_instrument_share * len(members)))),
+            )
+        shared_pi = f"pi_{ring_id}"
+
         # Hybrid (RISK-004 option 2, E6): fund the whole ring through a small
         # pool of cards instead of a partial overlap on personal cards. This is
         # the mule mechanic -- few instruments, many accounts -- and it
         # REPLACES every member's instrument rather than adding to it. The pool
-        # assignment uses a dedicated Random so the main stream, and therefore
-        # the family injector that runs next, only diverges from before by the
-        # `is_hybrid` draw itself (see the RNG-stream note in experiment.py).
+        # assignment uses a dedicated Random so it cannot perturb the main
+        # stream either.
         if is_hybrid:
             pool_rng = random.Random(cfg.seed * 32_452_843 + r)
             pool = [
@@ -364,21 +399,6 @@ def _inject_rings(
             for acct in members:
                 acct.instruments = [pool_rng.choice(pool)]
         else:
-            # Partial instrument overlap. Originally a flat 2-3 members however
-            # large the ring was, which is RISK-004: a household's shared card
-            # reaches every member, a ring's reached at most three, so the hard
-            # negative outscored the positive on instrument_sharing.
-            # ring_instrument_share scales the sharer count with ring size
-            # instead.
-            sharers = rng.sample(members, min(len(members), rng.randint(2, 3)))
-            if cfg.ring_instrument_share > 0:
-                share_rng = random.Random(cfg.seed * 15_485_863 + r)
-                sharers = share_rng.sample(
-                    members,
-                    min(len(members),
-                        max(2, round(cfg.ring_instrument_share * len(members)))),
-                )
-            shared_pi = f"pi_{ring_id}"
             for acct in sharers:
                 acct.instruments.append(shared_pi)
 

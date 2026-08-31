@@ -33,8 +33,8 @@ def check(msg: str) -> None:
 
 def test_01_artifacts_load_and_agree(a: Artifacts) -> None:
     assert a.fingerprint == "c3ee14627c2c2ce2", a.fingerprint
-    assert len(a.components) == 105, len(a.components)
-    assert a.band == {"t_lo": 0.14, "t_hi": 0.23}, a.band
+    assert len(a.components) == 100, len(a.components)
+    assert a.band == {"t_lo": 0.18, "t_hi": 0.18}, a.band
     check(f"01 artifacts load; all 5 fingerprinted files agree ({a.fingerprint})")
 
 
@@ -122,99 +122,103 @@ def test_05_peer_rule_is_deterministic(a: Artifacts) -> None:
         for c in flagged:
             got = peer_id(c, shuffled)
             assert got == baseline[c["component_id"]], (c["component_id"], got)
-    assert baseline["c_a00653"] == "c_a00744", baseline["c_a00653"]
+    assert baseline["c_a00672"] == "c_a00780", baseline["c_a00672"]
     check(f"05 peer rule stable over 50 shuffles for all {len(flagged)} flagged; "
-          f"c_a00653 -> c_a00744")
+          f"c_a00672 -> c_a00780")
 
 
 def test_06_payloads_carry_the_frozen_headline(a: Artifacts) -> None:
     m = payloads.metrics(a)
-    assert m["triage"] == {"allow": 19, "review": 5, "escalate": 8,
-                           "review_rate": 0.1562, "n_components": 32}, m["triage"]
-    assert m["cost"]["expected_loss"] == 6808.33
-    assert m["cost"]["binary_baseline"] == 8041.65
-    assert m["quality"]["f1"] == 0.875
-    assert m["quality"]["escalated_false_positives"] == 1
+    assert m["triage"] == {"allow": 21, "review": 0, "escalate": 10,
+                           "review_rate": 0.0, "n_components": 31}, m["triage"]
+    assert m["cost"]["expected_loss"] == 74595.13
+    assert m["cost"]["binary_baseline"] == 74595.13
+    assert m["quality"]["f1"] == 0.7778
+    assert m["quality"]["escalated_false_positives"] == 3
     assert m["quality"]["rings_recovered"] == 7
 
     t = payloads.threshold_analysis(a)
     ladder = {r["policy"]: r["expected_loss"] for r in t["ladder"]}
-    assert ladder["flag_nothing"] == 615887.28, ladder
-    assert ladder["flag_everything"] == 23399.92, ladder
-    assert ladder["binary"] == 8041.65 and ladder["three_way"] == 6808.33, ladder
+    assert ladder["flag_nothing"] == 547198.72, ladder
+    assert ladder["flag_everything"] == 24663.89, ladder
+    assert ladder["binary"] == 74595.13 and ladder["three_way"] == 74595.13, ladder
 
     b = payloads.benchmark(a)
-    assert b["primary"]["f1"] == 0.875
+    assert b["primary"]["f1"] == 0.7778
     assert b["panel"]["verdict"] == "PASS"
-    assert b["single_signal_max_f1"]["account_newness"] == 0.5833
+    assert b["single_signal_max_f1"]["account_newness"] == 0.5246
     assert len(b["weight_search"]["candidates"]) == 5
     refused = [c for c in b["weight_search"]["candidates"] if not c["feasible"]]
-    assert len(refused) == 2, refused
+    assert len(refused) == 3, refused
     check("06 metrics / threshold-analysis / benchmark carry the frozen headline "
-          "figures (6,808.33 vs 8,041.65; F1 0.8750; 1 false escalation; 2 refused)")
+          "figures (three-way == binary at 74,595.13, the band is degenerate "
+          "this run; F1 0.7778; 3 escalated false positives; 3 refused)")
 
 
 def test_07_evidence_matches_the_investigator_mockup(a: Artifacts) -> None:
-    ev = payloads.evidence(a, "c_a00653")
+    ev = payloads.evidence(a, "c_a00672")
     assert ev is not None
     got = {s["name"]: s["contribution"] for s in ev["decomposition"]["signals"]}
-    for name, want in (("device_sharing", 0.17284), ("temporal_burst", 0.192901),
-                       ("account_newness", 0.110425),
-                       ("failure_refund_rate", 0.113858),
-                       ("instrument_pool_concentration", 0.0),
+    for name, want in (("device_sharing", 0.197531), ("temporal_burst", 0.231481),
+                       ("account_newness", 0.037037),
+                       ("failure_refund_rate", 0.046852),
+                       ("instrument_pool_concentration", 0.037037),
                        ("instrument_sharing", 0.0),
                        ("merchant_concentration", 0.0)):
         assert abs(got[name] - want) < 5e-5, (name, got[name], want)
     # The ring keeps one account per IP; the household puts several behind one
     # router. That inversion is the comparison panel's whole argument.
     assert ev["comparison"]["subject"]["max_accounts_per_ip"] == 1
-    assert ev["comparison"]["peer"]["max_accounts_per_ip"] == 7
+    assert ev["comparison"]["peer"]["max_accounts_per_ip"] == 8
 
     ip = [s for s in ev["decomposition"]["signals"] if s["name"] == "ip_sharing"]
     assert len(ip) == 1, "ip_sharing must never be filtered out"
     assert ip[0]["weighted"] is False and ip[0]["note"] == "RISK-001"
-    # Phase 11: the weight search re-run zeroed instrument_sharing and
-    # merchant_concentration too (D_drop_flagged won) -- both must still be
-    # served, never filtered out, same as ip_sharing.
-    for name in ("instrument_sharing", "merchant_concentration"):
-        sig = next(s for s in ev["decomposition"]["signals"] if s["name"] == name)
-        assert sig["weighted"] is False and sig["note"] == "RISK-001"
+    # instrument_sharing and merchant_concentration are also zeroed (Phase 11's
+    # weight-search re-freeze), but by RISK-004 and RISK-002 respectively, not
+    # by RISK-001 -- each zero-weighted signal is mapped to the RISK item that
+    # actually zeroed it (payloads.ZERO_WEIGHT_RISK_NOTES), not a single
+    # hardcoded label. All three must still be served, never filtered out.
+    assert next(s for s in ev["decomposition"]["signals"]
+               if s["name"] == "instrument_sharing")["note"] == "RISK-004"
+    assert next(s for s in ev["decomposition"]["signals"]
+               if s["name"] == "merchant_concentration")["note"] == "RISK-002"
 
     assert ev["action"] == "escalate"
-    assert ev["rank"] == {"position": 1, "of": 32}
-    assert ev["comparison"]["peer"]["component_id"] == "c_a00744"
+    assert ev["rank"] == {"position": 1, "of": 31}
+    assert ev["comparison"]["peer"]["component_id"] == "c_a00780"
     assert ev["graph"]["accounts"] and ev["graph"]["edges"]
     check("07 /evidence reproduces the Investigator mockup: contributions, "
           "zero-weighted ip_sharing/instrument_sharing/merchant_concentration "
-          "kept with RISK-001, rank 1 of 32")
+          "kept with their own RISK-001/RISK-004/RISK-002 notes, rank 1 of 31")
 
 
 def test_08_audit_round_trip(a: Artifacts) -> None:
-    ev = payloads.evidence(a, "c_a00653")
+    ev = payloads.evidence(a, "c_a00672")
     assert ev is not None
     snapshot = {"signals": ev["decomposition"]["signals"], "summary": ev["summary"]}
-    rec = audit.record("c_a00653", "escalate", score=ev["score"], band=a.band,
+    rec = audit.record("c_a00672", "escalate", score=ev["score"], band=a.band,
                        system_action=ev["action"], fingerprint=a.fingerprint,
                        snapshot=snapshot)
     assert rec["agreed_with_system"] is True
     assert len(rec["evidence_sha256"]) == 64
-    assert rec["evidence_snapshot"]["summary"]["size"] == 8
+    assert rec["evidence_snapshot"]["summary"]["size"] == 9
 
     with tempfile.TemporaryDirectory() as td:
         log = Path(td) / "audit_log.jsonl"
         audit.append(rec, log)
-        audit.append(audit.record("c_a00744", "allow", score=0.32, band=a.band,
+        audit.append(audit.record("c_a00780", "allow", score=0.32, band=a.band,
                                   system_action="review", fingerprint=a.fingerprint,
                                   snapshot={}), log)
         log.write_text(log.read_text() + '{"torn": ', encoding="utf-8")
         back = audit.tail(path=log)
         assert len(back) == 2, back            # torn line skipped, history intact
-        assert back[0]["component_id"] == "c_a00744"
+        assert back[0]["component_id"] == "c_a00780"
         assert back[0]["agreed_with_system"] is False
-        one = audit.tail("c_a00653", path=log)
-        assert len(one) == 1 and one[0]["component_id"] == "c_a00653"
+        one = audit.tail("c_a00672", path=log)
+        assert len(one) == 1 and one[0]["component_id"] == "c_a00672"
     try:
-        audit.record("c_a00653", "delete-everything", score=0.5, band=a.band,
+        audit.record("c_a00672", "delete-everything", score=0.5, band=a.band,
                      system_action="escalate", fingerprint=a.fingerprint, snapshot={})
     except ValueError:
         check("08 audit round-trips, skips a torn line, filters by component, "
@@ -225,16 +229,18 @@ def test_08_audit_round_trip(a: Artifacts) -> None:
 
 def test_09_rings_listing(a: Artifacts) -> None:
     r = payloads.rings(a)
-    assert r["total_in_split"] == 32, r["total_in_split"]
-    assert r["rings"][0]["component_id"] == "c_a00653"
+    assert r["total_in_split"] == 31, r["total_in_split"]
+    assert r["rings"][0]["component_id"] == "c_a00672"
     assert r["rings"][0]["rank"] == 1
     scores = [x["score"] for x in r["rings"]]
     assert scores == sorted(scores, reverse=True), "not ranked by score"
     esc = payloads.rings(a, action="escalate")
     rev = payloads.rings(a, action="review")
-    assert esc["count"] == 8 and rev["count"] == 5, (esc["count"], rev["count"])
+    # The abstention band is degenerate this run (t_lo == t_hi == 0.18), so
+    # Review is empty by construction -- see three_way_stats' binary collapse.
+    assert esc["count"] == 10 and rev["count"] == 0, (esc["count"], rev["count"])
     assert all(x["action"] == "escalate" for x in esc["rings"])
-    check("09 /rings ranks by score desc; action filter yields 8 escalate, 5 review")
+    check("09 /rings ranks by score desc; action filter yields 10 escalate, 0 review")
 
 
 def main() -> None:

@@ -14,6 +14,21 @@ from . import audit, bands
 
 DEFAULT_SPLIT = "test"
 
+# Which filed defect zeroed each signal's weight, for the Investigator's
+# per-signal bug-attribution note. ip_sharing was RISK-001's own finding;
+# instrument_sharing and merchant_concentration were zeroed later, by the
+# Phase 11 weight-search re-freeze folding in RISK-004's and RISK-002's
+# direction (weight_search_protocol.md, "D_drop_flagged" folded into
+# `Config()._default_weights()`) -- not RISK-001, which never touched them.
+# A signal reading weight 0 that is not in this map is a new, unmapped case:
+# check bugs.md for which RISK item zeroed it and add it here rather than
+# defaulting to a bug number that would misattribute it.
+ZERO_WEIGHT_RISK_NOTES = {
+    "ip_sharing": "RISK-001",
+    "instrument_sharing": "RISK-004",
+    "merchant_concentration": "RISK-002",
+}
+
 
 def _envelope(arts: Artifacts) -> dict:
     return {"config_fingerprint": arts.fingerprint, "band": arts.band}
@@ -130,8 +145,9 @@ def evidence(arts: Artifacts, component_id: str) -> dict | None:
         }
         if w == 0:
             # Never filtered out. A zero-weighted signal is a finding, not an
-            # absence -- ip_sharing scored higher on households than on rings.
-            entry["note"] = "RISK-001"
+            # absence -- mapped to whichever RISK item actually zeroed it,
+            # not a single hardcoded label (see ZERO_WEIGHT_RISK_NOTES above).
+            entry["note"] = ZERO_WEIGHT_RISK_NOTES.get(name, "unmapped-zero-weight")
         signals.append(entry)
     signals.sort(key=lambda s: (-s["contribution"], s["name"]))
 
