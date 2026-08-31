@@ -110,22 +110,31 @@ does:
    codebase (`select_threshold`, `select_weights`) rather than introducing
    k-fold cross-validation, which would be a new pattern this project does
    not otherwise use.
-2. **Gate evaluation.** The train-fit model scores every **design**
-   (train+validation) component out-of-sample for the rows it was not fit on
-   (validation) and in-sample for the rows it was (train). `panel_verdict()`
-   and the two difficulty bounds are computed on this design view, exactly as
-   the weight search computes them on train+validation.
+2. **Gate evaluation.** The train-fit model scores **validation** components
+   only — out-of-sample, the rows it was not fit on. `panel_verdict()` and the
+   two difficulty bounds are computed on this validation-only view, never
+   mixed with train's in-sample predictions. This is a deliberate departure
+   from the weight search's own gate, which evaluates on train+validation
+   combined — that is safe for a hand-set weight vector, which is not "fit"
+   on anything and applies the identical formula to every split alike. It is
+   not safe here: a boosted model's in-sample predictions on the rows it was
+   trained on are biased toward separation regardless of whether the model
+   generalises, and mixing them into the gate's input would let every
+   candidate look like it had eroded the benchmark's difficulty even when it
+   had not. Evaluating the gate exclusively on out-of-sample validation scores
+   is what keeps the gate measuring the model's actual generalisation, which
+   is the property worth gating on.
 3. **Threshold / objective.** Expected loss is minimised by sweeping
-   thresholds 0.00–1.00 in 0.01 steps, scored on **validation only** — the
-   out-of-sample rows for the selection fit — via `costmodel.expected_loss()`
-   through `costmodel.gated_expected_loss(..., score_on=validation)`, reusing
-   `costmodel.derive_costs()`'s already-derived costs without re-deriving
-   them. This is the identical sweep-and-minimise shape `select_weights()`
-   uses; `evaluate.select_threshold()` selects by F1, a different metric, so
-   it is not called for this step — the objective stated by this protocol is
-   expected loss, not F1, and reusing a different function's F1 sweep instead
-   of the weight search's own sweep-and-minimise loop would silently swap the
-   selection metric.
+   thresholds 0.00–1.00 in 0.01 steps, scored on that same **validation-only**
+   out-of-sample view, via `costmodel.expected_loss()` through
+   `costmodel.gated_expected_loss()`, reusing `costmodel.derive_costs()`'s
+   already-derived costs (computed on train+validation, unchanged) without
+   re-deriving them. This is the identical sweep-and-minimise shape
+   `select_weights()` uses; `evaluate.select_threshold()` selects by F1, a
+   different metric, so it is not called for this step — the objective stated
+   by this protocol is expected loss, not F1, and reusing a different
+   function's F1 sweep instead of the weight search's own sweep-and-minimise
+   loop would silently swap the selection metric.
 4. **Refit for the final read.** Once a candidate is selected, its SAME
    hyperparameter configuration is refit on **train+validation combined** (all
    design data) before it is used to score the held-out test split. This is
@@ -153,14 +162,16 @@ does:
    a. Fit `XGBClassifier(**hyperparameters, objective="binary:logistic",
       eval_metric="logloss", random_state=cfg.seed)` on **train** components'
       8 signals.
-   b. Score every **design** component with that fit, replacing `.score` via
-      `dataclasses.replace(c, score=pred)`.
-   c. Run the non-triviality panel and the two difficulty gates on the
-      **design** view (§3).
+   b. Score **validation** components only with that fit (out-of-sample),
+      replacing `.score` via `dataclasses.replace(c, score=pred)`. Train
+      rows' in-sample predictions are not computed for this step and never
+      enter the gate.
+   c. Run the non-triviality panel and the two difficulty gates on that
+      validation-only view (§3, §4).
    d. If any gate fails: record which exception fired and the failing
       checks. **No expected loss.** Next candidate.
-   e. Otherwise sweep thresholds 0.00–1.00 in 0.01 steps on the **validation**
-      subset of the design view and take the minimum expected loss.
+   e. Otherwise sweep thresholds 0.00–1.00 in 0.01 steps on that same
+      validation-only view and take the minimum expected loss.
 5. Select the candidate with the lowest validation expected loss among
    feasible candidates. Ties break toward the earlier-declared (and by
    construction more conservative) candidate — X1 before X2 before X3 before
@@ -223,7 +234,111 @@ a new frozen record.
 
 ---
 
-## 8. Outcome
+## 8. Outcome — no candidate feasible, no held-out read taken
 
-*(Appended after the freeze and the single held-out read — not written until
-then.)*
+Record: `experiments/xgboost_policy.json` (byte-copied to
+`out/xgboost_policy.json`). Installed `xgboost.__version__` **3.4.1**. Costs
+re-derived on the current benchmark (identical derivation to
+`weight_search_protocol.md` §4/§8, same `derive_costs()` call, same design
+split): `C_review` 500.00, `C_fn` 68,399.84, `C_fp` 398.43, ratio 171.7:1.
+Config fingerprint `c3ee14627c2c2ce2`, seed 20260824.
+
+**All four candidates were refused. None reached the threshold sweep or an
+expected-loss figure.**
+
+| policy | panel | pbmn | hard-neg | distinct predictions | feasible | reason |
+|---|---|---|---|---|---|---|
+| **X1_shallow** | FAIL | 0.0000 | 8 | **1** | no | degenerate constant predictor |
+| **X2_moderate** | FAIL | 0.0000 | 8 | **1** | no | degenerate constant predictor |
+| **X3_stumps** | FAIL | 0.0000 | 8 | **1** | no | degenerate constant predictor |
+| **X4_unregularised** | FAIL | 0.1250 | 1 | 23 | no | genuine over-separation |
+
+**Two distinct failure mechanisms produced the same refusal, and they are not
+the same finding.**
+
+**X1, X2 and X3 never split at all.** Inspecting each fit's booster
+(`get_booster().trees_to_dataframe()`) shows every one of their boosted trees
+is a single unsplit leaf -- `min_child_weight` (5, 3, and 3 respectively),
+combined with `subsample` and this benchmark's ~30-row training split (8
+positive, 30 negative on train, further subsampled), means no candidate split
+anywhere ever leaves both children with enough weight to clear the bound. The
+model degenerates to one constant prediction for every validation component
+(`n_unique_validation_predictions == 1`, confirmed directly against the
+fitted boosters, not inferred from the gate output). Re-fitting each with
+`min_child_weight` removed (all other hyperparameters unchanged) confirms
+this is exactly the mechanism: splits appear immediately once the bound is
+relaxed.
+
+A constant score fails `positives_below_max_negative` for a reason unrelated
+to the one that check exists to catch: with every prediction tied, **zero**
+positive scores are *strictly less than* the (also tied) top negative score,
+so the computed fraction reads 0.0000 -- identical to what genuine
+over-separation would produce, for the opposite underlying reason (no
+discrimination at all, rather than too much of it). This is not a flaw in the
+gate found after the fact and patched around; it is reported here exactly as
+observed, because the gate's job is to refuse a candidate that cannot be
+trusted to report an honest expected loss, and a constant classifier
+qualifies on that description regardless of why it is constant. The
+`n_unique_validation_predictions` diagnostic is recorded in the frozen JSON
+precisely so this distinction is visible without re-deriving it from the
+booster later.
+
+**This is a sharper version of the L2 risk than anticipated, in the opposite
+direction from the one `xgboost_protocol.md` §2/§3 named going in.** The
+protocol worried about a model with excess capacity finding an easy
+separation; what three of four candidates actually demonstrate is that
+heavy regularisation, calibrated for "a ~30-row training set" in the abstract,
+can be strict enough for *this* concrete 38-row split that the model never
+fits any structure at all. Both directions -- too much separation and too
+little discrimination -- land on the identical numeric gate value here, which
+is itself worth recording: `positives_below_max_negative` cannot, by
+construction, distinguish "benchmark made trivially easy" from "model learned
+nothing," and a future reader of this number alone should not assume the
+former without checking `n_unique_validation_predictions` alongside it.
+
+**X4_unregularised behaved exactly as predicted in §2.** It does split (171
+non-leaf nodes across its 300 trees) and reaches 23 distinct predictions on
+validation, but drives `positives_below_max_negative` to 0.1250 -- below even
+the base non-triviality panel's own 0.20 bound, not only the tightened 0.45
+difficulty gate -- and `hard_negatives_inside_positive_range` to 1. This is
+the genuine over-separation mechanism the deliberately-overfit candidate was
+included to demonstrate, and the gate refuses it exactly as expected: **the
+gate fires against XGBoost, not only against hand-picked weight vectors.**
+
+**Winner: none. No candidate is feasible.** Per §6, stated before this run:
+*"If no candidate is feasible ... that is the finding, reported as such --
+not a reason to add a fifth candidate or loosen a gate."* No fifth candidate
+was added, no bound was loosened, and no candidate's hyperparameters were
+adjusted after this result was seen.
+
+### Step 8 — the held-out read that was not taken
+
+`evaluate_frozen_ml_policy()` was called against the frozen record above and
+raised `MLPolicyNotFrozen`, by design (§4 of `riskmesh/ml.py`'s docstring for
+that function): the record exists but names no winner, so there is no
+hyperparameter configuration to refit on train+validation and no model the
+protocol permits scoring the test split with. **The test split was not read.**
+This is the correct behaviour, not a gap: reading held-out data against an
+ungated model would produce a number with no protocol backing it, exactly the
+failure mode `PolicyNotFrozen` / `MLPolicyNotFrozen` exist to prevent
+structurally rather than by convention.
+
+### Verdict against the Tier 1 baseline
+
+**XGBoost does not beat Tier 1 in this experiment, because no XGBoost
+candidate reached a held-out reading at all.** Tier 1's frozen numbers stand
+unchanged: F1 **0.7778**, expected loss **74,595.13**, at threshold 0.18, on
+31 test components (`weight_search_protocol.md` §8). There is no XGBoost F1
+or expected loss to compare against them -- not "an unfavourable one," none.
+This is reported as the finding it is: over four pre-declared, small,
+regularised-for-a-small-dataset hyperparameter configurations, the
+non-triviality/difficulty gates -- reused completely unchanged from the
+linear weight search -- refused every one, three for producing no usable
+discrimination at all and one for producing too much. The honest conclusion
+is that this candidate list, on this benchmark's ~69 design components (16
+positive), does not clear the bar this project already holds the linear
+scorer to, and no attempt was made to lower that bar to manufacture a result.
+
+**No further read is permitted under this record.** Any future XGBoost
+comparison -- a different feature set, a different candidate list, k-fold
+resampling of the tiny training set -- needs its own frozen protocol.
