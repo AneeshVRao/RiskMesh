@@ -16,8 +16,8 @@
 # tests/test_riskmesh.py still import nothing outside the stdlib, and so do the
 # API's own data modules (artifacts, bands, payloads, audit) plus
 # tests/test_api.py. Only riskmesh/api/routes.py and main.py need these.
-fastapi
-uvicorn
+fastapi==0.136.1
+uvicorn==0.47.0
 
 # --- XGBoost scorer only (Tier 2) ------------------------------------------
 # Decision recorded in implementation_plan.md, "Tier 2 -- XGBoost scorer".
@@ -30,8 +30,8 @@ uvicorn
 # tree-building are not guaranteed bit-identical across library versions.
 # Every frozen record ml.py produces carries the installed xgboost.__version__
 # alongside sys.version, for the same reason.
-numpy
-xgboost
+numpy==2.4.5
+xgboost==3.4.1
 
 # --- GraphSAGE-style GNN scorer only (Tier 3, stretch) ----------------------
 # Decision recorded in implementation_plan.md, "Tier 3 -- GraphSAGE scorer",
@@ -52,4 +52,8 @@ xgboost
 # training has run-to-run variance beyond what a fixed seed alone controls in
 # general. Every frozen record gnn.py produces carries the installed
 # torch.__version__ alongside sys.version, for the same reason.
-torch
+#
+# The +cpu local version below only resolves from PyTorch's own CPU wheel
+# index, not PyPI: install with
+#   pip install -r requirements.txt --index-url https://download.pytorch.org/whl/cpu
+torch==2.13.0+cpu

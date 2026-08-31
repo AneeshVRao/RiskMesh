@@ -1,9 +1,15 @@
 """Expected-loss weight selection, with the non-triviality panel as a hard gate.
 
-The protocol is described in `weight_search_protocol.md`, and every gate in this
-module was defined before any candidate was selected -- the two difficulty gates
-were added before `select_weights()` was implemented at all, so the rules could
-not be adjusted once the numbers were visible.
+The protocol is described in `weight_search_protocol.md`. The panel gate
+predated `select_weights()`: it is already present, with no difficulty gates
+around it, in `96ae30f` ("Freeze the weight-search protocol before running any
+candidate"). The two difficulty gates below -- `MIN_HARD_NEGATIVES_IN_RANGE` and
+`MIN_POSITIVES_BELOW_MAX_NEGATIVE` -- were added in `9cafa71` ("Tighten the
+weight gate, run the search"), the same commit that ran the search over the five
+declared candidates. They tightened the bar rather than relaxed it, and every
+candidate was evaluated under them, but they were not in place before
+`select_weights()` existed, and an earlier version of this docstring claimed
+otherwise. That claim was false; this paragraph corrects it.
 
 The gate is the point of this module. bugs.md L2 records that held-out F1 rose
 from 0.8000 to 0.8889 twice, by two unrelated mechanisms, and that the
@@ -75,6 +81,15 @@ class DifficultyGateFailure(PanelGateFailure):
 
 class PolicyNotFrozen(AssertionError):
     """Raised when the held-out split is read before a policy is on disk."""
+
+
+class DesignSplitViolation(AssertionError):
+    """Raised when a design-only selection function receives a test row.
+
+    Subclasses AssertionError so it is still caught by callers (and tests) that
+    check for the bare assert this replaced; the guard now also fires under
+    `python -O`, which strips `assert` statements.
+    """
 
 
 # --------------------------------------------------------------------------
@@ -371,10 +386,11 @@ def select_weights(cfg: Config, design: list[Candidate],
     Feasibility is checked before expected loss, not alongside it: an infeasible
     candidate never receives a number to be compared against.
     """
-    assert all(c.split in DESIGN_SPLITS for c in design), (
-        "select_weights received non-design candidates -- "
-        "this would be weight fitting on held-out data"
-    )
+    if not all(c.split in DESIGN_SPLITS for c in design):
+        raise DesignSplitViolation(
+            "select_weights received non-design candidates -- "
+            "this would be weight fitting on held-out data"
+        )
 
     results: list[dict[str, Any]] = []
     for name, policy in CANDIDATES.items():
@@ -426,14 +442,17 @@ def select_weights(cfg: Config, design: list[Candidate],
             "positives_below_max_negative":
                 f">= {MIN_POSITIVES_BELOW_MAX_NEGATIVE}",
             "declared": (
-                "All three gates were defined BEFORE any candidate was selected, "
-                "and the two difficulty gates were added before select_weights() "
-                "was implemented at all. The reason is bugs.md L2: held-out F1 "
-                "rose 0.8000 -> 0.8889 twice, by unrelated mechanisms, while the "
-                "non-triviality panel went PASS -> FAIL both times. A higher "
-                "score on this benchmark can mean a better scorer or an easier "
-                "benchmark and the metric cannot distinguish them, so difficulty "
-                "is constrained structurally rather than reported after the fact."
+                "The panel gate predated select_weights() (commit 96ae30f). The "
+                "two difficulty gates were added in commit 9cafa71, the same "
+                "commit that ran the search over the five declared candidates -- "
+                "they tightened the bar rather than relaxed it, and every "
+                "candidate was evaluated under them. The reason is bugs.md L2: "
+                "held-out F1 rose 0.8000 -> 0.8889 twice, by unrelated "
+                "mechanisms, while the non-triviality panel went PASS -> FAIL "
+                "both times. A higher score on this benchmark can mean a better "
+                "scorer or an easier benchmark and the metric cannot distinguish "
+                "them, so difficulty is constrained structurally rather than "
+                "reported after the fact."
             ),
             "enforcement": (
                 "gated_expected_loss() raises PanelGateFailure or "

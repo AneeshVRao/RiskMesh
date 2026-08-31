@@ -36,7 +36,13 @@ from pathlib import Path
 from typing import Any
 
 from .config import Config
-from .costmodel import DESIGN_SPLIT, DESIGN_SPLITS, PanelGateFailure, panel_verdict
+from .costmodel import (
+    DESIGN_SPLIT,
+    DESIGN_SPLITS,
+    DesignSplitViolation,
+    PanelGateFailure,
+    panel_verdict,
+)
 from .evaluate import Candidate
 
 GRID = [i / 100.0 for i in range(101)]
@@ -146,10 +152,11 @@ def select_abstention_band(cfg: Config, design: list[Candidate],
       4. minimise expected loss, per candidate band, on validation only
     Freezing and the held-out read are separate steps, outside this function.
     """
-    assert all(c.split in DESIGN_SPLITS for c in design), (
-        "select_abstention_band received non-design candidates -- "
-        "this would be band selection on held-out data"
-    )
+    if not all(c.split in DESIGN_SPLITS for c in design):
+        raise DesignSplitViolation(
+            "select_abstention_band received non-design candidates -- "
+            "this would be band selection on held-out data"
+        )
     v = panel_verdict(cfg, design)
     if v["verdict"] != "PASS":
         raise PanelGateFailure(

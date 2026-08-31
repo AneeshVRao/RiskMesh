@@ -28,6 +28,8 @@ _FINGERPRINTED = {
     "weight_policy.json": ("config_fingerprint",),
     "baselines.json": ("config_fingerprint",),
     "ablations.json": ("config_fingerprint",),
+    "xgboost_policy.json": ("config_fingerprint",),
+    "graphsage_policy.json": ("config_fingerprint",),
 }
 _PLAIN = ("graph_edges.json",)
 

@@ -1,0 +1,14 @@
+{
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "playwright": "1.48.2"
+  },
+  "scripts": {
+    "verify:home": "node mockups/verify-home.mjs",
+    "verify:actions": "node mockups/verify-actions.mjs",
+    "verify:explain": "node mockups/verify-explain.mjs",
+    "verify:live": "node mockups/verify-live.mjs",
+    "verify:selection": "node mockups/verify-selection.mjs"
+  }
+}

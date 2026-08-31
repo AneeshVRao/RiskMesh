@@ -63,6 +63,7 @@ from .costmodel import (
     DESIGN_SPLITS,
     MIN_HARD_NEGATIVES_IN_RANGE,
     MIN_POSITIVES_BELOW_MAX_NEGATIVE,
+    DesignSplitViolation,
     PanelGateFailure,
     gated_expected_loss,
     panel_verdict,
@@ -299,10 +300,11 @@ def select_gnn_model(cfg: Config, design: list[Candidate], graph: Graph,
     Feasibility is checked before expected loss, not alongside it: an
     infeasible candidate never receives a number to be compared against.
     """
-    assert all(c.split in DESIGN_SPLITS for c in design), (
-        "select_gnn_model received non-design candidates -- "
-        "this would be model fitting on held-out data"
-    )
+    if not all(c.split in DESIGN_SPLITS for c in design):
+        raise DesignSplitViolation(
+            "select_gnn_model received non-design candidates -- "
+            "this would be model fitting on held-out data"
+        )
     train = [c for c in design if c.split == FIT_SPLIT]
     assert train, "no train-split candidates to fit on"
 
@@ -414,9 +416,8 @@ def refit_final_model(cfg: Config, design: list[Candidate], graph: Graph,
     is disjoint from test throughout, before and after this refit. Fresh
     initialisation from `cfg.seed`, same as every fit in this module.
     """
-    assert all(c.split in DESIGN_SPLITS for c in design), (
-        "refit_final_model received non-design candidates"
-    )
+    if not all(c.split in DESIGN_SPLITS for c in design):
+        raise DesignSplitViolation("refit_final_model received non-design candidates")
     graphs = build_component_graphs(cfg, graph)
     return fit_model(cfg, hyperparameters, design, graphs)
 

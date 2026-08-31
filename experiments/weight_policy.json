@@ -4,7 +4,7 @@
     "panel_verdict": "PASS",
     "hard_negatives_inside_positive_range": ">= 4",
     "positives_below_max_negative": ">= 0.45",
-    "declared": "All three gates were defined BEFORE any candidate was selected, and the two difficulty gates were added before select_weights() was implemented at all. The reason is bugs.md L2: held-out F1 rose 0.8000 -> 0.8889 twice, by unrelated mechanisms, while the non-triviality panel went PASS -> FAIL both times. A higher score on this benchmark can mean a better scorer or an easier benchmark and the metric cannot distinguish them, so difficulty is constrained structurally rather than reported after the fact.",
+    "declared": "The panel gate predated select_weights() (commit 96ae30f). The two difficulty gates were added in commit 9cafa71, the same commit that ran the search over the five declared candidates -- they tightened the bar rather than relaxed it, and every candidate was evaluated under them. The reason is bugs.md L2: held-out F1 rose 0.8000 -> 0.8889 twice, by unrelated mechanisms, while the non-triviality panel went PASS -> FAIL both times. A higher score on this benchmark can mean a better scorer or an easier benchmark and the metric cannot distinguish them, so difficulty is constrained structurally rather than reported after the fact.",
     "enforcement": "gated_expected_loss() raises PanelGateFailure or DifficultyGateFailure instead of returning a number. An infeasible candidate has no expected loss at all."
   },
   "costs": {
