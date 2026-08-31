@@ -1,20 +1,27 @@
 # Abstention / review-band protocol — frozen before any band is selected
 
-**Status: RUN and CLOSED (re-frozen, Phase 11). Band `t_lo = 0.14`, `t_hi = 0.23`
-selected on validation behind the coverage gate, frozen to
+**Status: RUN and CLOSED (re-frozen, Phase 12). Band `t_lo = 0.18`, `t_hi = 0.18`
+selected on validation behind the coverage gate — a degenerate, zero-width
+band, identical to the binary policy on every row — frozen to
 `out/abstention_policy.json`, and the held-out split read **once** through
 `evaluate_frozen_abstention_policy()` — see §8 / §8b. No further read is
 permitted under this record; any future comparison needs its own frozen
 protocol.**
 
-Re-run because Phase 10/11 re-froze the scorer (`weight_search_protocol.md`,
-`D_drop_flagged` folded into the new `A_baseline`) and its binary threshold
-moved from 0.23 to 0.14 — everything below is against the new benchmark.
+Re-run because Phase 12 fixed a real RNG-isolation bug in `_inject_rings`
+(`riskmesh/generate.py`'s module comment; the instrument-mechanism branch let
+the main stream's consumption depend on `is_hybrid`, a data-dependent branch)
+which changes actual generator output without moving the config fingerprint —
+so `weight_search_protocol.md`'s re-run against the corrected benchmark moved
+the binary threshold from 0.14 to 0.18, and everything below is against that
+new benchmark. (Phase 10/11 had already re-run this protocol once before, for
+an unrelated reason — the scorer and its threshold moving from Phase 10's
+generator and D3 cost-model changes.)
 
 This layers a second decision policy on top of the already-frozen A_baseline
-scorer and its already-frozen binary threshold (0.14, `weight_search_protocol.md`
+scorer and its already-frozen binary threshold (0.18, `weight_search_protocol.md`
 §8). Neither the scorer's eight weights nor the binary threshold's own reported
-numbers — F1 0.7619, expected loss 8,041.65 — are reopened, touched, or
+numbers — F1 0.7778, expected loss 74,595.13 — are reopened, touched, or
 re-derived by anything in this document. This protocol governs a *different*
 question: given the same scores, where should a three-way allow/review/escalate
 split put its two boundaries, and how is that choice frozen before test data is
@@ -39,18 +46,18 @@ score >= t_hi           -> Escalate   (same handling as the binary "flag")
 ```
 
 **Not selected here:** the scorer, its eight weights, the generator, the
-ground-truth rule, the split, or the binary threshold 0.14. That threshold
+ground-truth rule, the split, or the binary threshold 0.18. That threshold
 remains the frozen record for the *binary* policy and is quoted nowhere in this
 document as something this protocol chose.
 
-**0.14 is not treated as an immutable Allow boundary in this model.** `t_lo`
+**0.18 is not treated as an immutable Allow boundary in this model.** `t_lo`
 and `t_hi` are both free parameters, searched independently over the full
-[0.00, 1.00] grid. Pinning `t_lo` to 0.14 was considered and rejected during
-design (see the earlier design proposal) specifically because it would bake in
-an assumption — that 0.14 remains the right Allow boundary — that the search
-can just as easily confirm on its own. §8 reports where the free search
-actually lands relative to 0.14; that placement is a *result*, not a
-constraint.
+[0.00, 1.00] grid. Pinning `t_lo` to the binary threshold was considered and
+rejected during design (see the earlier design proposal) specifically because
+it would bake in an assumption — that the binary threshold remains the right
+Allow boundary — that the search can just as easily confirm on its own. §8
+reports where the free search actually lands relative to 0.18 (the current
+binary threshold); that placement is a *result*, not a constraint.
 
 ---
 
@@ -67,14 +74,14 @@ Escalate, actual negative  -> C_fp + C_review         (FP -- same as the binary 
 ```
 
 `C_fn`, `C_fp`, `C_review` are exactly `costmodel.derive_costs()`'s frozen
-values — 76,985.91 / 308.33 / 500.00 — recomputed on the same design split, not
+values — 68,399.84 / 398.43 / 500.00 — recomputed on the same design split, not
 re-derived. No new cost input is introduced.
 
 **The binary collapse.** At `t_lo == t_hi`, Review is empty by construction and
 this formula is bit-for-bit `costmodel.expected_loss()`: Allow is the old
 negative-predicted set, Escalate is the old positive-predicted set. This is
 verified as a permanent assertion in `tests/test_riskmesh.py` — `t_lo = t_hi =
-0.14` must reproduce validation expected loss 8,849.98 exactly — not merely
+0.18` must reproduce validation expected loss 4,000.00 exactly — not merely
 checked once while writing this document. A future change to either formula
 that breaks the equivalence fails that test.
 
@@ -83,7 +90,7 @@ D3 used to record that `C_fp`'s own derivation already included one review
 cost, and the Escalate-negative line above added a second, separate
 `C_review` — an escalated false positive was charged a review twice. Phase 10
 fixed `derive_costs()` to drop the embedded review term from `C_fp`, so it is
-now friction-only (308.33, no review component), and the generic
+now friction-only (398.43, no review component), and the generic
 `(tp+fp)*C_review` term is the *only* place a review cost is charged, for
 every flagged component. There is one cost model now, not two under separate
 accountings, and this protocol's formula needed no change to inherit the fix
@@ -131,18 +138,26 @@ something upstream changed the scorer or the data, not the band.
 **`MAX_REVIEW_RATE = 0.25`, on design coverage.** Declared here, before any
 band was scored — not fitted to whatever the search happened to find. On
 design (train+validation), not validation alone, for the same reason the two
-difficulty gates in `costmodel.py` are evaluated on design: more data (73 rows
-against 40), less small-sample noise in the coverage measurement, and the same
+difficulty gates in `costmodel.py` are evaluated on design: more data (69 rows
+against 31), less small-sample noise in the coverage measurement, and the same
 failure mode being guarded against (`bugs.md` L2: an optimiser finding the
 cheapest way to move a number rather than the honest way — here, "review
-almost everything" rather than "discriminate better", since `C_review` (500)
-is far cheaper than `C_fn` (74,645) or `C_fp` (848) once Review waives both).
+almost everything" rather than "discriminate better". Post-D3, `C_review`
+(500.00) is no longer far cheaper than both: it remains far cheaper than
+`C_fn` (68,399.84), but `C_fp` is now friction-only and *smaller* than
+`C_review` (398.43 < 500.00) -- the pre-D3 relationship this gate's rationale
+used to assume is inverted for the false-positive side. The gate exists
+regardless, because the `C_fn` side of the argument alone is enough to make
+"review almost everything" the cheap way to move the number whenever a design
+draw has any positives near the boundary; see §5 for what this run's search
+actually found).
 
 **0.25 is a business-policy choice, not a data fact.** Nothing in this
 benchmark derives it; it is a judgement about how much analyst throughput a
 review band may reasonably consume. It is set well above what the design-time
-exploration found the unconstrained optimum to actually need (17.5% of
-validation, 13.7% of design — §8), so it does not bind on this run. It exists
+exploration found the unconstrained optimum to actually need (0% of
+validation, 0% of design this run — the selected band is degenerate, see §8),
+so it does not bind on this run. It exists
 as a structural backstop against a *different* result on a future run, a
 different generator draw, or a harder ring type — not because today's numbers
 demanded it. If it needs to move, that is a decision for whoever revisits this
@@ -156,27 +171,34 @@ whatever the incumbent currently does.
 
 Stated before running anything, so the record cannot be read backwards.
 
-**Prediction (Phase 11 re-run, restated before this run):** the same structural
-argument as the original run applies again — `C_review` (500) is far cheaper
-than `C_fn` (76,986) or `C_fp` (308), and Review waives both, so an
-unconstrained sweep should still prefer routing almost everything to Review
-rather than risking either automated-decision cost.
+**Prediction (Phase 12 re-run, restated before this run):** the same
+structural argument as every prior run applies again — `C_review` (500.00)
+is far cheaper than `C_fn` (68,399.84), and Review waives it, so an
+unconstrained sweep should prefer pulling at least some negatives into
+Review rather than risking the automated-decision cost, the same way Phase
+10/11 found `t_hi` meaningfully above `t_lo`.
 
-**Result: the prediction was wrong again, for the same structural reason.**
-`A_baseline` (== the re-frozen `D_drop_flagged` weight vector) already has
-**zero missed positives at 0.14** on both validation (40 rows) and train (33
-rows) — `fn = 0` throughout, the same fact `weight_search_protocol.md` §8
-records for the binary policy. Widening Review downward past 0.14 therefore
-still only adds review cost with nothing to rescue. Above 0.14, the search
-this time finds it worthwhile to pull several negatives into Review (`t_hi`
-lands at 0.23, not immediately above `t_lo` as before) — see §8's band. The
-mechanism is the same as originally reported: this is a structural property
-of a benchmark this scorer already achieves zero-FN recall on, not evidence
-that review is cheap enough to matter regardless of recall.
+**Result: the prediction was wrong, in a new and stronger way this time.**
+`A_baseline` at the re-frozen threshold 0.18 does not merely have zero missed
+positives on validation — it has **zero false positives too** (`tp` 8, `fp`
+0, `fn` 0, `tn` 23 on all 31 validation components; `weight_search_protocol.md`
+§8 records the same confusion matrix for the binary policy). Widening Review
+downward past 0.18 still only adds review cost with nothing to rescue, as in
+every prior run. But this time widening Review *upward* past 0.18 also adds
+nothing: there are no false positives above the threshold left to waive
+either, because there are none on validation at all. The unconstrained sweep
+therefore finds the global optimum sits exactly at the binary policy —
+`t_lo = t_hi = 0.18` — and every other candidate band it tried costs strictly
+more, not less. **This is the most extreme case yet of the same mechanism
+every run has reported**: Review can only reduce expected loss by rescuing a
+missed positive or waiving a false positive, and this run's validation split
+has neither for it to work with.
 
-**This does not retire the gate.** A narrow-ish optimum today, on 40 validation
-rows, is not a proof that a different draw, a harder ring type, or the real
-held-out split behaves the same way. The gate stays as a structural backstop
+**This does not retire the gate.** A degenerate optimum today, on 31
+validation rows with a lucky perfect split, is not proof that a different
+draw, a harder ring type, or the real held-out split behaves the same way —
+and indeed it does not: the held-out split has both false positives and a
+missed ring (§8b). `MAX_REVIEW_RATE` stays as a structural backstop
 regardless of whether it binds on this particular run — the same reasoning
 that kept `costmodel.py`'s difficulty gates even though only one of the two
 candidates they were built to catch turned out to need them.
@@ -187,16 +209,17 @@ candidates they were built to catch turned out to need them.
 
 Whatever `(t_lo, t_hi)` `select_abstention_band()` returns in §8 is **optimal
 under this protocol's Phase-1 assumptions and the 0.25 review-coverage
-cap, evaluated on 40 validation components** — not a claimed correct fraud
+cap, evaluated on 31 validation components** — not a claimed correct fraud
 threshold, and not evidence that this exact band generalises. In particular:
 
 - It depends on the perfect-analyst-review assumption in §3, which is asserted,
-  not measured.
-- It depends on `MAX_REVIEW_RATE = 0.25`, a business choice, not a data fact.
-- It is fit to validation's specific error pattern. Unlike the original run,
-  a design-split diagnostic finds train's own ambiguous cases fully inside the
-  selected band this time (zero Escalate false positives on train outside
-  `[0.14, 0.23)`) — that is a property of this particular draw, not a
+  not measured, and which cannot even be exercised this run: the selected
+  band routes nothing to Review at all, on either split.
+- It depends on `MAX_REVIEW_RATE = 0.25`, a business choice, not a data fact —
+  though it does not bind this run (the design review rate is 0%, far under
+  the cap).
+- It is fit to validation's specific error pattern, which this run happens to
+  be a perfect one (§5). That is a property of this particular draw, not a
   guarantee, and is exactly why the held-out read in §7 matters and cannot be
   skipped or predicted from this table.
 
@@ -233,96 +256,112 @@ family accounts stop looking like fraud."
 
 ## 8. Outcome — run on design data only, held-out split untouched
 
+**Historical note, Phase 10/11 (superseded).** That run selected `t_lo =
+0.14`, `t_hi = 0.23` against the pre-Phase-12 benchmark, pulling 5 negatives
+into Review at a 17.5% validation review rate. Full tables for that run are in
+git history (this section, before the Phase 12 edit). Phase 12 fixed the
+`_inject_rings` RNG-isolation bug (`riskmesh/generate.py`), which moved the
+scorer's frozen threshold from 0.14 to 0.18 and changed the benchmark's actual
+score distribution — everything below is a fresh search against that
+corrected benchmark, not a continuation of the numbers above.
+
 Record: `out/abstention_policy.json`. `select_abstention_band()` run against
-real code against the Phase 10/11 benchmark: 3,726 bands passed the coverage
-gate out of 5,151 tried (1,425 refused), `t_lo = 0.14`, `t_hi = 0.23`, panel
+real code against the Phase 12 benchmark: 3,559 bands passed the coverage
+gate out of 5,151 tried (1,592 refused), `t_lo = 0.18`, `t_hi = 0.18`, panel
 PASS.
 
 | | value |
 |---|---|
-| selected band | `t_lo = 0.14`, `t_hi = 0.23` |
-| validation expected loss | **7,308.33** (binary A_baseline: 8,849.98) |
-| validation review rate | **17.5%** (7 of 40: 2 positive, 5 negative-family) |
-| design review rate (the gated quantity) | **13.7%** (10 of 73, `<= 0.25` cap; 7 of the 8 negatives are family) |
-| validation confusion | Allow 26 (0 missed positives), Review 7, Escalate 7 (6 TP, 1 FP) |
-| bands considered / refused by coverage | 3,726 / 1,425 (of 5,151 total) |
+| selected band | `t_lo = 0.18`, `t_hi = 0.18` (degenerate) |
+| validation expected loss | **4,000.00** (binary A_baseline: 4,000.00 — identical) |
+| validation review rate | **0%** (0 of 31) |
+| design review rate (the gated quantity) | **0%** (0 of 69, `<= 0.25` cap) |
+| validation confusion | Allow 23 (0 missed positives), Review 0, Escalate 8 (8 TP, 0 FP) |
+| bands considered / refused by coverage | 3,559 / 1,592 (of 5,151 total) |
 
 **Where the free search landed relative to the frozen binary threshold:**
-`t_lo` came out exactly at 0.14 — the same number `weight_search_protocol.md`
-froze for the binary policy — without being told to, reproducing the same
-result the original run reported at 0.23. §5 explains why: `A_baseline`
-already has zero missed positives at 0.14 on both validation and train, so a
-free search has no incentive to move the Allow boundary. Unlike the original
-run, `t_hi` this time lands meaningfully above `t_lo` (0.23, not 0.24) and the
-band pulls in 5 negatives rather than 1 — the search found more headroom to
-work with on this draw, not less. This is a result, not a constraint the code
-enforces; a different generator draw could move it again.
+`t_lo` came out exactly at 0.18 — the same number `weight_search_protocol.md`
+froze for the binary policy — without being told to, the same result every
+prior run reported for `t_lo` (always landing on the frozen binary threshold,
+whatever that threshold currently is). §5 explains why: `A_baseline` already
+has zero missed positives at 0.18, so a free search has no incentive to move
+the Allow boundary. This time `t_hi` lands at exactly `t_lo` rather than above
+it — every prior run's `t_hi` cleared the binary threshold by some margin to
+pull in negatives worth waiving; this run has no false positives on
+validation at all for `t_hi` to waive, so the search finds nothing above 0.18
+worth deferring either, and the band collapses to the binary policy exactly.
+This is a result, not a constraint the code enforces; a different generator
+draw could move it again, and the held-out split below shows it would have
+found something to do if validation itself had not been a perfect split.
 
 **Reading this table**: it is the design-side confirmation this protocol
 exists to demonstrate — a coded, gated, structurally-frozen search reproduces
-the hand-checked design proposal — not a claim about held-out performance.
+what the underlying data supports — not a claim about held-out performance.
 
 ---
 
 ## 8b. The single permitted held-out read (taken, once)
 
 Through `evaluate_frozen_abstention_policy()`, with `t_lo`/`t_hi` read back
-**from** `out/abstention_policy.json` rather than recomputed. 32 test
-components: 8 positive, 24 negative, 8 of the negatives carrying a family
+**from** `out/abstention_policy.json` rather than recomputed. 31 test
+components: 8 positive, 23 negative, 8 of the negatives carrying a family
 cluster.
 
 | | validation (selection) | **held out** |
 |---|---|---|
-| expected loss | 7,308.33 | **6,808.33** |
-| review rate | 17.5% (7/40) | **15.6%** (5/32) |
-| Allow | 26 (0 positives) | **19** (0 positives) |
-| Review | 7 (2 pos, 5 neg-family) | **5** (1 pos, 4 neg — all 4 family) |
-| Escalate | 7 (6 TP, 1 FP) | **8** (7 TP, **1 FP**) |
+| expected loss | 4,000.00 | **74,595.13** |
+| review rate | 0% (0/31) | **0%** (0/31) |
+| Allow | 23 (0 positives) | **21** (1 positive missed) |
+| Review | 0 | **0** |
+| Escalate | 8 (8 TP, 0 FP) | **10** (7 TP, **3 FP**) |
 
-**Against the binary baseline on the identical test rows** (threshold 0.14,
+**Against the binary baseline on the identical test rows** (threshold 0.18,
 `weight_search_protocol.md` §8's frozen result): binary expected loss
-**8,041.65** with tp 8 / fp 5 / fn 0 / tn 19, against the three-way's
-**6,808.33** — a delta of **−1,233.32**, a **15.3%** reduction.
+**74,595.13** with tp 7 / fp 3 / fn 1 / tn 20, against the three-way's
+**74,595.13** — a delta of **0.00**, a **0%** change. The two policies are
+bit-for-bit identical on every held-out row, because the frozen band is
+`t_lo = t_hi`, the exact collapse condition §2 defines and `tests/test_riskmesh.py`
+test_20 asserts.
 
-**The structural result is weaker this time than the original run, and that
-is reported plainly rather than smoothed over.** Four of the binary policy's
-five held-out false positives — family components scoring 0.1998, 0.2202,
-0.2215, 0.2253 — fall inside the review band and are waived. **The fifth,
-`c_a00744` at 0.2593, does not** — it clears `t_hi` and is escalated as a
-false positive under the three-way policy too. Unlike the original run, the
-three-way band does **not** eliminate escalated false positives entirely:
-`escalate_negative = 1`, not 0. `allow_missed_positives = 0` on both splits, so
-no ring is missed at the Allow tier, and one ring is deferred to Review rather
-than escalated (`review_positive = 1`).
+**This is the weakest possible structural result, and it is reported plainly
+rather than dressed up.** Review contributes nothing on held-out this run: it
+does not waive any of the three false positives (all three clear `t_hi` and
+are escalated, same as the binary policy would flag them), and it does not
+rescue the one missed ring (which never reaches `t_lo` at all — it is an
+Allow-tier miss, not a borderline case sitting in a would-be Review band).
+There is no evidence in this run that an abstention band adds anything over
+the binary policy; the honest conclusion is that this particular benchmark
+draw, at this scorer's current weights, does not have the kind of
+close-but-wrong error the review band exists to catch — every prior run's
+errors were near-miss family components sitting just above the binary
+threshold, and this run's held-out errors either sit well inside Escalate
+(the three false positives) or are missed entirely before reaching Allow's
+boundary (the one false negative).
 
 **Tier metrics, stated so the three-way case is not read as a binary one.**
-Escalate-tier precision **0.8750** (7/8) and escalate-tier FPR **0.0417**
-(1/24), against the binary policy's 0.6154 and 0.2083 — still a clear
-improvement on both axes, just not a clean sweep. Escalate-tier recall is
-**0.8750** (7 of 8 rings) — the remaining ring (score 0.2018) is deferred to
-review, not missed. Counting a deferred ring as caught-but-unconfirmed gives
-8/8; that figure is **not** a detection claim and must not be quoted as
-recall 1.0 without the qualifier.
+Escalate-tier precision **0.7000** (7/10) and escalate-tier FPR **0.1304**
+(3/23) — identical to the binary policy's own figures, because the policies
+are identical on these rows. Escalate-tier recall is **0.8750** (7 of 8
+rings); the missed ring is not deferred to review (there is no review band)
+— it is simply missed, `allow_missed_positives = 1`, a genuine detection
+failure at this operating point rather than a near-miss the abstention
+mechanism could have caught.
 
-**The move against validation is sample variance, in the opposite direction
-from the original run, and was called in advance as a possibility either way.**
-Held-out 6,808.33 against validation's 7,308.33 is a **6.8% improvement**, not
-a regression — the same small-sample mechanism as the binary policy's own
-8,849.98 → 8,041.65 move (also a slight improvement this run, unlike the
-original run's 76% regression): 24-32 rows per split, where one component
-moves the total materially and post-D3 `C_fp` (308.33, friction only) moves it
-by less per component than the old double-charged 848.23 did. The review band
-caught 5 test cases against design's 10 — a smaller fraction, not the same
-fraction — and there is no structural finding in that gap beyond variance.
-**Neither the validation nor the held-out figure should be quoted as "the"
-policy's cost** — both are honest reads of small, different samples.
+**The move against validation is not sample variance in the usual sense —
+it is the same missed-ring mechanism `weight_search_protocol.md` §8 reports
+for the binary policy**, inherited here unchanged because the band is
+degenerate: one ring costs `C_fn` = 68,399.84 on its own, dwarfing the
+`C_review`/`C_fp` terms that make up the rest of the table. **Neither the
+validation nor the held-out figure should be quoted as "the" policy's cost**
+— both are honest reads of small, different samples, and this run's gap
+between them is unusually large for exactly the reason
+`weight_search_protocol.md` §8 explains in full.
 
 **D3 is resolved, not a caveat, as of Phase 10.** The original run had to
-report two figures for its improvement (36.1% as computed, 18.8% under a
-hypothetical D3-corrected cost model) because `C_fp` double-charged a review at
-the time. `derive_costs()` now charges the review once, so the **15.3%**
-figure above is the only number — there is no second accounting to reconcile
-it against.
+report two figures for its improvement because `C_fp` double-charged a review
+at the time. `derive_costs()` now charges the review once, so there is only
+ever one accounting to report — this run's finding is that the two policies
+coincide exactly, not that D3 introduced any new discrepancy to reconcile.
 
 **No further read is permitted under this record.** Same rule as the ablation
 and the weight search: any future comparison needs its own protocol frozen
@@ -341,7 +380,7 @@ Stated so it is falsifiable, mirroring `weight_search_protocol.md` §7:
   derived from anything other than an explicit, separately-declared model.
 * Any expected-loss number produced for a band that fails either gate.
 * More than one held-out read.
-* The binary-collapse test (t_lo = t_hi = 0.14 reproduces 8,849.98) removed,
+* The binary-collapse test (t_lo = t_hi = 0.18 reproduces 4,000.00) removed,
   weakened, or skipped.
 
 If any of these happens, the protocol is void and selection is re-run from a
