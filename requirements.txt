@@ -7,3 +7,14 @@
 #
 # Do not add a dependency here without moving the decision in
 # implementation_plan.md first. numpy/pandas/xgboost arrive with Tier 2.
+
+# --- API layer only (Tier 1 investigator console) -------------------------
+# Decision recorded in implementation_plan.md, "Tier 1 - investigator console
+# API". The PRD names FastAPI in Technical Specifications.
+#
+# Tier 0's zero-dependency guarantee is NOT weakened: `python -m riskmesh` and
+# tests/test_riskmesh.py still import nothing outside the stdlib, and so do the
+# API's own data modules (artifacts, bands, payloads, audit) plus
+# tests/test_api.py. Only riskmesh/api/routes.py and main.py need these.
+fastapi
+uvicorn

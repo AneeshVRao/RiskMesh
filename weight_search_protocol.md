@@ -1,9 +1,23 @@
 # Weight-search protocol — frozen before any candidate is scored
 
-**Status: RUN. Outcome in §8 — A_baseline retained.** The three gates were all
-defined before `select_weights()` was implemented, and the two difficulty gates
-were added before any candidate had been scored on expected loss. The held-out
-split has **not** been read; step 5 is still pending review.
+**Status: RUN and CLOSED (re-frozen, Phase 11). Outcome in §8 — `D_drop_flagged`
+won.** Phase 10 added the hybrid pool-funded ring mechanism, the 8th signal
+(`instrument_pool_concentration`), and fixed the D3 cost-model double-charge —
+which moved the config fingerprint and made every number below stale, so this
+protocol was re-run against the new benchmark from scratch, unchanged rules,
+same five candidates. Unlike the original run, `A_baseline` did **not** win
+outright: `D_drop_flagged` (which zeros `instrument_sharing` and
+`merchant_concentration`, RISK-004's and RISK-002's flagged signals) tied
+`A_baseline` exactly on validation expected loss and won the tie-break on
+`positives_below_max_negative`. Per this document's own §5 rule and
+`task_today.md`'s "one subtlety" clause, the winning weight vector was folded
+back into `Config()._default_weights()` and the entire search was re-run once
+more against that new incumbent — which reproduced the same winner, now
+labelled `A_baseline` again, a fixed point reached in exactly one extra
+iteration. The held-out split **has been read, once**, through
+`evaluate_frozen_policy()` — see §8's "Step 5" table (F1 0.7619, expected loss
+8,041.65 at threshold 0.14). Per §5 rule 6 and §7, no second read is permitted
+under this record; any future comparison needs its own frozen protocol.
 
 This is the last thing frozen before Tier 1's weight and cost work. It follows
 the same discipline as every experiment in this build: the rules are written
@@ -25,7 +39,7 @@ separate later step — this protocol chooses weights, and treats every flagged
 component as reviewed.
 
 **No search space.** Five named candidates, not a grid or an optimiser. A
-continuous search over seven weights on 16 design positives would fit noise, and
+continuous search over eight weights on 16 design positives would fit noise, and
 there would be no honest way to report how many configurations were tried. Five
 pre-declared policies can be reported in full.
 
@@ -137,12 +151,12 @@ price of every decision.
 | input | value (INR) | derivation |
 |---|---|---|
 | `C_review` | **500.00** | 20 analyst-minutes per component at INR 1500/hour fully loaded |
-| `C_fn` | **74,645.29** | median ring-component exposure (INR 74,645.29) × `FN_ABSORBED_FRACTION` 1.00 |
-| `C_fp` | **848.23** | one review (500.00) + `FP_FRICTION_RATE` 0.02 × median negative-component exposure (17,411.63) |
+| `C_fn` | **76,985.91** | median ring-component exposure (INR 76,985.91) × `FN_ABSORBED_FRACTION` 1.00 |
+| `C_fp` | **308.33** | `FP_FRICTION_RATE` 0.02 × median negative-component exposure (15,416.44) — friction only, no embedded review term (Phase 10 fixed `deferred_decisions.md` D3: the generic `(TP+FP) × C_review` term already prices one review per flagged component) |
 
-Data behind these: 16 positive and 53 negative design components; median ring
-exposure 74,645.29; median negative exposure 17,411.63. No round numbers are
-presented without a derivation.
+Data behind these (Phase 10/11 benchmark): 16 positive and 57 negative design
+components; median ring exposure 76,985.91; median negative exposure 15,416.44.
+No round numbers are presented without a derivation.
 
 **The three assumptions, named as assumptions:**
 
@@ -161,8 +175,10 @@ than quoting the base case alone.
 
 ### A known property of these costs, flagged before running
 
-`C_fn / C_fp` is **88:1**. At that ratio the loss-minimising threshold will be
-very low and may collapse to *flag everything*, which is a real property of fraud
+`C_fn / C_fp` is **249.7:1** (higher than the original run's 88:1, since Phase 10
+fixed D3 and dropped the embedded review term from `C_fp`, shrinking it). At
+that ratio the loss-minimising threshold will be very low and may collapse to
+*flag everything*, which is a real property of fraud
 economics rather than a bug. The search must therefore report, for the selected
 policy, the **review rate** and the loss of the trivial flag-everything policy. If
 the winner is not meaningfully better than flag-everything, that is the finding
@@ -197,7 +213,10 @@ reason to adjust the costs until the answer looks better.
 
 Run before asking for confirmation, precisely so the gate is shown to be real
 rather than asserted. Expected loss below is at a **fixed 0.25 threshold**, not a
-selected one.
+selected one. **Historical record, pre-Phase-10** — computed against the
+Tier 0 seven-signal benchmark before the hybrid pool-funded ring type and the
+8th signal existed. Kept unchanged because it demonstrates the gate mechanism
+itself, not this run's outcome; §8 below carries the current numbers.
 
 ```
 A_baseline                   panel PASS  pbmn 0.5625  hard-neg 4
@@ -259,89 +278,133 @@ new frozen record.
 
 ## 8. Outcome — run on validation only, held-out untouched
 
-Record: `out/weight_policy.json`.
+Record: `out/weight_policy.json`. Costs re-derived on the Phase 10 benchmark:
+`C_review` 500.00, `C_fn` 76,985.91 (median ring exposure), `C_fp` 308.33
+(friction only, D3 fixed — no embedded review term), ratio 249.7:1.
+
+**First pass**, run with the pre-Phase-11 `Config()._default_weights()` still
+in force (fingerprint `0a3434da04b81aa9`):
 
 | policy | panel | pbmn | hard-neg | feasible | threshold | expected loss |
 |---|---|---|---|---|---|---|
-| **A_baseline** | PASS | 0.5625 | 4 | **yes** | 0.23 | **5,348.23** |
-| B_equal | PASS | 0.3125 | 1 | **no** | — | — |
-| C_separation_proportional | FAIL | 0.0000 | 0 | **no** | — | — |
-| D_drop_flagged | FAIL | 0.1250 | 1 | **no** | — | — |
-| E_drop_temporal | PASS | 0.5625 | 4 | yes | 0.26 | 5,348.23 |
+| A_baseline | PASS | 0.5625 | 9 | yes | 0.14 | 8,849.98 |
+| B_equal | PASS | 0.2500 | 8 | **no** | — | — |
+| C_separation_proportional | PASS | 0.5625 | 8 | yes | 0.08 | 14,508.29 |
+| **D_drop_flagged** | PASS | 0.6250 | 6 | **yes** | 0.14 | **8,849.98** |
+| E_drop_temporal | PASS | 0.5625 | 10 | yes | 0.16 | 10,466.64 |
 
-**Three of five candidates are refused.** C and D fail the panel outright. B is
-refused by the difficulty gate alone — it passes the panel and still loses three
-of the four hard negatives from the positive range. Without the tightened gate B
-would have been scored and compared.
+**Only one of five is refused this time — B_equal**, on the difficulty gate
+alone (pbmn 0.2500 < 0.45). Unlike the original run, C and D both clear the
+panel outright: the new `instrument_pool_concentration` signal carries enough
+of the instrument dimension that C's separation-proportional weighting no
+longer collapses the benchmark, and D no longer removes all instrument-axis
+signal (RISK-004's fix, not a gate regression — see `bugs.md` RISK-004 and
+`tests/test_riskmesh.py` test_19).
 
-**Selected: A_baseline. The incumbent is retained.** A and E tie at *exactly*
-5,348.23 and the tie breaks to A: equal `positives_below_max_negative`, then
-incumbent over change. No candidate beat A, and none was made to.
+**A and D tie exactly at 8,849.98 (identical confusion: tp 8, fp 6, fn 0,
+tn 26) and the tie breaks to D**, not to A: `positives_below_max_negative`
+0.6250 (D) beats 0.5625 (A), and that comparison is checked *before* the
+incumbent tie-break — the protocol never reaches "prefer A" because D already
+wins on the sharper difficulty margin. **This is the first run in this
+project where the incumbent tie-break did not fire.**
 
-**E tying A exactly is the third independent confirmation that `temporal_burst`
-is redundant.** The ablation found removing it changed no held-out metric; it
-also changes no expected-loss figure — only the threshold that reaches it, 0.23
-against 0.26. That is now three measurements agreeing, and it strengthens
-`deferred_decisions.md` D1 rather than resolving it: A is retained because
-nothing beat it, not because the weight was validated.
+**Per §5 rule 3 and `task_today.md`'s "one subtlety" clause**, `D_drop_flagged`
+winning means `A_baseline` (which is *defined* as `Config()._default_weights()`,
+per `costmodel.policy_a_baseline()`) is no longer what the pipeline actually
+scores with. The winning vector — device_sharing 0.2716, temporal_burst
+0.3086, instrument_pool_concentration 0.1481, failure_refund_rate 0.1481,
+account_newness 0.1235, with `ip_sharing`, `instrument_sharing` and
+`merchant_concentration` all at 0.00 — was written into
+`Config()._default_weights()`, and the **entire search was re-run from scratch**
+against that new incumbent (new fingerprint `c3ee14627c2c2ce2`, since the
+weights are part of the fingerprint).
 
-**Against the trivial policy.** Flag-everything costs 35,009.29 on validation at
-a 100% review rate; A costs 5,348.23 at a 29.03% review rate, an **84.7%**
-improvement. The 88:1 FN/FP ratio did not produce a degenerate optimum.
+**Second pass, against the new incumbent — the fixed point:**
+
+| policy | panel | pbmn | hard-neg | feasible | threshold | expected loss |
+|---|---|---|---|---|---|---|
+| **A_baseline** | PASS | 0.6250 | 6 | **yes** | 0.14 | **8,849.98** |
+| B_equal | PASS | 0.3750 | 6 | **no** | — | — |
+| C_separation_proportional | PASS | 0.5625 | 8 | yes | 0.08 | 14,508.29 |
+| D_drop_flagged | PASS | 0.6250 | 6 | yes | 0.14 | 8,849.98 |
+| E_drop_temporal | PASS | 0.4375 | 10 | **no** | — | — |
+
+**Converged in exactly one extra iteration, as predicted.** `D_drop_flagged`
+now zeros two signals that were *already* zero in the new `A_baseline`, so it
+is a no-op — the two rows are identical by construction and the tie resolves
+to `A_baseline` on the incumbent tie-break this time, because there is no
+longer a sharper `positives_below_max_negative` to prefer. **B_equal remains
+refused. E_drop_temporal is newly refused** (pbmn 0.4375 < 0.45) — under the
+new weight vector, dropping `temporal_burst` no longer clears the difficulty
+gate, which is a different outcome from the original run's E tying A exactly.
+This is a new, weaker measurement on D1 (`deferred_decisions.md`): `E` is no
+longer even a feasible comparison point under the current weights, so D1
+cannot be resolved this way either.
+
+**Selected: A_baseline (== the former D_drop_flagged), at threshold 0.14,
+validation expected loss 8,849.98.** The search does not need a third pass:
+nothing about the second pass's winner or its own candidate set changed
+between passes two and three would produce, since `A_baseline` already equals
+what `D_drop_flagged` computes from it (zeroing two already-zero weights).
+
+**Against the trivial policy.** Flag-everything costs 29,866.56 on validation
+at a 100% review rate; the winner costs 8,849.98 at a 35.00% review rate, a
+**70.4%** improvement.
 
 ### Sensitivity (required by §4)
 
 | | FP 0.01 | FP 0.02 | FP 0.05 |
 |---|---|---|---|
-| **FN 0.50** | A — 5,174.12 | A — 5,348.23 | A — 5,870.58 |
-| **FN 0.75** | A — 5,174.12 | A — 5,348.23 | A — 5,870.58 |
-| **FN 1.00** | A — 5,174.12 | A — 5,348.23 | A — 5,870.58 |
+| **FN 0.50** | A — 7,924.96 | A — 8,849.98 | A — 11,624.92 |
+| **FN 0.75** | A — 7,924.96 | A — 8,849.98 | A — 11,624.92 |
+| **FN 1.00** | A — 7,924.96 | A — 8,849.98 | A — 11,624.92 |
 
-The winner is stable across the whole grid, and A ties E exactly in every cell.
+The winner is stable across the whole grid — `A_baseline` in every cell, tying
+`D_drop_flagged` exactly in every cell for the reason above (D is now a no-op
+on the current weights).
 
-**`FN_ABSORBED_FRACTION` has no effect at all, and that is worth understanding
-rather than glossing.** A's loss-minimising operating point has **fn = 0** — it
-recovers every ring on validation — so `C_fn` is multiplied by zero and never
-enters the total. A's expected loss is entirely false-positive and review cost:
-tp 8, fp 1, fn 0, tn 22, review cost 4,500.00 of the 5,348.23 total. The
-consequence is that **this cost model is currently insensitive to the input it
-was mainly derived from.** It would start to bite on a harder split, a stricter
-threshold, or a ring type the scorer misses — but on this data the FN cost is
-doing no work, and any claim that the operating point is FN-cost-driven would be
-false.
+**`FN_ABSORBED_FRACTION` still has no effect at all**, for the same reason as
+the original run: the winner's loss-minimising operating point has **fn = 0**
+on validation (tp 8, fp 6, fn 0, tn 26), so `C_fn` is multiplied by zero and
+never enters the total. The cost model remains insensitive to the input it was
+mainly derived from; the false-positive and review terms are still doing all
+the work.
 
 ### Step 5 — the single held-out read (done, once)
 
-Taken through `evaluate_frozen_policy()` after the policy was frozen. A_baseline
-at the frozen threshold 0.23, on 31 test components:
+Taken through `evaluate_frozen_policy()` after the policy was frozen.
+`A_baseline` at the frozen threshold 0.14, on 32 test components:
 
 | | validation (selection) | held out |
 |---|---|---|
-| precision | — | **0.6667** |
+| precision | — | **0.6154** |
 | recall | — | **1.0000** |
-| F1 | — | **0.8000** |
-| FPR | — | **0.1739** |
+| F1 | — | **0.7619** |
+| FPR | — | **0.2083** |
 | ring recovery | — | **8/8 (100%)** |
-| confusion | tp 8, fp 1, fn 0, tn 22 | tp 8, **fp 4**, fn 0, tn 19 |
-| expected loss | 5,348.23 | **9,392.92** |
-| review rate | 0.2903 | 0.3871 |
+| confusion | tp 8, fp 6, fn 0, tn 26 | tp 8, **fp 5**, fn 0, tn 19 |
+| expected loss | 8,849.98 | **8,041.65** |
+| review rate | 0.3500 | 0.4062 |
 
-Account level: precision 0.6709, recall 1.0000, F1 0.8030, FPR 0.3562.
+Account level: precision 0.6452, recall 1.0000, F1 0.7843, FPR 0.4231.
 
-**Held-out expected loss is 76% higher than the validation figure the policy was
-selected on**, and that gap is the honest headline rather than the F1. It is not
-leakage — the threshold was frozen before this read — it is small-sample
-variance: one false positive on 23 validation negatives against four on 23 test
-negatives, and each false positive costs 848.23 plus a 500.00 review. On 31
-components a single component moves the total by ~4%. **The validation expected
-loss should not be quoted as the system's cost.**
+**Held-out expected loss is 9.1% LOWER than the validation figure this time**
+— the opposite direction from the original run's 76% regression. This is not
+evidence the policy generalises better; it is the same small-sample variance
+in the other direction: 6 false positives on 32 validation negatives against
+5 on 24 test negatives, and at `C_fp` 308.33 (friction-only, post-D3) each
+false positive moves the total far less than it used to under the old
+double-charged `C_fp` of 848.23. **Neither figure should be quoted as "the"
+system cost** — both are the honest read of two different 30-ish-row samples.
 
-**All four held-out false positives are family components. Zero are background.**
-The residual error is entirely the hard negatives the benchmark was built to
-produce, which is the intended failure mode and the argument for the abstention
-band rather than for more weight tuning.
+**All five held-out false positives are family components. Zero are
+background.** Same structural finding as the original run: the residual error
+is entirely the hard negatives the benchmark was built to produce, which
+remains the argument for the abstention band rather than for more weight
+tuning.
 
-Against flag-everything on test (35,009.29 at a 100% review rate), A improves by
-**73.2%** — lower than validation's 84.7%, for the same reason.
+Against flag-everything on test (23,399.92 at a 100% review rate), the winner
+improves by **65.6%** — close to, and in the same direction as, validation's
+70.4%.
 
 **No further read is permitted.** Any future comparison needs a new frozen record.

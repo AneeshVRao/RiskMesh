@@ -113,3 +113,45 @@ Bounds come from `config.py`; the panel is computed on train+val only.
       step
 - [x] **manual** — README documents the run command, the outputs, the scorer
       weights, the three hygiene rules, and the Tier 0 ground-truth rule limit
+
+## Phase 10 — Hybrid pool-funded rings, the 8th signal, the D3 fix
+
+- [x] **manual** — a configurable fraction of rings (`p_ring_instrument_funded`)
+      are pool-funded through a shared instrument pool and draw signup age from
+      a wide range, alongside the untouched majority mechanism
+- [x] **scripted** — `instrument_pool_concentration` returns `raw`, `normalized`,
+      `weight`, `contribution`, `detail` like every other signal *(test 07-11
+      non-triviality panel already exercises all `SIGNALS`)*
+- [x] **scripted** — the non-triviality panel still PASSes on train+validation
+      with the new signal and ring mechanism active *(test 07-11)*
+- [x] **manual** — `deferred_decisions.md` D3 resolved: `derive_costs()`'s
+      `C_fp` no longer embeds a review cost; `(tp+fp)*C_review` is the only
+      review charge
+
+## Phase 11 — Weight search and abstention band re-frozen against Phase 10
+
+- [x] **scripted** — the weight-gate test refuses `B_equal` and (under the new
+      weight vector) `E_drop_temporal`, and confirms `A_baseline` and
+      `D_drop_flagged` both remain feasible and tie *(test 19)*
+- [x] **manual** — `weight_search_protocol.md` re-run end to end: `D_drop_flagged`
+      won on the first pass, was folded into `Config()._default_weights()` per
+      the protocol's own re-freeze rule, and the second pass reached a fixed
+      point in one iteration
+- [x] **scripted** — `experiments/weight_policy.json` carries the current
+      config fingerprint, and the pipeline's copy into `out/` matches it
+      *(test 18, and the API's one-run assertion, `test_api.py` test 01)*
+- [x] **scripted** — the binary/three-way collapse at `t_lo = t_hi` reproduces
+      the current frozen expected loss (8,849.98 at threshold 0.14) exactly
+      *(test 20)*
+- [x] **manual** — `abstention_protocol.md` re-run end to end: band
+      `t_lo=0.14, t_hi=0.23`, held-out expected loss 6,808.33 against the
+      binary policy's 8,041.65, a 15.3% reduction with one escalated false
+      positive (not zero, unlike the original run)
+- [x] **manual** — `implementation_plan.md` "Phase 10-11" reports the
+      account-age-confound target honestly: `transaction_level` no longer
+      reaches held-out F1 1.0000 (now 0.7143), and the shipped `ring_score`
+      (0.8750) beats it outright
+- [x] **manual** — every document quoting a weight-search or abstention number
+      (`weight_search_protocol.md`, `abstention_protocol.md`,
+      `deferred_decisions.md`, `bugs.md` RISK-004, `implementation_plan.md`,
+      `README.md`) updated to the re-frozen figures

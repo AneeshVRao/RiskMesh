@@ -206,6 +206,21 @@ def score_component(cfg: Config, comp: Component, ctx: ScoringContext) -> Compon
             (k_pi - 1) / max(1, cfg.max_instrument_degree - 1),
             f"{k_pi} accounts share instrument {pi}")
 
+    # 3b. instrument pool concentration -- how few distinct instruments fund
+    #     how many accounts, independent of instrument_sharing's "largest
+    #     single sharing set" measure. A hybrid ring replaces every member's
+    #     instrument with one drawn from a small shared pool, so this
+    #     component's accounts concentrate onto very few instruments; a
+    #     household adds a shared card ON TOP OF each member's own, so its
+    #     accounts still spread across many distinct instruments and this
+    #     ratio stays near or below 1. See bugs.md RISK-004 and Phase 10 in
+    #     implementation_plan.md.
+    n_pi_total = len({t.instrument_id for t in comp.txns})
+    pool_ratio = comp.size / max(1, n_pi_total)
+    add("instrument_pool_concentration", round(pool_ratio, 4),
+        (pool_ratio - 1) / max(1, cfg.max_instrument_degree - 1),
+        f"{comp.size} accounts funded through {n_pi_total} distinct instruments")
+
     # 4. refund/failure pressure, measured against the population baseline
     bad = sum(1 for t in comp.txns if t.is_refund or t.status == "failed")
     rate = bad / max(1, n_txns)

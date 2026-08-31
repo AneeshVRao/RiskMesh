@@ -9,18 +9,22 @@ decision — not when someone decides it looks fine.
 
 ---
 
-## D1 — `temporal_burst` keeps weight 0.2778 despite being redundant
+## D1 — `temporal_burst` keeps a large weight (now 0.3086) despite the redundancy question being open
 
 **Owner: the cost-model / weight-optimisation stage. Not optional cleanup.**
 
-**Still open after weight selection, and now with a third measurement behind
-it.** Policy E (`temporal_burst` zeroed, the other five renormalised) cleared all
-three feasibility gates and tied A_baseline at *exactly* 5,348.23 validation
-expected loss, differing only in the threshold that reaches it — 0.26 against
-0.23. So removing the signal changes no held-out metric (the ablation), and no
-expected-loss figure either. A was retained on the incumbent tie-break, which
-means **the weight survived because nothing beat it, not because it was
-validated.** That is the same status as before, held more firmly.
+**Still open after the Phase 11 re-freeze, and now with a weaker tie than
+before, not a stronger one.** The original run's `E_drop_temporal` cleared all
+three feasibility gates and tied `A_baseline` at *exactly* 5,348.23 validation
+expected loss. Under the Phase 10/11 benchmark and the re-frozen weight vector
+(`temporal_burst` now 0.3086, up from 0.2778, since `D_drop_flagged` folded
+into `A_baseline` and renormalised over five signals instead of six), `E` is
+**no longer even feasible** — it fails the difficulty gate outright
+(`positives_below_max_negative` 0.4375 < 0.45; see `weight_search_protocol.md`
+§8, second pass). So the exact three-way tie that used to be D1's strongest
+evidence no longer exists as a measurement under the current weights; the
+signal's redundancy is neither newly confirmed nor newly refuted by this
+phase, and the question stays exactly where it was: open.
 
 **What was measured.** The Tier 1 ablation gate
 (`experiments/ablation_temporal_burst.json`) removed `temporal_burst` and
@@ -56,23 +60,61 @@ but: given an explicit false-positive/false-negative cost, is the optimal weight
 for `temporal_burst` zero, and if it is non-zero, what criterion justified it?
 Whatever the answer, the reasoning goes in this file's entry before it is closed.
 
-**Do not** read the current 0.2778 as evidence that anyone has judged the weight
-correct. It is the pre-ablation weight, carried forward on purpose, with the cost
-recorded here.
+**Do not** read the weight (0.2778 at the time this measurement was taken,
+0.3086 as of the Phase 11 re-freeze) as evidence that anyone has judged it
+correct. It is carried forward on purpose, with the cost recorded here.
 
-**Interaction with D2, found while testing it.** Zero-weighting
-`instrument_sharing` renormalises `temporal_burst` from 0.2778 up to **0.3247** —
-so the two entries are coupled. Any fix for D2 that removes weight from a signal
-increases the share held by one this file already records as redundant and mildly
-harmful. Decide D1 and D2 together, not in sequence.
+**Interaction with D2, found while testing it, and now realised rather than
+hypothetical.** This entry originally warned that zero-weighting
+`instrument_sharing` would renormalise `temporal_burst` upward (0.2778 ->
+0.3247 in the isolated test). Phase 11's weight search did exactly that — it
+zeroed `instrument_sharing` (D2, now closed, see below) as part of a different
+policy (`D_drop_flagged`, which also zeros `merchant_concentration`), and
+`temporal_burst` duly rose, to 0.3086. D1 stays open: the redundancy question
+was never resolved by that move, and the current weight is once again carried
+forward, not validated.
 
 Related: `bugs.md` RISK-003, `implementation_plan.md` (Tier 1 ablation gate).
 
 ---
 
-## D2 — `instrument_sharing` keeps weight 0.1444 while scoring hard negatives above positives
+## D2 — RESOLVED in Phase 11 — `instrument_sharing` now carries weight 0.00
 
-**Owner: the cost-model / weight-optimisation stage. Not optional cleanup.**
+**Was: `instrument_sharing` keeps weight 0.1444 while scoring hard negatives
+above positives.**
+
+**Resolution.** Phase 10 added a real second instrument mechanism (the hybrid
+pool-funded ring type, RISK-004's own suggested restart point via E6) and a
+new signal, `instrument_pool_concentration`, that measures it without
+`instrument_sharing`'s ring-vs-family inversion (see `bugs.md` RISK-004's
+forward note). Phase 11's re-run weight search then picked `D_drop_flagged` —
+which zeros `instrument_sharing` (and `merchant_concentration`, RISK-002) —
+over `A_baseline` on its own merits: the two tied on validation expected loss
+(8,849.98) and `D` won the tie-break on a *sharper* `positives_below_max_negative`
+(0.625 vs 0.5625), not a weaker one. That winning vector was folded back into
+`Config()._default_weights()` per `weight_search_protocol.md`'s "one subtlety"
+rule, so `instrument_sharing` now carries weight **0.00** as the shipped
+default, not as a rejected fallback.
+
+**This is a materially different resolution from the zero-weight fallback this
+entry used to describe as broken.** The original zero-weight attempt (recorded
+in `bugs.md` RISK-004) *broke* the benchmark: `positives_below_max_negative`
+fell to 0.1250 against the 0.20 panel bound, and the panel went PASS to FAIL.
+The Phase 11 zero-weighting does the opposite: it clears both difficulty gates
+with more margin than the incumbent it replaced (`positives_below_max_negative`
+0.625 vs the old 0.5625; `hard_negatives_inside_positive_range` 6). The
+difference is `instrument_pool_concentration` — the instrument dimension is
+still represented in the scorer, just through a signal that does not have
+`instrument_sharing`'s defect, so zeroing the broken one no longer removes all
+instrument-axis signal the way it used to.
+
+**The rest of this entry, kept for provenance rather than restated.** The
+original owner text below described the three refuted fixes (E4, E5, E6) and
+the broken zero-weight fallback, all against Tier 0's single shared-device ring
+type. That record still explains *why* `instrument_sharing` itself could not be
+fixed and *why* zero-weighting it used to be unsafe — it is not superseded, it
+is the reason Phase 10 added a second ring mechanism instead of a fourth
+`instrument_sharing` variant.
 
 **What was measured.** On train+validation, `instrument_sharing` reads ring
 0.2031 against family **0.2969** — a ring-minus-family delta of **-0.0938** at
@@ -129,3 +171,47 @@ because it is right.
 
 Related: `bugs.md` RISK-004 and L1, `experiments/experiment_e4.json`,
 `experiments/experiment_e5.json`, `experiments/experiment_e6.json`.
+
+---
+
+## D3 — RESOLVED in Phase 11 (fix applied in Phase 10's cost-model change)
+
+**Was: `expected_loss()` charges an escalated false positive a review cost
+twice.** `derive_costs()` used to build `C_fp` as "one manual review
+(INR 500.00) plus `FP_FRICTION_RATE` (0.02) of median negative-component
+exposure" — a review cost was already one of the two terms inside `C_fp` —
+while `expected_loss()` computed `fn*C_fn + fp*C_fp + (tp+fp)*C_review`, which
+charged a **second**, separate review cost on every flagged component,
+including every false positive.
+
+**The fix.** `derive_costs()` now builds `C_fp` as `FP_FRICTION_RATE ×`
+median negative-component exposure only — friction, no embedded review term.
+The generic `(tp+fp)*C_review` term is the sole place a review cost is
+charged, for every flagged component regardless of correctness. This is the
+first of the two equivalent options this entry used to pose ("`C_fp` drops its
+own review term" vs. "the generic term excludes false positives") — the
+former was chosen because it keeps the generic term's meaning ("every flag
+costs a review") uniform across true and false positives, rather than special-
+casing false positives out of it.
+
+**Applied together with the Phase 10 generator change** (the hybrid
+pool-funded ring type and the 8th signal), so it necessarily moved the config
+fingerprint and required a full re-freeze rather than a standalone patch — see
+`weight_search_protocol.md` and `abstention_protocol.md`, both re-run and
+re-frozen in Phase 11. The new headline numbers, re-frozen under the fixed
+formula: `A_baseline`'s validation expected loss **8,849.98**, held-out
+**8,041.65** at threshold 0.14; the abstention band `t_lo=0.14, t_hi=0.23`
+reduces held-out expected loss to **6,808.33**, a **15.3%** reduction against
+the binary baseline on the same rows — one number now, not two under separate
+accountings, because there is only one cost model to report.
+
+**Why this could not simply be reported without a re-freeze.** Fixing the
+formula moves every number that depends on it — exactly what this entry
+previously said it would cost. That is why the fix accompanied Phase 10's
+generator change (which was re-fingerprinting everything anyway) and Phase 11
+re-ran the weight search and abstention protocols from scratch against it,
+rather than patching the formula in place under the old frozen numbers.
+
+Related: `weight_search_protocol.md` §4, §8, `abstention_protocol.md` §2, §8b,
+`riskmesh/costmodel.py` (`derive_costs`, `expected_loss`),
+`riskmesh/abstention.py` (`three_way_stats`).

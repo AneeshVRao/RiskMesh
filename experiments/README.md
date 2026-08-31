@@ -27,6 +27,20 @@ ablation gate, a single measurement with no acceptance band. It found
 leaves held-out precision, recall, F1 and FPR unchanged and flags the same 12
 components. See `implementation_plan.md`.
 
+`weight_policy.json` and `abstention_policy.json` are frozen *policy* records
+rather than experiments: each was written to disk before its single held-out
+read, and each carries that read's result in a `held_out` block.
+
+| file | selects | protocol | held-out result |
+|---|---|---|---|
+| `weight_policy.json` | one weight vector from five pre-declared candidates | `weight_search_protocol.md` | A_baseline retained; F1 0.8000, expected loss 9,392.92 at threshold 0.23 |
+| `abstention_policy.json` | the review band `(t_lo, t_hi)` over the frozen A_baseline scorer | `abstention_protocol.md` | `t_lo` 0.23 / `t_hi` 0.33; expected loss 6,000.00 against the binary 9,392.92, **zero escalated false positives** |
+
+The abstention record's `held_out.d3_sensitivity` block reports the same
+comparison under a corrected `C_fp`, because the improvement's magnitude
+(36.1% vs 18.8%) depends on `deferred_decisions.md` D3 while its direction and
+the zero-false-positive finding do not.
+
 Full reasoning in `bugs.md`, RISK-003 and RISK-004.
 
 Regenerate any of them with `python -m riskmesh.experiment {e1,e2,e3,e4}`. Note that

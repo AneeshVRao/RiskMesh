@@ -1,0 +1,56 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1000,
+      "h": 1760,
+      "title": "1 \u00b7 Endpoint map"
+    },
+    {
+      "file": "Evidence.dc.html",
+      "x": 1100,
+      "y": 0,
+      "w": 1000,
+      "h": 2420,
+      "title": "2 \u00b7 Evidence shape"
+    },
+    {
+      "file": "Review.dc.html",
+      "x": 0,
+      "y": 2560,
+      "w": 1000,
+      "h": 1560,
+      "title": "3 \u00b7 Review & storage"
+    },
+    {
+      "file": "Explain.dc.html",
+      "x": 1100,
+      "y": 2560,
+      "w": 1000,
+      "h": 1360,
+      "title": "4 \u00b7 Explain (cut first)"
+    },
+    {
+      "file": "Modules.dc.html",
+      "x": 2200,
+      "y": 0,
+      "w": 1000,
+      "h": 1620,
+      "title": "5 \u00b7 Modules & build order"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "scope",
+      "x": 0,
+      "y": -150,
+      "w": 900,
+      "text": "RiskMesh backend \u2014 design pass, approved pending these three resolutions.\nout/ is the single runtime source \u00b7 graph precomputed in-pipeline \u00b7 peer_rule frozen with tiebreaks."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}

@@ -19,7 +19,7 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass, field
 
-# The seven deterministic signals, in report order.
+# The eight deterministic signals, in report order.
 #
 # `temporal_burst` carries the largest weight because coordination in time was
 # expected to separate a ring from a family sharing one device. Measurement says
@@ -33,6 +33,7 @@ SIGNALS: tuple[str, ...] = (
     "device_sharing",
     "temporal_burst",
     "instrument_sharing",
+    "instrument_pool_concentration",
     "failure_refund_rate",
     "ip_sharing",
     "account_newness",
@@ -41,7 +42,7 @@ SIGNALS: tuple[str, ...] = (
 
 
 def _default_weights() -> dict[str, float]:
-    """Tier 0 weights, renormalised after RISK-001 zeroed `ip_sharing`.
+    """Tier 0 weights -- Phase 11 re-freeze: D_drop_flagged, not A_baseline.
 
     `ip_sharing` carries 0.00 because the Tier 0 generator places no ring
     information in the IP dimension at all: max-accounts-on-one-non-common-IP is
@@ -53,20 +54,35 @@ def _default_weights() -> dict[str, float]:
     is the right definition once Tier 1 adds a shared-IP ring type; it simply
     contributes nothing until it has something to say. See bugs.md RISK-001.
 
-    The remaining six keep their Tier 0 baseline ratios, renormalised to 1.00,
-    so zeroing one signal does not silently re-rank the others.
+    `instrument_sharing` and `merchant_concentration` ALSO carry 0.00, as of
+    Phase 11. `weight_search_protocol.md`'s re-run (after Phase 10's hybrid
+    pool-funded ring type and the new `instrument_pool_concentration` signal)
+    found `D_drop_flagged` -- which zeros exactly these two, RISK-004's and
+    RISK-002's flagged signals -- tying `A_baseline` on validation expected
+    loss (8,849.98, identical confusion matrix) and winning the tie-break on
+    `positives_below_max_negative` (0.625 vs 0.5625). Per the protocol's own
+    "the one subtlety" clause, `A_baseline` IS whatever this function returns,
+    so the winner is folded back in here rather than left as a frozen record
+    the pipeline does not actually use. Re-running the full search against
+    THIS weight vector as the new `A_baseline` reproduces the same winner
+    (fixed point reached in one extra iteration) -- see
+    `weight_search_protocol.md` Section 8.
+
+    The remaining five keep their Tier 0 baseline ratios, renormalised to
+    1.00, so zeroing three signals does not silently re-rank the other five.
     """
     active = {
         "device_sharing": 0.22,
         "temporal_burst": 0.25,
-        "instrument_sharing": 0.13,
+        "instrument_pool_concentration": 0.12,
         "failure_refund_rate": 0.12,
         "account_newness": 0.10,
-        "merchant_concentration": 0.08,
     }
     total = sum(active.values())
     weights = {name: value / total for name, value in active.items()}
     weights["ip_sharing"] = 0.0
+    weights["instrument_sharing"] = 0.0
+    weights["merchant_concentration"] = 0.0
     return weights
 
 
@@ -126,6 +142,32 @@ class Config:
     # harder than any household, but a ring that always shares one card across
     # every member is separable by a single rule.
     ring_instrument_share: float = 0.0
+    # --- hybrid pool-funded rings (Phase 10) ------------------------------
+    # A fraction of the existing shared-device rings additionally fund every
+    # member through a small pool of instruments (replacing personal cards
+    # entirely) instead of the flat 2-3-sharer partial overlap, AND draw signup
+    # age from a much wider range. This is RISK-004's rejected experiment E6,
+    # reused as a real second ring mechanism instead of an inert toggle: E6 was
+    # rejected only for over-separating a benchmark whose only positive class
+    # was the device ring; applied to a MINORITY of rings alongside the
+    # majority untouched, it should not have that failure mode. See bugs.md
+    # RISK-004 "closed... A future funding-network ring type should restart
+    # from experiment_e6.json".
+    #
+    # The wide signup range is what breaks the account-age confound recorded
+    # in README.md finding #1: a hybrid ring's members are a mix of fresh
+    # mules and older compromised/synthetic accounts, so "account age <= 30
+    # days" stops being a perfect ring classifier.
+    # 0.4 (the initial candidate) failed the Tier-1 difficulty gate on
+    # train+validation: positives_below_max_negative 0.3125 against a required
+    # >= 0.45. Tuned up against the panel per the project's "tune config,
+    # don't add realism" discipline (task_today.md Step 1) -- 0.7 clears both
+    # Tier-1 gates with margin (positives_below_max_negative 0.5625, hard
+    # negatives inside positive range 9) without approaching 1.0, where the
+    # panel starts to FAIL outright (E6's over-separation failure mode).
+    p_ring_instrument_funded: float = 0.7  # fraction of rings that are hybrid
+    ring_hybrid_signup_min_days: int = 5
+    ring_hybrid_signup_max_days: int = 400
     ring_shared_device_share: float = 0.68  # not 1.0 -- members keep own traffic
     ring_burst_minutes: int = 30
     ring_failure_rate: float = 0.15
@@ -189,30 +231,26 @@ class Config:
     # on its most-shared instrument, which is concentration rather than
     # headcount. Default False until an experiment is adopted.
     instrument_sharing_component_relative: bool = False
-    # RISK-004 option 2, experiment E6. A mule network is funded through a small
-    # pool of cards used by many accounts; a household shares one card on top of
-    # everyone's own. 0 keeps the original single-shared-card injector. When > 0,
-    # every ring member is funded through one card drawn from a pool of this
-    # size, replacing their personal instrument. Requires
-    # instrument_sharing_accounts_per_card -- the pool is invisible to a feature
-    # that only counts the largest sharing set. E6 was rejected: see bugs.md.
-    ring_instrument_pool_size: int = 0
+    # RISK-004 option 2, experiment E6, adopted in Phase 10 as a real (minority)
+    # ring mechanism. A mule network is funded through a small pool of cards
+    # used by many accounts; a household shares one card on top of everyone's
+    # own. 0 disables the mechanism entirely. When > 0, every member of a ring
+    # selected as hybrid (`p_ring_instrument_funded`) is funded through one card
+    # drawn from a pool of this size, replacing their personal instrument --
+    # non-hybrid rings are unaffected and keep the flat 2-3-sharer partial
+    # overlap below. Scored by the always-on `instrument_pool_concentration`
+    # signal in score.py, independent of `instrument_sharing_accounts_per_card`.
+    # E6 itself was rejected as a benchmark-wide default (see bugs.md RISK-004)
+    # for over-separating a benchmark whose only positive class was the device
+    # ring; restricted to a majority-but-not-all fraction of rings (see
+    # `p_ring_instrument_funded` above) it is the intended restart point. Pool
+    # size 4 was chosen alongside that fraction, tuned against the
+    # non-triviality panel per task_today.md Step 1.
+    ring_instrument_pool_size: int = 4
     # The matching feature: accounts per distinct instrument in the component,
-    # normalised by the same global cap every other signal uses. Deliberately NOT
-    # normalised by component size -- see bugs.md L1.
-    instrument_sharing_accounts_per_card: bool = False
-    # RISK-004 option 2, experiment E6. A mule network is funded through a small
-    # pool of cards used by many accounts; a household shares one card on top of
-    # everyone's own. 0 keeps the original single-shared-card injector. When > 0,
-    # every ring member is funded through one card drawn from a pool of this
-    # size, replacing their personal instrument. Requires
-    # instrument_sharing_accounts_per_card -- the pool is invisible to a feature
-    # that only counts the largest sharing set.
-    ring_instrument_pool_size: int = 0
-    # The matching feature: accounts per distinct instrument in the component,
-    # normalised by the same global cap every other signal uses. Measures how few
-    # cards fund how many accounts, rather than how big the biggest sharing set
-    # is. Deliberately NOT normalised by component size -- see bugs.md L1.
+    # normalised by the same global cap every other signal uses -- measures how
+    # few cards fund how many accounts, rather than how big the biggest sharing
+    # set is. Deliberately NOT normalised by component size -- see bugs.md L1.
     instrument_sharing_accounts_per_card: bool = False
     max_instrument_degree: int = 9  # above family_size_max, so a genuine family
                                     # card is never mistaken for common infra

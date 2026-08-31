@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RiskMesh - Control Center</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="mosaic.css">
+</head>
+<body data-palette="#5c6670,#8f5400,#d81f26" data-page="control-center">
+<div class="wrap">
+
+  <div class="rail">
+    <div class="rail-1">
+      <span class="mark">RISK<i>MESH</i></span>
+      <nav>
+        <a href="b-mosaic.html" aria-current="page">Control Center</a>
+        <a href="investigator.html">Investigator</a>
+        <a href="threshold-cost.html">Threshold &amp; Cost</a>
+        <a href="benchmark.html">Benchmark</a>
+        <a href="#">Audit Trail</a>
+      </nav>
+      <div class="meta">seed 20260824 · cfg 7c1e4fb2b329796c<br>A_baseline · bands 0.23 / 0.33 · test days 24-30</div>
+    </div>
+    <div class="rail-2">
+      <div>Components <b data-b="total">31</b></div>
+      <div>Rings <b>8</b></div>
+      <div>Negatives <b>23</b></div>
+      <div>Households <b>8</b></div>
+      <div>Expected loss <b data-b="m.cost.expected_loss" data-f="money">6,000.00</b></div>
+      <div>Binary policy <b data-b="m.cost.binary_baseline" data-f="money">9,392.92</b></div>
+      <div class="ok">False escalations <b data-b="m.quality.escalated_false_positives">0</b></div>
+      <div class="ok">Rings recovered <b data-b="m.quality.rings_recovered">8</b>/<b data-b="m.quality.rings_in_test">8</b></div>
+      <div>Review rate <b data-b="m.triage.review_rate" data-f="pct2">19.35%</b></div>
+    </div>
+  </div>
+
+  <div class="mosaic">
+
+    <section class="mod c8">
+      <h2><span class="tab">Triage</span><span class="rest">31 components / 3 dispositions</span></h2>
+      <p class="lede">Zero false-positive escalations on held-out data. Every component this policy
+      flagged as a ring <b>was</b> a ring — the borderline cases, mostly family households, went to
+      an analyst instead of a customer.</p>
+      <dl class="figs hero">
+        <div><dt>Escalate</dt><dd class="red" data-b="m.triage.escalate">6</dd><div class="sub" data-b="m.narration.escalate">all 6 are true rings</div></div>
+        <div><dt>Review</dt><dd class="amber" data-b="m.triage.review">6</dd><div class="sub" data-b="m.narration.review">4 households, 2 rings</div></div>
+        <div><dt>Allow</dt><dd data-b="m.triage.allow">19</dd><div class="sub" data-b="m.narration.allow">0 rings missed</div></div>
+      </dl>
+      <dl class="figs meta">
+        <div><dt>Expected loss</dt><dd data-b="m.cost.expected_loss" data-f="money">6,000.00</dd><div class="sub">was <span data-b="m.cost.binary_baseline" data-f="money">9,392.92</span> binary</div></div>
+        <div><dt>Saved</dt><dd class="good" data-b="saved" data-f="money">3,392.92</dd><div class="sub"><span data-b="savedPct" data-f="pct1">36.1%</span> lower</div></div>
+      </dl>
+      <div class="bands">
+        <div class="bandbar">
+          <i class="b-allow"><span>ALLOW · 19</span></i>
+          <i class="b-rev"><span>REVIEW · 6</span></i>
+          <i class="b-esc"><span>ESCALATE · 6</span></i>
+        </div>
+        <div class="bandnote"><span>score 0.000</span><span>t_lo <span data-b="m.band.t_lo">0.23</span></span><span>t_hi <span data-b="m.band.t_hi">0.33</span></span><span>1.000</span></div>
+      </div>
+    </section>
+
+    <section class="mod q c4">
+      <h2><span class="tab">Why the band exists</span></h2>
+      <div class="cmp">
+        <div>
+          <h3><i class="r"></i>Ring c_a00533</h3>
+          <dl>
+            <dt>Accounts</dt><dd>9</dd>
+            <dt>Median age</dt><dd class="hi">10 d</dd>
+            <dt>Burst</dt><dd class="hi">6/9</dd>
+            <dt>Max acc/IP</dt><dd>1</dd>
+            <dt>Shared card</dt><dd>2</dd>
+            <dt>Refund</dt><dd>24.8%</dd>
+          </dl>
+        </div>
+        <div>
+          <h3><i class="a"></i>Household c_a00727</h3>
+          <dl>
+            <dt>Accounts</dt><dd>6</dd>
+            <dt>Median age</dt><dd>240 d</dd>
+            <dt>Burst</dt><dd>2/6</dd>
+            <dt>Max acc/IP</dt><dd>6</dd>
+            <dt>Shared card</dt><dd>6</dd>
+            <dt>Refund</dt><dd>34.8%</dd>
+          </dl>
+        </div>
+      </div>
+      <p class="cap">Same structure, opposite behaviour. The household shares <b>more</b> infrastructure
+      and refunds <b>more</b>. Only tenure and burst convergence separate them, which is why it lands in
+      review rather than escalation.</p>
+    </section>
+
+    <section class="mod c7">
+      <h2><span class="tab">Queue</span><span class="rest">ranked by score, desc</span></h2>
+      <div style="max-height:352px;overflow:auto">
+      <table>
+        <thead><tr>
+          <th>Component</th><th>Band</th><th class="r">Score</th><th class="r">Acc</th>
+          <th class="r">Txn</th><th class="r">Exposure</th><th>Label</th>
+        </tr></thead>
+        <tbody id="queue-body">
+          <tr aria-selected="true"><td class="id">c_a00533</td><td><span class="tag t-e"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3z"/><path d="M12 11v3"/></svg>Esc</span></td><td class="r sc">0.5246</td><td class="r">9</td><td class="r">101</td><td class="r">101,761.83</td><td>ring02</td></tr>
+          <tr><td class="id">c_a00664</td><td><span class="tag t-e"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3z"/><path d="M12 11v3"/></svg>Esc</span></td><td class="r sc">0.4918</td><td class="r">8</td><td class="r">80</td><td class="r">62,732.04</td><td>ring23</td></tr>
+          <tr><td class="id">c_a00576</td><td><span class="tag t-e"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3z"/><path d="M12 11v3"/></svg>Esc</span></td><td class="r sc">0.4356</td><td class="r">8</td><td class="r">84</td><td class="r">93,358.09</td><td>ring08</td></tr>
+          <tr><td class="id">c_a00650</td><td><span class="tag t-e"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3z"/><path d="M12 11v3"/></svg>Esc</span></td><td class="r sc">0.4241</td><td class="r">5</td><td class="r">41</td><td class="r">86,713.89</td><td>ring20</td></tr>
+          <tr><td class="id">c_a00557</td><td><span class="tag t-e"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3z"/><path d="M12 11v3"/></svg>Esc</span></td><td class="r sc">0.4118</td><td class="r">9</td><td class="r">89</td><td class="r">89,120.13</td><td>ring05</td></tr>
+          <tr><td class="id">c_a00634</td><td><span class="tag t-e"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3z"/><path d="M12 11v3"/></svg>Esc</span></td><td class="r sc">0.3869</td><td class="r">5</td><td class="r">45</td><td class="r">42,898.90</td><td>ring17</td></tr>
+          <tr><td class="id">c_a00727</td><td><span class="tag t-r"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/></svg>Rev</span></td><td class="r sc">0.3201</td><td class="r">6</td><td class="r">89</td><td class="r">62,564.07</td><td><span class="fam">family</span></td></tr>
+          <tr><td class="id">c_a00617</td><td><span class="tag t-r"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/></svg>Rev</span></td><td class="r sc">0.3068</td><td class="r">4</td><td class="r">35</td><td class="r">75,052.32</td><td>ring14</td></tr>
+          <tr><td class="id">c_a00770</td><td><span class="tag t-r"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/></svg>Rev</span></td><td class="r sc">0.2981</td><td class="r">8</td><td class="r">109</td><td class="r">134,160.77</td><td><span class="fam">family</span></td></tr>
+          <tr><td class="id">c_a00596</td><td><span class="tag t-r"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/></svg>Rev</span></td><td class="r sc">0.2866</td><td class="r">5</td><td class="r">44</td><td class="r">53,009.91</td><td>ring11</td></tr>
+          <tr><td class="id">c_a00684</td><td><span class="tag t-r"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/></svg>Rev</span></td><td class="r sc">0.2609</td><td class="r">6</td><td class="r">68</td><td class="r">113,983.34</td><td><span class="fam">family</span></td></tr>
+          <tr><td class="id">c_a00752</td><td><span class="tag t-r"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/></svg>Rev</span></td><td class="r sc">0.2503</td><td class="r">6</td><td class="r">75</td><td class="r">137,988.78</td><td><span class="fam">family</span></td></tr>
+          <tr><td class="id">c_a00788</td><td><span class="tag t-a"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5.2 5L20 7"/></svg>Alw</span></td><td class="r sc">0.2037</td><td class="r">6</td><td class="r">85</td><td class="r">80,830.59</td><td><span class="fam">family</span></td></tr>
+          <tr><td class="id">c_a00711</td><td><span class="tag t-a"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5.2 5L20 7"/></svg>Alw</span></td><td class="r sc">0.1956</td><td class="r">5</td><td class="r">55</td><td class="r">50,830.07</td><td><span class="fam">family</span></td></tr>
+          <tr><td class="id">c_a00745</td><td><span class="tag t-a"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5.2 5L20 7"/></svg>Alw</span></td><td class="r sc">0.1814</td><td class="r">3</td><td class="r">22</td><td class="r">18,204.11</td><td class="fam">-</td></tr>
+          <tr><td class="id">c_a00702</td><td><span class="tag t-a"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5.2 5L20 7"/></svg>Alw</span></td><td class="r sc">0.1070</td><td class="r">2</td><td class="r">14</td><td class="r">9,633.40</td><td class="fam">-</td></tr>
+          <tr><td class="id">c_a00690</td><td><span class="tag t-a"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5.2 5L20 7"/></svg>Alw</span></td><td class="r sc">0.0869</td><td class="r">2</td><td class="r">11</td><td class="r">7,118.92</td><td class="fam">-</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </section>
+
+    <section class="mod c5">
+      <h2><span class="tab" id="sel-id">c_a00533</span><span class="rest" id="sel-meta">ring02 · 9 accounts · escalate</span></h2>
+      <div class="gwrap" id="graph-host">
+        <svg class="g" viewBox="0 0 420 160" role="img"
+          aria-label="Nine accounts a00533 through a00541 connected to shared device d_ring02; six of them converge on merchant m000.">
+          <g stroke="#d81f26" stroke-width="1.2" opacity=".6">
+            <path d="M210 78 L58 24"/><path d="M210 78 L58 51"/><path d="M210 78 L58 78"/>
+            <path d="M210 78 L58 105"/><path d="M210 78 L58 132"/>
+            <path d="M210 78 L362 24"/><path d="M210 78 L362 51"/><path d="M210 78 L362 105"/>
+            <path d="M210 78 L362 132"/>
+          </g>
+          <g fill="#fff" stroke="#d81f26" stroke-width="1.3">
+            <rect x="42" y="15" width="32" height="18"/><rect x="42" y="42" width="32" height="18"/>
+            <rect x="42" y="69" width="32" height="18"/><rect x="42" y="96" width="32" height="18"/>
+            <rect x="42" y="123" width="32" height="18"/>
+            <rect x="346" y="15" width="32" height="18"/><rect x="346" y="42" width="32" height="18"/>
+            <rect x="346" y="96" width="32" height="18"/><rect x="346" y="123" width="32" height="18"/>
+          </g>
+          <g font-family="ui-monospace,monospace" font-size="11" fill="#111418" text-anchor="middle">
+            <text x="58" y="28">533</text><text x="58" y="55">534</text><text x="58" y="82">535</text>
+            <text x="58" y="109">536</text><text x="58" y="136">537</text>
+            <text x="362" y="28">538</text><text x="362" y="55">539</text>
+            <text x="362" y="109">540</text><text x="362" y="136">541</text>
+          </g>
+          <rect x="166" y="66" width="88" height="24" fill="#d81f26"/>
+          <text x="210" y="81" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11" fill="#fff">d_ring02</text>
+          <rect x="330" y="66" width="70" height="24" fill="#f4f5f7" stroke="#c9ced6"/>
+          <text x="365" y="81" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10.5" fill="#474e57">m000 6/9</text>
+          <path d="M254 78 L330 78" stroke="#767d87" stroke-width="1.1" stroke-dasharray="3 2"/>
+        </svg>
+      </div>
+      <p class="cap" id="graph-cap">Nine accounts on one device. Six hit merchant <b>m000</b> within 30 minutes,
+      median account age <b>10 days</b>. Each account keeps its own IP, which is the tell that
+      separates this from a household.</p>
+      <table class="ev">
+        <tr><td><div class="nm">Device sharing</div><div class="dt">9 accounts share d_ring02</div></td><td class="v">0.1778</td><td class="wt">w .2444</td><td class="cb"><div class="mini"><i style="width:100%"></i></div></td></tr>
+        <tr><td><div class="nm">Temporal burst</div><div class="dt">6/9 at one merchant in 30 min</div></td><td class="v">0.1736</td><td class="wt">w .2778</td><td class="cb"><div class="mini"><i style="width:98%"></i></div></td></tr>
+        <tr><td><div class="nm">Account newness</div><div class="dt">median age 10 days</div></td><td class="v">0.1049</td><td class="wt">w .1111</td><td class="cb"><div class="mini"><i style="width:59%"></i></div></td></tr>
+        <tr><td><div class="nm">Failure / refund</div><div class="dt">25% refund/failure vs 14% baseline</div></td><td class="v">0.0326</td><td class="wt">w .1333</td><td class="cb"><div class="mini"><i style="width:18%"></i></div></td></tr>
+        <tr><td><div class="nm">Instrument sharing</div><div class="dt">2 accounts share pi_ring02</div></td><td class="v">0.0181</td><td class="wt">w .1444</td><td class="cb"><div class="mini"><i style="width:10%"></i></div></td></tr>
+        <tr><td><div class="nm">Merchant concentration</div><div class="dt">20 of 101 txns at m000</div></td><td class="v">0.0176</td><td class="wt">w .0889</td><td class="cb"><div class="mini"><i style="width:10%"></i></div></td></tr>
+        <tr class="off"><td><div class="nm">IP sharing</div><div class="dt">1 account, zero-weighted (RISK-001)</div></td><td class="v">0.0000</td><td class="wt">w .0000</td><td class="cb"><div class="mini off"><i style="width:2%"></i></div></td></tr>
+      </table>
+      <div class="act">
+        <button class="go" data-act="escalate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4"/></svg>Escalate</button>
+        <button data-act="watch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>Watch</button>
+        <button data-act="review"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v13H8l-4 4z"/></svg>Review</button>
+        <button data-act="allow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5.2 5L20 7"/></svg>Allow</button>
+        <span class="hint">written to audit trail · no auto-block</span>
+      </div>
+    </section>
+
+    <section class="mod q c12">
+      <h2><span class="tab">Cost model</span><span class="rest">dataset-derived, INR</span></h2>
+      <dl class="figs">
+        <div><dt>Manual review</dt><dd data-b="t.costs.manual_review" data-f="money">500.00</dd><div class="sub">20 analyst-min @ 1500/hr</div></div>
+        <div><dt>False negative</dt><dd data-b="t.costs.false_negative" data-f="money">74,645.29</dd><div class="sub">median ring exposure</div></div>
+        <div><dt>False positive</dt><dd data-b="t.costs.false_positive" data-f="money">848.23</dd><div class="sub">review + 2% friction</div></div>
+        <div><dt>FN : FP ratio</dt><dd><span data-b="ratio">88</span> : 1</dd><div class="sub">drives a low threshold</div></div>
+        <div><dt>Flag-everything</dt><dd data-b="ladder.flag_everything" data-f="money">35,009.29</dd><div class="sub">100% review rate</div></div>
+        <div><dt>This policy</dt><dd class="good" data-b="ladder.three_way" data-f="money">6,000.00</dd><div class="sub">19.35% review rate</div></div>
+        <div><dt>Validation loss</dt><dd data-b="t.search.validation_expected_loss" data-f="money">4,500.00</dd><div class="sub">held-out is 33% higher</div></div>
+      </dl>
+    </section>
+
+  </div>
+</div>
+<script src="api.js"></script>
+</body>
+</html>

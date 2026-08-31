@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RiskMesh - Threshold &amp; Cost</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="mosaic.css">
+<style>
+/* reference-view tables: derivation, ladder, sensitivity */
+.rt{width:100%;border-collapse:collapse;font-size:12px}
+.rt th{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-3);
+  font-weight:600;text-align:left;padding:4px 8px;background:var(--fill);
+  border-bottom:1px solid var(--line);white-space:nowrap}
+.rt th.r{text-align:right}
+.rt td{padding:5px 8px;border-bottom:1px solid var(--line-2);vertical-align:top}
+.rt td.r{text-align:right;font-family:var(--mono);white-space:nowrap}
+.rt .nm{font-weight:600;font-family:var(--mono);font-size:11px}
+.rt .why{font-size:11px;color:var(--ink-2);line-height:1.45}
+.rt tr.sel{background:#ffe0e0;box-shadow:inset 3px 0 0 var(--red)}
+.rt tr.sel td{font-weight:600;color:var(--ink)}
+.rt tfoot td{border-top:1px solid var(--line);border-bottom:0;background:var(--fill);font-weight:600}
+.rt .warn{color:var(--amber);font-weight:600}
+.rt .good{color:#046b4a;font-weight:600}
+
+/* the loss ladder */
+.ladder{padding:10px}
+.lrow{display:grid;grid-template-columns:150px 1fr 108px;gap:9px;align-items:center;margin-bottom:7px}
+.lrow:last-child{margin-bottom:0}
+.lname{font-size:11px;color:var(--ink-2)}
+.lname b{display:block;color:var(--ink);font-weight:600;font-size:12px}
+.ltrack{height:20px;background:var(--fill-2);border:1px solid var(--line-2);position:relative}
+.ltrack i{position:absolute;left:0;top:0;bottom:0}
+.lval{font-family:var(--mono);font-size:12px;font-weight:600;text-align:right}
+.l-worst i{background:var(--ink-3)}
+.l-all i{background:var(--quiet)}
+.l-bin i{background:var(--amber)}
+.l-3way i{background:var(--red)}
+
+.gate{padding:9px 10px}
+.gbar{display:flex;height:24px;border:1px solid var(--line);overflow:hidden;font:600 10px/1 var(--sans)}
+.gbar i{display:flex;align-items:center;justify-content:center}
+.g-ok{background:var(--fill-2);color:var(--quiet)}
+.g-cut{background:#f0d4d4;color:#8f1a1f}
+.gnote{display:flex;justify-content:space-between;font:400 10px/1.4 var(--mono);color:var(--ink-3);margin-top:4px}
+.flag{background:#fdf3e0;border-bottom:1px solid var(--line-2);padding:8px 10px;font-size:11px;
+  color:var(--ink-2);line-height:1.5}
+.flag b{color:var(--ink)}
+.flag .h{display:inline-block;font-weight:700;background:var(--amber);color:#fff;
+  text-transform:uppercase;letter-spacing:.04em;font-size:10px;padding:1px 5px;margin-bottom:5px}
+</style>
+</head>
+<body data-palette="#5c6670,#8f5400,#d81f26" data-page="threshold">
+<div class="wrap">
+
+  <div class="rail">
+    <div class="rail-1">
+      <span class="mark">RISK<i>MESH</i></span>
+      <nav>
+        <a href="b-mosaic.html">Control Center</a>
+        <a href="investigator.html">Investigator</a>
+        <a href="threshold-cost.html" aria-current="page">Threshold &amp; Cost</a>
+        <a href="benchmark.html">Benchmark</a>
+        <a href="#">Audit Trail</a>
+      </nav>
+      <div class="meta">seed 20260824 · cfg 7c1e4fb2b329796c<br>costs derived on train+validation · never on test</div>
+    </div>
+    <div class="rail-2">
+      <div>C_review <b data-b="t.costs.manual_review" data-f="money">500.00</b></div>
+      <div>C_fn <b data-b="t.costs.false_negative" data-f="money">74,645.29</b></div>
+      <div>C_fp <b data-b="t.costs.false_positive" data-f="money">848.23</b></div>
+      <div>FN : FP <b data-b="ratio">88</b> : 1</div>
+      <div>t_lo <b data-b="t.band.t_lo">0.23</b></div>
+      <div>t_hi <b data-b="t.band.t_hi">0.33</b></div>
+      <div>Review cap <b>25%</b></div>
+      <div class="ok">Held-out loss <b data-b="ladder.three_way.expected_loss" data-f="money">6,000.00</b></div>
+    </div>
+  </div>
+
+  <div class="mosaic">
+
+    <section class="mod c7">
+      <h2><span class="tab">Cost model</span><span class="rest">every figure traceable to a dataset quantity</span></h2>
+      <p class="lede">No round numbers were chosen. Each cost is computed from measured exposure in
+      the training data, so the operating point answers <b>"what does this cost"</b> rather than
+      <b>"what F1 looks good"</b>.</p>
+      <table class="rt">
+        <thead><tr><th>Cost</th><th>Derivation</th><th class="r">INR</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="nm">C_review</span></td>
+            <td class="why">20 analyst-minutes per component at INR 1,500/hour fully loaded.
+              <b>Assumption</b> — the dataset carries no analyst-effort figure.</td>
+            <td class="r" data-b="t.costs.manual_review" data-f="money">500.00</td>
+          </tr>
+          <tr>
+            <td><span class="nm">C_fn</span></td>
+            <td class="why">Median ring-component exposure on train+validation
+              (INR 74,645.29) × FN_ABSORBED_FRACTION 1.00. A missed ring is assumed fully absorbed.</td>
+            <td class="r" data-b="t.costs.false_negative" data-f="money">74,645.29</td>
+          </tr>
+          <tr>
+            <td><span class="nm">C_fp</span></td>
+            <td class="why">One manual review (500.00) plus FP_FRICTION_RATE 0.02 of median
+              negative-component exposure (INR 17,411.63) = 348.23 friction.</td>
+            <td class="r" data-b="t.costs.false_positive" data-f="money">848.23</td>
+          </tr>
+        </tbody>
+        <tfoot><tr><td colspan="2">Ratio C_fn : C_fp — why the threshold sits low</td><td class="r">88 : 1</td></tr></tfoot>
+      </table>
+      <p class="cap">Inputs read from data: median ring exposure <b>74,645.29</b>, median negative
+      exposure <b>17,411.63</b>, across <b>16 positive</b> and <b>53 negative</b> components on
+      train+validation. Missing a ring costs about <b>88 times</b> what troubling a good customer
+      costs, which is what pushes the boundary down rather than up.</p>
+    </section>
+
+    <section class="mod q c5">
+      <h2><span class="tab">Expected loss</span><span class="rest">held-out, 31 components</span></h2>
+      <div class="ladder">
+        <div class="lrow l-worst">
+          <div class="lname"><b>Flag nothing</b>8 rings absorbed</div>
+          <div class="ltrack"><i data-ladder="flag_nothing" style="width:100%"></i></div>
+          <div class="lval" data-b="ladder.flag_nothing.expected_loss" data-f="money">597,162.32</div>
+        </div>
+        <div class="lrow l-all">
+          <div class="lname"><b>Flag everything</b>100% review rate</div>
+          <div class="ltrack"><i data-ladder="flag_everything" style="width:5.86%"></i></div>
+          <div class="lval" data-b="ladder.flag_everything.expected_loss" data-f="money">35,009.29</div>
+        </div>
+        <div class="lrow l-bin">
+          <div class="lname"><b>Binary @ 0.23</b>frozen baseline</div>
+          <div class="ltrack"><i data-ladder="binary" style="width:1.57%"></i></div>
+          <div class="lval" data-b="ladder.binary.expected_loss" data-f="money">9,392.92</div>
+        </div>
+        <div class="lrow l-3way">
+          <div class="lname"><b>Three-way 0.23 / 0.33</b>this policy</div>
+          <div class="ltrack"><i data-ladder="three_way" style="width:1.00%"></i></div>
+          <div class="lval" data-b="ladder.three_way.expected_loss" data-f="money">6,000.00</div>
+        </div>
+      </div>
+      <p class="cap">Bars are to scale against flag-nothing. The interesting comparison is the
+      bottom pair: <b>6,000.00 against 9,392.92</b>, a <b>36.1%</b> reduction on the same rows —
+      but read the sensitivity note below before quoting that figure.</p>
+    </section>
+
+    <section class="mod c7">
+      <h2><span class="tab">Policy comparison</span><span class="rest">same 31 held-out components</span></h2>
+      <table class="rt">
+        <thead><tr>
+          <th>Policy</th><th class="r">TP</th><th class="r">FP</th><th class="r">FN</th><th class="r">TN</th>
+          <th class="r">Touch rate</th><th class="r">Expected loss</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="nm">Binary @ 0.23</span><div class="why">Every flag is an escalation. 4 families declined.</div></td>
+            <td class="r">8</td><td class="r warn">4</td><td class="r">0</td><td class="r">19</td>
+            <td class="r">38.71%</td><td class="r">9,392.92</td>
+          </tr>
+          <tr class="sel">
+            <td><span class="nm">Three-way 0.23 / 0.33</span><div class="why">6 escalated, 6 reviewed, 19 allowed. Zero false escalations.</div></td>
+            <td class="r">6</td><td class="r good">0</td><td class="r">0</td><td class="r">19</td>
+            <td class="r">19.35%</td><td class="r">6,000.00</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="cap">The three-way policy escalates <b>fewer</b> rings outright (6 rather than 8) and
+      still misses none — the other 2 land in review, counted as <b>deferred, not detected</b>.
+      Nothing was auto-allowed. In exchange, all 4 false positives disappear and the analyst
+      touch rate halves.</p>
+    </section>
+
+    <section class="mod q c5">
+      <h2><span class="tab">Band search</span><span class="rest">2,992 candidate bands</span></h2>
+      <div class="gate">
+        <div class="gbar">
+          <i class="g-cut" style="flex:2159">2,159 refused</i>
+          <i class="g-ok" style="flex:833">833 eligible</i>
+        </div>
+        <div class="gnote"><span>review-rate gate 25%</span><span>72.2% of the grid refused</span></div>
+      </div>
+      <p class="cap">Every (t_lo, t_hi) pair on a 0.01 grid was enumerated. <b>2,159 were refused
+      outright</b> for exceeding the 25% review cap on design data — those bands have no expected
+      loss at all, because <code>select_abstention_band()</code> raises rather than returns.
+      The winner was chosen by minimum expected loss on <b>validation only</b>, then written to
+      <code>out/abstention_policy.json</code> <b>before</b> test was read.</p>
+      <table class="rt">
+        <thead><tr><th>Stage</th><th class="r">Value</th></tr></thead>
+        <tbody>
+          <tr><td>Bands considered</td><td class="r" data-b="t.search.bands_considered" data-f="int">2,992</td></tr>
+          <tr><td>Refused by review cap</td><td class="r" data-b="t.search.bands_refused_by_coverage" data-f="int">2,159</td></tr>
+          <tr><td>Integrity panel verdict</td><td class="r good">PASS</td></tr>
+          <tr><td>Selected t_lo / t_hi</td><td class="r">0.23 / 0.33</td></tr>
+          <tr><td>Validation expected loss</td><td class="r" data-b="t.search.validation_expected_loss" data-f="money">4,500.00</td></tr>
+          <tr><td>Held-out expected loss</td><td class="r" data-b="ladder.three_way.expected_loss" data-f="money">6,000.00</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="mod q c6">
+      <h2><span class="tab">Sensitivity</span><span class="rest">deferred_decisions.md D3</span></h2>
+      <div class="flag">
+        <span class="h">D3 · known overstatement</span><br>
+        <b>The 36.1% headline is inflated.</b> C_fp (848.23) already contains one review cost
+        (500.00), and the binary formula charges
+        a second review on every flag. So each avoided false escalation appears to save 848.23 when
+        the friction-only saving is <b>348.23</b>. Direction and sign hold under either accounting;
+        the magnitude roughly halves.
+      </div>
+      <table class="rt">
+        <thead><tr><th>Accounting</th><th class="r">Binary</th><th class="r">Three-way</th><th class="r">Improvement</th></tr></thead>
+        <tbody>
+          <tr><td>As reported</td><td class="r">9,392.92</td><td class="r">6,000.00</td><td class="r">36.1%</td></tr>
+          <tr><td>D3-corrected</td><td class="r">7,392.92</td><td class="r">6,000.00</td><td class="r warn">18.8%</td></tr>
+        </tbody>
+      </table>
+      <p class="cap">Carried forward unchanged so the frozen 5,348.23 validation baseline does not
+      silently move. Flagged as a candidate for correction whenever the cost model is next revisited
+      — same owner as D1 and D2.</p>
+    </section>
+
+    <section class="mod q c6">
+      <h2><span class="tab">Operating point</span><span class="rest">what is and is not being claimed</span></h2>
+      <p class="lede">Stated precisely, so nothing here overclaims:</p>
+      <table class="rt">
+        <thead><tr><th>Claim</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td class="why"><b>0.23</b> remains the frozen binary baseline threshold</td>
+            <td class="why good">Frozen · selected on validation by F1</td></tr>
+          <tr><td class="why"><b>0.33</b> is optimal under Phase-1 assumptions and the 25% review cap</td>
+            <td class="why">Not a claimed correct fraud threshold</td></tr>
+          <tr><td class="why">Review resolution is treated as an oracle — an analyst always decides correctly</td>
+            <td class="why warn">Phase-1 cost-model assumption, not an empirical measurement</td></tr>
+          <tr><td class="why">Held-out 6,000.00 vs validation 4,500.00 (+33.3%)</td>
+            <td class="why">Small-sample variance · 23 negatives per split</td></tr>
+          <tr><td class="why">C_fn contributes zero at this operating point (FN = 0)</td>
+            <td class="why">Cost dominated by observed error structure</td></tr>
+        </tbody>
+      </table>
+      <p class="cap">We established an explicit cost model and selected among integrity-valid
+      policies under it; in this benchmark, the final operating point was dominated by the observed
+      error structure. The validation figure must never be quoted as the policy's cost.</p>
+    </section>
+
+  </div>
+</div>
+<script src="api.js"></script>
+</body>
+</html>

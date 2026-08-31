@@ -177,6 +177,28 @@ separates the classes perfectly and the whole benchmark is worthless.
 - [x] accounts-per-device is mostly 1 with a thin tail (`Counter` check)
 - [x] carrier-NAT IPs show 50+ accounts each
 
+**Design target vs. current frozen benchmark.** The counts above (~600 accounts,
+~520 devices, ~40 merchants, ~20 carrier-NAT IPs, 5k transactions) are the Phase
+2 design targets, written before non-triviality tuning grew the ring/family
+population. The frozen benchmark at config fingerprint `7c1e4fb2b329796c`
+(`out/integrity_report.json`) is larger, because `n_accounts=520` is the
+*background* population only — ring and family accounts are additional:
+
+| | design target | frozen benchmark |
+|---|---|---|
+| accounts | ~600 | **789** (520 background + ring/family) |
+| devices | ~520 | **976** |
+| IPs | — | **906** |
+| instruments | — | **823** |
+| merchants | ~40 | **40** |
+| transactions | 5k ±10% | **5,962** |
+
+Both are correct at once: ~600/~520/5k describes the Phase 2 slice as designed,
+789/976/5,962 describes what Phase 3's ring/family injectors and later tuning
+(RISK-003's E2, the weight search) actually produced on top of it. Read the
+table above for the current numbers; read the prose above it for the reasoning
+behind the ratios.
+
 ---
 
 ## Phase 3 — Ring and family injectors
@@ -207,6 +229,18 @@ inside that period's date range. This is what makes the Phase 6 ring-level split
 separate lists. `transactions.csv` carries no `ring_id`, `cluster_id`, or `is_*`
 column. `labels.csv` holds `account_id, ring_id, cluster_id, active_period`.
 Only `split.py`, `integrity.py`, and `evaluate.py` ever read labels.
+
+**Design target vs. current frozen benchmark.** ~12 rings / ~15 families of
+sizes 4–9 / 2–5 was the Phase 3 design target. `n_rings` was raised to 24 (8 per
+split — "4 was too coarse to report metrics on", `config.py`) and
+`family_size_max` to 8 during Tier 0 tuning; both are config knobs, not
+generator-logic changes. The frozen benchmark (`out/integrity_report.json`,
+fingerprint `7c1e4fb2b329796c`) has **24 rings** (sizes 4–9, matching the
+original range) and **24 family clusters** (sizes 2–8, one size wider than the
+2–5 design target). Both numbers are correct at once: the design target
+explains the original per-cluster sizing rationale above; 24/24 is what Tier 0's
+non-triviality tuning settled on and what every frozen result in this file
+reports against.
 
 **Done when:**
 - [x] every ring's and cluster's coordinated activity falls inside one period
@@ -740,15 +774,36 @@ history. Everything above this line is done and committed.
 **Done:** Tier 0 generator and benchmark (tagged `tier0-baseline`); RISK-001 and
 RISK-003 closed (tagged); RISK-004 closed as above; the temporal ablation gate;
 the false-positive cost model, expected-loss thresholding and weight selection,
-with one held-out read taken.
+with one held-out read taken; the abstention / review-band policy, with its own
+frozen protocol and its own single held-out read (item 1 below).
 
 **Remaining, roughly in order:**
 
-1. **Abstention / manual-review band.** A PRD must-have, and the next thing to
-   build. The ordering against XGBoost is deliberate and is argued below rather
-   than assumed — it is the lower-risk step, not merely the cheaper one. Needs
-   its own cost treatment, since the current model already charges a review on
-   every flag and a three-way policy prices the review band separately.
+1. ~~**Abstention / manual-review band.**~~ **DONE.** Protocol frozen in
+   `abstention_protocol.md` before any band was scored; code in
+   `riskmesh/abstention.py`; record in `experiments/abstention_policy.json`.
+   Free two-threshold search (`t_lo`, `t_hi` both swept, 0.23 *not* pinned),
+   behind a pre-declared `MAX_REVIEW_RATE = 0.25` coverage gate on
+   train+validation enforced by `ReviewBandGateFailure`, objective minimised on
+   validation only, single held-out read through
+   `evaluate_frozen_abstention_policy()`.
+
+   Selected band `t_lo = 0.23`, `t_hi = 0.33`. Held out: expected loss
+   **6,000.00** against the binary baseline's 9,392.92 on the identical rows
+   (−36.1%, or −18.8% under a D3-corrected cost model — see below), review rate
+   19.35%, and **zero escalated false positives** — all four of the binary
+   policy's held-out false positives are family components and all four land
+   inside the review band, which is exactly what the argument below predicted.
+   Escalate-tier precision 1.0000, FPR 0.0000; escalate-tier recall 0.7500 with
+   the remaining two rings deferred to review rather than missed, and nothing
+   auto-allowed on either split.
+
+   The one new assumption, named as an assumption: a reviewed component is
+   resolved correctly, so it costs one review and neither `C_fp` nor `C_fn`.
+   That is a Phase-1 cost-model assumption, not an empirical measurement. The
+   improvement's *magnitude* is also sensitive to `deferred_decisions.md` D3
+   (`C_fp` double-charges a review); its direction and the zero-false-positive
+   finding are not.
 2. **SQLite persistence and the FastAPI service.** Endpoints over the existing
    artifacts; no modelling change.
 3. **React investigator console.** The `detail` strings in `score.py` were built
@@ -762,7 +817,11 @@ with one held-out read taken.
    0.8000 / expected loss 9,392.92 at threshold 0.23. Ring-level splits already
    prevent the obvious leakage; the non-obvious risk is described immediately
    below.
-6. **RISK-002** (`merchant_concentration` mis-signed, +0.0103 at weight 0.0889)
+6. **RISK-002** (`merchant_concentration` mis-signed against all negatives:
+   delta **-0.0522**, weighted contribution **-0.0046** at weight 0.0889 — see
+   `bugs.md`. Ring-minus-**family** alone is the opposite sign, **+0.0103**; the
+   two deltas measure different comparisons and neither substitutes for the
+   other, per RISK-003's lesson that ring-vs-background can mask ring-vs-family)
    — **stays deprioritised.** It is FLAG-level, the smallest weight in the
    scorer, and the weight search found no feasible candidate that improved on
    leaving it alone.
@@ -822,3 +881,456 @@ intervals, the full baseline suite.
 **Open decisions carried forward:** D1 and D2 in `deferred_decisions.md`. They are
 coupled — removing weight from one signal raises the other's share — and neither
 was resolved by the weight search.
+
+---
+
+## Tier 1 — investigator console API (DONE)
+
+The four locked UI mockups needed real data. The API design pass is recorded in
+`design-api/` (published canvas); this section records the decisions that
+changed the repo.
+
+### The governing rule
+
+**The API never re-scores.** `riskmesh.score` is imported nowhere under
+`riskmesh/api/`. `out/components.csv` is the scorer's own output and the API
+reads it. A live re-score would let the number on screen drift from the number
+in the frozen record, and every other discipline in this project rests on those
+being the same number.
+
+Six of the eight PRD endpoints are pure file reads. The API's total arithmetic
+is: `contribution = round(w * norm, 6)`, a two-compare band assignment, a sort,
+two multiplies for the loss-ladder bounds, and one audit append.
+
+### Dependency decision — FastAPI and uvicorn
+
+`requirements.txt` says not to add a dependency without moving the decision here
+first. Doing that now.
+
+**Added:** `fastapi`, `uvicorn`. **Why:** the PRD names FastAPI explicitly in
+Technical Specifications, and the console is a graded deliverable.
+
+**What is preserved:** Tier 0's zero-dependency guarantee is intact.
+`python -m riskmesh` and `tests/test_riskmesh.py` still import nothing outside
+the stdlib, so "reproducible from a clean environment" still holds for the
+benchmark itself. The new dependency is confined to the API layer, and within
+that layer only `routes.py` and `main.py` touch FastAPI — `artifacts.py`,
+`bands.py`, `payloads.py` and `audit.py` are stdlib-only and are tested by
+`tests/test_api.py` without a web server running.
+
+### Three new pipeline outputs (6 files -> 9)
+
+- **`out/graph_edges.json`** — account-to-shared-attribute adjacency per
+  component, for the UI graph. Built in `__main__.py` rather than live in the
+  API so it sits inside the fingerprinted, reproducible pipeline. Written for
+  **all** components, not only flagged ones: the restriction saved 112 KB of
+  309 KB and would have coupled the file to a threshold, so that a future
+  `t_lo` below the binary threshold would 404 on reviewed components.
+- **`out/weight_policy.json`** and **`out/abstention_policy.json`** — byte
+  copies (`shutil.copyfile`) of the frozen records in `experiments/`, so `out/`
+  is the single directory the API reads. `experiments/` is provenance, not a
+  runtime source. Never a JSON round-trip: re-serialising could reorder keys and
+  break byte-for-byte reproducibility on a file whose content never changed.
+
+  The abstention copy was found by the clean-checkout verification, not by
+  design: `out/` is gitignored and `abstention_policy.json` is written by its own
+  freeze stage, so after `rm -rf out && python -m riskmesh` the API could not
+  start — and its error message told the user to run the very command that had
+  just failed to produce the file. A fresh clone plus one command now leaves
+  `out/` complete.
+
+All three are covered by `test_18_reproducible_outputs`, which now asserts **9**
+files reproduce byte-for-byte at the same seed.
+
+### The weights the API uses are Config's, not weight_policy.json's
+
+Found while implementing, and it matters. `weight_policy.json` rounds its
+weights to 4dp for display — A_baseline's sum to **0.9999**, not 1.0. Computing
+contributions from that copy drifts from the frozen score by up to **6e-5 on 60
+of 100 components**. Small, but it is exactly the "screen disagrees with the
+record" failure this design exists to prevent.
+
+`Config().weights` is the authoritative source: it is what `score.py` read, and
+it is what `config_fingerprint` is derived from, so the startup fingerprint
+assertion already guards it. Importing `Config` is not importing the scorer.
+With it, the contribution sum reproduces the frozen score to 6e-17.
+`weight_policy.json` remains the provenance record, served verbatim by
+`/benchmark`, rounding and all.
+
+### peer_rule — frozen
+
+`nearest_opposite_label_prefer_family`. Same split, opposite label, prefer
+`has_family` (the panel is ring vs *household*), minimise score distance,
+tiebreak on higher score then lexicographic `component_id`. A documented
+heuristic, not a derived optimum. Verified: yields `c_a00533 -> c_a00727`, zero
+distance ties on the frozen data, identical across 50 shuffles of input order.
+The tiebreaks never fire today and are specified anyway.
+
+### Audit trail — append-only JSONL
+
+`out/audit_log.jsonl`, the only mutable state in the system. Chosen over SQLite:
+one writer, append-then-tail-N, a nested evidence snapshot that is already JSON,
+and every other artifact here is an inspectable file. Switch to SQLite on any of
+— more than one writer process, queries across components, or mutable records.
+The whole surface is `append()` and `tail()`, so that swap stays in one file.
+
+`POST /rings/{id}/review` blocks nothing and changes no frozen artifact. The
+evidence snapshot is embedded rather than referenced, so the record still says
+what the analyst actually saw after the pipeline re-freezes.
+
+**The action bar posts and then re-reads.** A click POSTs, then re-fetches
+`/rings/{id}/evidence` and renders the trail from *that* — never from the POST
+body and never from optimistic local state. The cost is one extra round trip;
+the gain is that a write which did not land cannot look like one that did. The
+same rule drives button state: an action already on the server's record for the
+component is disabled, so the state survives a reload and is shared between the
+Control Center and the Investigator, because neither page owns it. Changing your
+mind to a *different* action stays available — recording `allow` over `escalate`
+sets `agreed_with_system: false`, which is the disagreement the trail exists to
+capture. Verified by `mockups/verify-actions.mjs`, whose negative control aborts
+the POST in the browser and asserts the screen refuses to show a record.
+
+### Ring selection and the graph renderer
+
+One function, `selectComponent(id)`, owns everything a component shows. It
+fetches `/rings/{id}/evidence` once and redraws the graph, the signal ledger,
+the score decomposition, the ring-vs-household comparison, the audit trail and
+the action bar from that single response — so no panel can be left holding the
+previous component's numbers. The Control Center's queue and the Investigator's
+picker both route through it, which is why they cannot disagree about what
+"selected" means. The Control Center opens on `rings[0]` rather than a
+hardcoded id: `/rings` is ordered by score, so the queue and the detail panel
+agree by construction.
+
+The graph is drawn from the `graph` block in that payload — the frozen
+`out/graph_edges.json` — in three columns, shared attributes → accounts →
+merchants, which is the order the finding is argued in. The layout is
+arithmetic, not a force simulation: identical input must give an identical
+picture, or the drawing cannot be checked against the API the way every other
+number on screen is. `mockups/verify-selection.mjs` does exactly that — it reads
+the node ids, degrees and edge count back out of the painted SVG and compares
+them to the API's answer for that id, across four components, and its negative
+control rewrites a degree in flight to prove the drawing follows the payload.
+
+One honest asymmetry the caption states outright: the graph draws every
+attribute shared by two or more accounts, including infrastructure the hygiene
+rule caps (`ip_nat*`), while `ip_sharing` skips capped IPs. A household can
+therefore show nine IP boxes and still score 6 on that signal. The node count
+is structure, not the signal.
+
+### `/explain` — contract only, deliberately not built
+
+Per the PRD's Tier 1 fallback rule this is the first thing to cut. The endpoint
+exists and returns the **deterministic** composition of the scorer's own
+`detail` strings with `fallback_used: true`. No model is wired.
+
+The grounding contract if it is ever built: the request carries a component id
+and no numbers, so a client cannot induce a claim the detector never made; every
+numeric token in generated text must appear in the evidence block or the
+generation is rejected; the action is never in the model's output path. Honest
+limit — that validation cannot catch a fluent misattribution of intent, which is
+the real argument for leaving the deterministic path in place.
+
+## PRD rows 63 and 70 — baselines and leave-one-group-out ablation
+
+**Written before any of it was run.** The point of this section existing first is
+that the readings below are committed in advance, so whichever way the numbers
+land they get reported as-is rather than narrated into whatever supports the
+pitch. Same discipline as `experiments/ablation_temporal_burst.json`.
+
+Two PRD acceptance criteria are unmet and this closes both:
+
+- **Row 63** wants at least *random, shared-device-only, shared-IP-only,
+  transaction-level and deterministic-ring-score* baselines. What existed was
+  `shared_device_only_baseline_f1` plus per-signal best-achievable F1 — two of
+  the five, and both as *ceilings* on design data rather than frozen held-out
+  reads, so they were not comparable with the headline 0.8000.
+- **Row 70** wants *full model vs. each feature group removed*. What existed was
+  `single_signal_max_f1` — each signal **alone**, which is the inverse of an
+  ablation — plus two drop-group weight candidates inside the weight search,
+  which is a selection procedure, not a reported ablation table.
+
+### The protocol, identical for every row in both tables
+
+Unchanged from Tier 0 and non-negotiable: **each configuration selects its own
+cutoff on validation only, freezes it, and then reads test exactly once.** Twelve
+configurations means twelve independent freezes. Reusing one configuration's
+threshold on another silently leaks the comparison — that is the whole reason
+`select_threshold()` takes validation candidates as its entire input.
+
+The two tables freeze to `out/baselines.json` and `out/ablations.json`, both
+carrying `config_fingerprint`, both added to `test_18`'s byte-for-byte list
+(9 files → 11) and to the API's one-run assertion.
+
+### Row 63 — the five baselines
+
+| Baseline | Score per component | Sees the graph? |
+|---|---|---|
+| `random` | `Random(f"{seed}:{component_id}").random()` | no |
+| `shared_device_only` | raw `device_sharing` — accounts on the most-shared device | one rule from it |
+| `shared_ip_only` | raw `ip_sharing` — accounts on the most-shared non-common IP | one rule from it |
+| `transaction_level` | fraction of the component's transactions a naive per-transaction rule flags | **no** |
+| `ring_score` | the shipped weighted score | yes, fully |
+
+`random` is keyed on the component id rather than drawn from a stream, so it does
+not depend on iteration order and reproduces byte-for-byte like everything else.
+
+`transaction_level` is the control that matters most, because it is the one a
+reviewer will ask about: *would a transaction-level model have found these
+anyway?* It flags a transaction when it is a refund or a failure, or its amount
+is at/above the 95th percentile, or the account is 30 days old or younger — raw
+fields on the transaction itself, no shared-attribute counts, no component
+structure beyond which transactions are being averaged. **The amount percentile
+is computed on train+validation transactions only**; computing it over the whole
+stream would leak the test split's amount distribution into the baseline.
+
+**Cutoffs are swept in both directions.** Not a refinement — RISK-001 is exactly
+the bug where a `>=`-only sweep reported an inverted signal as useless.
+`ip_sharing` is inverted in this benchmark (rings keep separate IPs, households
+share the router), so a one-directional sweep would report the shared-IP baseline
+as far weaker than it honestly is. The direction is chosen on validation with the
+cutoff, frozen with it, and applied to test as frozen. This makes every baseline
+*stronger*, which is the conservative direction for a claim of the form "the
+system beats these".
+
+### Row 70 — the five ablation groups
+
+The PRD names device, IP, instrument, temporal and behavioural/refund. Mapped
+onto the seven signals as a **partition** — every signal belongs to exactly one
+group, so "full minus each group in turn" covers the whole scorer and no signal
+is silently ablated twice or never:
+
+| Group | Signals removed |
+|---|---|
+| `device` | `device_sharing` |
+| `ip` | `ip_sharing` |
+| `instrument` | `instrument_sharing` |
+| `temporal` | `temporal_burst` |
+| `behavioral_refund` | `failure_refund_rate`, `account_newness`, `merchant_concentration` |
+
+The three-signal behavioural group is a grouping choice and is called one: the
+split is structural (what accounts *share*) against behavioural (how accounts
+*act*). Merchant concentration sits on the behavioural side because it describes
+where the money went, not what two accounts have in common.
+
+Weights are **renormalised** after zeroing, exactly as in the temporal ablation,
+for the reason recorded there: holding the survivors fixed and letting the total
+fall below 1.0 multiplies every score by a constant, which is a change of units
+measured against a fixed threshold, not an ablation.
+
+Ablated scorers are weighted sums on the same [0, 1] scale and in the same
+orientation as the shipped model, so they use `select_threshold()` itself — the
+audited function — rather than the baselines' value sweep. "Same protocol as the
+main model" is then literally true rather than approximately true.
+
+### Committed in advance
+
+*Expected:* `ring_score` beats `random` by a wide margin; `transaction_level`
+lands well below it, because the thesis of the whole project is that coordination
+is visible in aggregate and not in any single transaction; `shared_device_only`
+lands close behind the full model, since one rule already reaches 0.7442
+achievable F1 on design data.
+
+*Predicted no-op:* the `ip` ablation must come out **exactly identical** to the
+full model, because RISK-001 already set `ip_sharing`'s weight to 0.0 and
+renormalising a zero changes nothing. If it differs at all, that is a
+renormalisation bug to fix, not a result to report.
+
+*The readings that would be uncomfortable, and are reported anyway:*
+
+- If `shared_device_only` **matches or beats** the full model on held-out F1, the
+  graph score is not earning its complexity on this benchmark and the pitch may
+  not claim it does. `max_shared_device_baseline_f1` is already a hard gate on
+  design data; this would be the held-out counterpart.
+- If any ablation **improves** held-out F1, the shipped weight vector is not the
+  best one available. It gets reported plainly.
+
+**What will not happen either way: no weight, threshold or band is re-selected on
+the basis of these held-out reads.** That is the leakage this project spent its
+whole protocol preventing, and twelve fresh test reads is precisely the situation
+where it would be tempting. These tables are a report. Any change they argue for
+is a design decision that must be made on design splits, in a separate run, with
+its own freeze.
+
+### Result — RUN, and both uncomfortable readings fired
+
+Records at `out/baselines.json` and `out/ablations.json`, both in the
+byte-for-byte reproducibility test. The protocol section above was committed
+before any of this ran; nothing below was re-selected on the strength of it.
+
+**The prediction held.** Ablating `ip` came out byte-identical to the full model,
+as predicted, because RISK-001 had already zeroed that weight. `test_22` now
+asserts it rather than admiring it.
+
+#### Row 63 — the graph score does not win its own baseline table
+
+| Baseline | Sees graph | Frozen cutoff | Held-out F1 | FPR | Hard-neg F1 |
+|---|---|---|---|---|---|
+| `transaction_level` | none | ≥ 1.0 | **1.0000** | 0.0000 | 1.0000 |
+| `ring_score` | fully | ≥ 0.23 | 0.8000 | 0.1739 | 0.8000 |
+| `shared_device_only` | one rule | ≥ 4 | 0.6957 | 0.3043 | 0.6957 |
+| `shared_ip_only` | one rule | ≤ 1 | 0.5161 | 0.6522 | **1.0000** |
+| `random` | none | ≥ 0.3718 | 0.2857 | 0.6957 | 0.4706 |
+
+A transaction-level rule that never touches the graph separates the held-out
+split **perfectly**. One clause carries it: every ring transaction in the test
+split comes from an account **≤ 25 days** old, while negatives run to a median of
+**316**. No negative component is made entirely of young accounts, so
+"all transactions from accounts ≤ 30d" is an exact classifier.
+
+The 30-day cut was fixed in the protocol above before the run, and it is not a
+tuned constant — validation F1 is 1.0000 for every cut from 20 to 180 days, and
+only falls (0.8571) at 10. The record carries that sweep.
+
+**This is a statement about the benchmark, not about graph detection.** The
+non-triviality panel came within 0.0088 of catching it: `account_newness` alone
+scores 0.9412 against a 0.95 bound, and passed. Aggregating the same field per
+*transaction* rather than per component clears the bound outright. The gate was
+one aggregation away from firing, which is the most useful thing this table says.
+
+`shared_ip_only` reaching 1.0000 on the hard-negative view is the RISK-001 story
+told from the other end: sweeping both directions, "at most one account per IP"
+separates ring from household perfectly, because households share a router and
+rings do not. It is useless as a detector — 0.6522 FPR against the full negative
+set — and it is exactly why the direction sweep is not optional.
+
+**The shipped scorer is reported at its own frozen threshold**, not re-swept over
+observed values like the four challengers. The finer sweep would have scored it
+0.8421; it ships at 0.8000 and that is the number the table carries, because the
+Benchmark tab may not show two different held-out F1s for one detector. Holding
+the incumbent to the coarser grid while the challengers get the finer one errs
+against the incumbent, which is the safe direction here. `test_24` pins it.
+
+#### Row 70 — one group of five is load-bearing
+
+| Removed | Weight | Threshold | Held-out F1 | Δ | Rings | Hard-neg F1 |
+|---|---|---|---|---|---|---|
+| — full model | — | 0.23 | 0.8000 | — | 8/8 | 0.8000 |
+| `behavioral_refund` | 0.3333 | 0.22 | 0.6316 | **−0.1684** | **6/8** | 0.6316 |
+| `device` | 0.2444 | 0.18 | 0.8000 | 0.0000 | 8/8 | 0.8000 |
+| `ip` | 0.0000 | 0.23 | 0.8000 | 0.0000 | 8/8 | 0.8000 |
+| `temporal` | 0.2778 | 0.26 | 0.8000 | 0.0000 | 8/8 | 0.8000 |
+| `instrument` | 0.1444 | 0.25 | 0.8889 | **+0.0889** | 8/8 | 0.8889 |
+
+Only the behavioural and refund group costs anything: 0.1684 F1 and two of eight
+rings. The three *structural* groups — device, IP, instrument — are the ones the
+graph exists to compute, and removing them costs **nothing or less than nothing**.
+Removing `instrument_sharing` improves held-out F1 to 0.8889 and halves FPR,
+consistent with RISK-004 having already filed that signal as defective and with
+the weight gate refusing `D_drop_flagged`.
+
+Held against the temporal ablation recorded earlier in this document, the
+`temporal` row reproduces it exactly (0.8000 → 0.8000), which is a useful
+consistency check on the new code path — as is `test_21`, which asserts the
+`full` row equals `eval_report.json` cell for cell.
+
+**No weight was changed on the strength of any of this.** Six fresh held-out
+reads is precisely the situation the protocol above anticipated. Re-weighting
+because an ablation looked good on test is selection on a held-out read; if the
+`instrument` result is to be acted on, it belongs in a weight search on design
+splits with its own freeze, which is where `D_drop_flagged` already lives.
+
+#### What the two tables say together
+
+They agree, and the agreement is not flattering. The baselines say a non-graph
+rule wins outright; the ablation says the graph-structural signals are the ones
+that can be removed for free. Both point at the same cause: **this generator
+makes ring accounts uniformly young, and account age is doing the work the graph
+is credited with.** That is rows 56/58/59 — a second ring type whose accounts are
+not uniformly young — and it is deliberately not attempted this close to the
+deadline, because it re-fingerprints every number in the build.
+
+The honest claim the demo can make is the narrow one: on this benchmark, the
+three-way abstention policy and the cost model are what earn their keep, and the
+graph score is not yet shown to beat a simple attribute rule. Saying more than
+that requires the generator work.
+
+---
+
+## Phase 10-11 — the account-age confound fix, and the re-freeze it forced
+
+**Phase 10's target was stated by the previous section, not invented here:**
+"a second ring type whose accounts are not uniformly young... deliberately not
+attempted this close to the deadline, because it re-fingerprints every number
+in the build." Phase 10 did exactly that — a hybrid pool-funded ring mechanism
+(a configurable fraction of rings, tuned to 0.7, fund every member through a
+small shared-instrument pool instead of personal cards, **and** draw signup
+age from a much wider range, `ring_hybrid_signup_min_days`=5 to
+`ring_hybrid_signup_max_days`=400, instead of the uniformly-young default) —
+plus the 8th signal, `instrument_pool_concentration`, that scores the new
+mechanism, and the D3 cost-model fix (`deferred_decisions.md` D3, closed).
+
+**Phase 10 stopped short of re-running the weight search and abstention
+protocols on purpose**, because both are supposed to select on a benchmark
+that is already final, and the generator was still moving. Phase 11 is that
+re-run: `weight_search_protocol.md` and `abstention_protocol.md` frozen and
+executed against the settled Phase 10 benchmark, `experiments/weight_policy.json`
+and `experiments/abstention_policy.json` re-frozen with the current config
+fingerprint, and every document that quoted a number from either protocol
+updated to match. Full results are in those two files; this section reports
+the one finding the whole two-phase effort exists to produce.
+
+### The actual target: does `transaction_level` still reach F1 1.0000 on held-out?
+
+**No.** Re-running `comparisons.baseline_report()` fresh from `out/baselines.json`
+on the Phase 10/11 benchmark:
+
+| Baseline | Sees graph | Frozen cutoff | Held-out F1 | FPR | Hard-neg F1 |
+|---|---|---|---|---|---|
+| `ring_score` | fully | ≥ 0.23 | **0.8750** | 0.0417 | 0.8750 |
+| `transaction_level` | none | ≥ 5,715.91 | **0.7143** | 0.0417 | 0.7143 |
+| `shared_device_only` | one rule | ≥ 4 | 0.6957 | 0.2917 | 0.6957 |
+| `shared_ip_only` | one rule | ≥ 1 | 0.5000 | 0.6667 | 0.5000 |
+| `random` | none | ≥ 0.084563 | 0.2000 | 0.0417 | 0.4706 |
+
+`transaction_level` — precision 0.8333, recall 0.6250, tp 5 / fp 1 / tn 23 /
+fn 3 — no longer separates the held-out split perfectly, and the shipped
+`ring_score` (F1 0.8750) now **beats** it outright, reversing finding #1 from
+the pre-Phase-10 README. The age-cut sensitivity sweep, re-run on validation,
+confirms the mechanism rather than merely the headline: F1 is no longer flat
+at 1.0000 across every cut from 20 to 180 days (the old confound's signature)
+— it now varies (0.7059 at 10 days, 0.6667 flat from 20-60, falling to 0.6154
+at 90) because a hybrid ring's members are a mix of fresh mules and older
+compromised/synthetic accounts, so "account age ≤ N days" is no longer close
+to a perfect ring classifier at any cut.
+
+**This is the honest result, reported whichever way it landed, per this
+document's own committed-in-advance framing for the original row 63/70 run.**
+It is not a clean sweep: `transaction_level` (0.7143) still beats
+`shared_device_only` (0.6957) and `shared_ip_only` (0.5000), so a naive
+per-transaction rule remains a stronger baseline than two of the graph's own
+one-rule challengers. What changed is specifically the comparison the whole
+phase was aimed at — the graph score against the strongest non-graph
+baseline — and on that comparison the graph score now wins.
+
+### Row 70 — the ablation table, re-run
+
+| Removed | Weight | Threshold | Held-out F1 | Δ | Rings | Hard-neg F1 |
+|---|---|---|---|---|---|---|
+| — full model | — | 0.23 | 0.8750 | — | 7/8 | 0.8750 |
+| `behavioral_refund` | 0.2716 | 0.23 | 0.7059 | **−0.1691** | 6/8 | 0.7059 |
+| `device` | 0.2716 | 0.16 | 0.9333 | **+0.0583** | 7/8 | 0.9333 |
+| `ip` | 0.0000 | 0.23 | 0.8750 | 0.0000 | 7/8 | 0.8750 |
+| `instrument` | 0.1481 | 0.26 | 0.7778 | **−0.0972** | 7/8 | 0.7778 |
+| `temporal` | 0.3086 | 0.25 | 0.8421 | −0.0329 | 8/8 | 0.8421 |
+
+**A new reading this table did not have before: removing `device` improves
+held-out F1**, not just `instrument` as in the original run. This is reported
+plainly, on the same "no weight is changed on the strength of a held-out
+ablation" rule the original row 70 section already committed to — any
+reweighting this suggests belongs in a future weight-search re-run with its
+own freeze, not a same-phase reaction to this table. `ip` again reproduces the
+full model exactly, as it must while `ip_sharing` carries weight 0.00.
+
+### What this does and does not settle
+
+The graph score beating `transaction_level` on this specific benchmark draw is
+not proof the graph is generally better — it is proof that the account-age
+confound this build named as its central limitation is no longer forcing the
+comparison, on this generator, this seed. `shared_device_only` and
+`shared_ip_only` still trail badly, which keeps the original caution alive in
+weaker form: a full graph is not yet shown to beat *every* simpler rule, only
+the one the previous phase's finding #1 was about. The honest headline moves
+from "a non-graph rule beats the graph score" to "the graph score beats the
+strongest non-graph rule tried, on the axis this phase targeted" — narrower
+than a general claim, and that narrowness is deliberate.

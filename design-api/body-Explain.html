@@ -1,0 +1,94 @@
+<div class="pg">
+  <div class="hd">
+    <div class="hd1"><span class="mk">RISK<i>MESH</i></span>
+      <span class="ti">POST /explain &middot; grounded narration</span>
+      <span class="mt">Should-have &middot; cut this first</span></div>
+    <div class="hd2">
+      <div>PRD tier <b>Should-have</b></div>
+      <div>Cut order <b>1st</b></div>
+      <div>Fallback <b>already built</b></div>
+      <div>Can override detector <b>never</b></div>
+    </div>
+  </div>
+
+  <div class="mod q">
+    <h2><span class="tab">Cut this first</span><span class="rest">the recommendation, up front</span></h2>
+    <div class="note">
+      <span class="h">Drop before anything else</span><br>
+      Per the PRD's Tier 1 fallback rule, this is the <b>first thing to cut</b> if time is short
+      &mdash; and it should be. <b>The deterministic fallback already exists and already ships.</b>
+      <code>score_component()</code> writes a <code>detail</code> string for every signal
+      (&ldquo;9 accounts share device d_ring02&rdquo;, &ldquo;median account age 10 days&rdquo;),
+      and the mockups already read as plain English from those strings alone. An LLM layer would
+      make the narration smoother; it would not make it more informative, and it adds the only
+      component in the system that can be <b>wrong in a new way</b>.
+    </div>
+    <p class="cap">Design the contract now so the door stays open. Build it only if the four tabs
+    are wired, the audit trail works, and there is genuine slack.</p>
+  </div>
+
+  <div class="mod">
+    <h2><span class="tab">Contract</span><span class="rest">input is an id, never numbers</span></h2>
+<pre><span class="c">// POST /explain</span>
+{ <span class="k">"component_id"</span>: <b>"c_a00533"</b>,      <span class="c">// an ID. Nothing else.</span>
+  <span class="k">"audience"</span>: <b>"analyst"</b> }         <span class="c">// analyst | executive</span>
+
+<span class="c">// 200</span>
+{
+  <span class="k">"component_id"</span>: <b>"c_a00533"</b>,
+  <span class="k">"text"</span>: <b>"Nine accounts transacted from a single device. Six of them
+            reached one merchant inside thirty minutes, and the accounts
+            were a median of ten days old. Each kept its own IP, which is
+            what separates this from a household sharing a router."</b>,
+  <span class="k">"grounded_in"</span>: [<b>"device_sharing"</b>, <b>"temporal_burst"</b>, <b>"account_newness"</b>,
+                   <b>"ip_sharing"</b>],
+  <span class="k">"numeric_tokens"</span>: [<b>"9"</b>, <b>"6"</b>, <b>"30"</b>, <b>"10"</b>],   <span class="c">// each verified present</span>
+  <span class="k">"config_fingerprint"</span>: <b>"7c1e4fb2b329796c"</b>,
+  <span class="k">"fallback_used"</span>: <b>false</b>
+}</pre>
+    <p class="cap"><b>The request carries no numbers.</b> The caller names a component; the server
+    reads the frozen evidence itself and builds the prompt from it. A client cannot supply a score,
+    a signal value, or a claim &mdash; so it cannot induce the model to narrate something the
+    detector never said.</p>
+  </div>
+
+  <div class="mod">
+    <h2><span class="tab">Grounding contract</span><span class="rest">four rules, enforced not requested</span></h2>
+    <table>
+      <thead><tr><th>Rule</th><th>Enforcement</th></tr></thead>
+      <tbody>
+        <tr><td class="why"><b>1. Cannot invent values.</b> Every numeric token in the output must
+            appear in the evidence block.</td>
+          <td class="why"><b>Post-generation validation.</b> Extract numerics from the text; any
+            token absent from the evidence &rarr; reject the generation.</td></tr>
+        <tr><td class="why"><b>2. Cannot override the detector.</b> It may not state or imply an
+            action different from <code>action</code>.</td>
+          <td class="why">The action is <b>never</b> in the model's output path &mdash; the UI
+            renders it from the evidence response. The narration sits beside it, not above it.</td></tr>
+        <tr><td class="why"><b>3. Cannot introduce a signal.</b> Only signals present in the
+            decomposition may be named.</td>
+          <td class="why">Reject any generation naming a term outside <code>grounded_in</code>.</td></tr>
+        <tr><td class="why"><b>4. Always degrades, never fails.</b></td>
+          <td class="why">On rejection or timeout, return the deterministic
+            <code>detail</code>-string composition with <code>fallback_used: true</code>. The
+            endpoint has no error path the UI must handle.</td></tr>
+      </tbody>
+    </table>
+    <p class="cap">Rule 1 is the one that matters and the one that is cheap: a regex for numeric
+    tokens plus a set membership test against the evidence block. It cannot catch a fluent
+    mischaracterisation, but it does catch the failure that would actually embarrass this
+    project &mdash; <b>a confident number that is not in the data.</b></p>
+  </div>
+
+  <div class="mod q">
+    <h2><span class="tab">Honest limits</span><span class="rest">what the validator does not buy</span></h2>
+    <p class="cap">Numeric validation is <b>not</b> a correctness proof. A generation can pass every
+    rule above and still misattribute causality &mdash; &ldquo;the accounts were created to commit
+    this fraud&rdquo; contains no numbers and names no new signal, but claims intent the detector
+    never established. There is no cheap enforcement for that.</p>
+    <p class="cap">Which is the real argument for cutting it. The deterministic composition cannot
+    make that class of error at all, because it only ever concatenates strings the scorer wrote.
+    <b>An explanation layer that can be subtly wrong is worse than a blunt one that cannot be</b>,
+    on a project whose entire credibility rests on the numbers being trustworthy.</p>
+  </div>
+</div>

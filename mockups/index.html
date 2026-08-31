@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RiskMesh</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- mosaic.css is the console's design system. This page links it for the
+     tokens, the themed browser surfaces (selection, scrollbar, focus ring,
+     tabular numerals) and svg.g, so the front door and the four screens behind
+     it are demonstrably one product. Light, locked: a dark landing page opening
+     into a white console breaks at the first click. -->
+<link rel="stylesheet" href="mosaic.css">
+<style>
+/* --- page-scoped ------------------------------------------------------- */
+/* Body copy never uses --ink-3 (4.16:1 on white, under AA). --ink-2 is 8.6:1
+   and --quiet is 5.9:1; those two carry every readable string here. */
+body{background:var(--bg);font-size:15px;line-height:1.55}
+.page{max-width:1180px;margin:0 auto;padding:0 28px}
+a{color:inherit}
+
+/* masthead: one line, 56px, no nav to fit -- the four destinations are the
+   page's own second section, so duplicating them up here would be two CTAs
+   with one intent. */
+.top{display:flex;align-items:center;gap:12px;height:56px;
+  border-bottom:1px solid var(--line)}
+.top .mark{font-weight:700;font-size:19px;letter-spacing:-.02em;border:0;padding:0}
+.top .mark i{color:var(--red);font-style:normal}
+.top .fp{margin-left:auto;font:400 12px var(--mono);color:var(--quiet)}
+
+/* 1. hero ---------------------------------------------------------------- */
+.hero{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center;
+  padding:72px 0 64px}
+h1{font-size:clamp(36px,4.6vw,56px);font-weight:700;letter-spacing:-.035em;
+  line-height:1.03;max-width:17ch}
+h1 em{font-style:normal;color:var(--red)}
+.lede{margin-top:20px;font-size:17px;color:var(--ink-2);max-width:38ch}
+.cta{display:flex;gap:10px;margin-top:30px;flex-wrap:wrap}
+.cta a{display:inline-block;padding:11px 20px;font-size:15px;font-weight:600;
+  text-decoration:none;border:1px solid var(--red);
+  transition:background .14s,color .14s,transform .14s}
+.cta a.p{background:var(--red);color:#fff}
+.cta a.p:hover{background:#b5171d;border-color:#b5171d}
+.cta a.s{border-color:var(--line);color:var(--ink)}
+.cta a.s:hover{border-color:var(--ink)}
+.cta a:active{transform:translateY(1px)}
+
+.viz{border:1px solid var(--line);background:var(--bg)}
+.viz .vh{display:flex;align-items:baseline;gap:8px;padding:7px 10px;
+  border-bottom:1px solid var(--line);font-size:12px;color:var(--ink-2)}
+.viz .vh b{font:600 12px var(--mono);color:var(--ink)}
+.viz .vh .sc{margin-left:auto;font:600 12px var(--mono);color:var(--red)}
+.viz .plot{padding:12px 10px;min-height:210px}
+.viz figcaption{padding:8px 10px;border-top:1px solid var(--line-2);
+  background:var(--fill);font-size:12px;color:var(--ink-2)}
+.viz figcaption b{color:var(--ink)}
+
+/* The one authored motion moment on the page, and it is the headline made
+   literal: the accounts arrive, then the wiring is drawn between them. The
+   renderer emits flat rect/text/path, so the boxes are one beat and the edges
+   are the next. Nothing else on this page animates beyond hover and press. */
+@media (prefers-reduced-motion:no-preference){
+  .plot svg.g rect,.plot svg.g text{animation:rise .45s cubic-bezier(.16,1,.3,1) backwards}
+  .plot svg.g path{stroke-dasharray:400;
+    animation:wire .95s cubic-bezier(.16,1,.3,1) .3s backwards}
+}
+@keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes wire{from{stroke-dashoffset:400}to{stroke-dashoffset:0}}
+
+/* 2. the result ---------------------------------------------------------- */
+/* Not three stat tiles. Each figure is a claim shown against the thing it
+   beats, because the counterfactual is what makes the number mean anything. */
+.result{border-top:1px solid var(--line);padding:52px 0 56px}
+.result .claim{font-size:21px;font-weight:600;letter-spacing:-.015em;
+  max-width:44ch;margin-bottom:34px}
+.figs{display:grid;grid-template-columns:repeat(3,1fr);gap:0}
+.fig{padding:0 30px;border-left:1px solid var(--line-2)}
+.fig:first-child{padding-left:0;border-left:0}
+.fig .n{font:700 34px/1 var(--mono);letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums}
+.fig .n.good{color:var(--red)}
+.fig .k{margin-top:9px;font-size:13px;font-weight:600}
+.fig .v{margin-top:5px;font-size:13px;color:var(--quiet);max-width:26ch}
+.fig .v b{color:var(--ink-2);font-weight:600}
+
+/* 3. the four screens ---------------------------------------------------- */
+/* Rows, not a grid of equal cards. This section is an index, so it is built
+   like one: the name leads, the line explains, the row is the hit target.
+   Control Center and Investigator get the weight; the PRD scopes the other
+   two as reference views rather than polished screens. */
+.screens{border-top:1px solid var(--line)}
+.screens h2,.claim-h{font-size:21px;font-weight:600;letter-spacing:-.015em;
+  padding-top:52px;margin-bottom:22px}
+.row{display:grid;grid-template-columns:minmax(0,15rem) minmax(0,1fr) auto;
+  gap:24px;align-items:baseline;padding:22px 0;
+  border-top:1px solid var(--line-2);text-decoration:none;
+  transition:border-color .16s}
+.row:first-of-type{border-top:0}
+/* The name leads on hover, not the row. Sliding the row would animate
+   padding, which is layout work every frame; translating one span is not. */
+.row .nm{font-size:21px;font-weight:600;letter-spacing:-.02em;
+  display:inline-block;transition:color .16s,transform .16s}
+.row.lead .nm{font-size:26px}
+.row .ds{font-size:14px;color:var(--ink-2)}
+.row .go{font-size:13px;font-weight:600;color:var(--quiet);white-space:nowrap;
+  transition:color .16s}
+.row:hover{border-color:var(--red)}
+.row:hover .nm{transform:translateX(8px)}
+.row:hover .nm,.row:hover .go{color:var(--red)}
+@media (prefers-reduced-motion:reduce){.row .nm{transition:color .16s}
+  .row:hover .nm{transform:none}}
+.row:focus-visible{outline:2px solid var(--red);outline-offset:3px}
+
+/* 4. limits -------------------------------------------------------------- */
+.limits{border-top:1px solid var(--line);padding-bottom:8px}
+.limits p{font-size:15px;color:var(--ink-2);max-width:68ch;margin-bottom:14px}
+.limits p b{color:var(--ink);font-weight:600}
+
+/* 5. run ----------------------------------------------------------------- */
+.run{border-top:1px solid var(--line);padding-bottom:56px}
+pre{background:var(--fill);border:1px solid var(--line-2);padding:14px 16px;
+  font:400 13px/1.75 var(--mono);color:var(--ink);overflow-x:auto}
+pre .c{color:var(--quiet)}
+.run p{margin-top:14px;font-size:13px;color:var(--quiet);max-width:68ch}
+
+footer{border-top:1px solid var(--line);padding:20px 0 40px;font-size:13px;
+  color:var(--quiet)}
+
+@media (max-width:900px){
+  .hero{grid-template-columns:1fr;gap:36px;padding:48px 0}
+  h1{max-width:100%}
+  .lede{max-width:60ch}
+  .figs{grid-template-columns:1fr}
+  .fig{padding:22px 0;border-left:0;border-top:1px solid var(--line-2)}
+  .fig:first-child{padding-top:0;border-top:0}
+  .row{grid-template-columns:1fr;gap:6px}
+  .row .go{display:none}
+  .page{padding:0 18px}
+}
+</style>
+</head>
+<body data-page="home">
+
+<div class="page">
+
+  <header class="top">
+    <span class="mark">RISK<i>MESH</i></span>
+    <span class="fp" id="fp">seed 20260824 · cfg 7c1e4fb2b329796c</span>
+  </header>
+
+  <!-- 1. hero -->
+  <section class="hero">
+    <div>
+      <h1>Fraud rings hide in the <em>wiring</em>.</h1>
+      <p class="lede">RiskMesh scores connected components of accounts, devices
+      and cards, then defers the uncertain ones to a human.</p>
+      <div class="cta">
+        <a class="p" href="b-mosaic.html">Open the console</a>
+        <a class="s" href="benchmark.html">Read the benchmark</a>
+      </div>
+    </div>
+
+    <!-- Drawn by renderGraph() from /rings/{id}/evidence: the real top-ranked
+         component, not a picture of one. Falls back to the line below if the
+         API is not running. -->
+    <figure class="viz">
+      <div class="vh">Top ranked <b id="hero-id">c_a00533</b>
+        <span class="sc" id="hero-score">0.5246</span></div>
+      <div class="plot" id="hero-graph">
+        <p style="font-size:13px;color:var(--ink-2);padding:60px 0;text-align:center">
+          Start the API to draw this component's graph.</p>
+      </div>
+      <figcaption id="hero-cap"><b>9 accounts on one device.</b> Six of them hit
+      the same merchant inside 30 minutes.</figcaption>
+    </figure>
+  </section>
+
+  <!-- 2. the result -->
+  <section class="result">
+    <p class="claim">Held out once, at a threshold frozen before the test split
+    was read.</p>
+    <div class="figs">
+      <div class="fig">
+        <div class="n" data-b="cost.expected_loss" data-f="money">6,000.00</div>
+        <div class="k">Expected loss</div>
+        <div class="v">Against <b data-b="cost.binary_baseline" data-f="money">9,392.92</b>
+        for a binary allow or block policy on the identical rows.</div>
+      </div>
+      <div class="fig">
+        <div class="n good" data-b="quality.escalated_false_positives">0</div>
+        <div class="k">Escalated false positives</div>
+        <div class="v">All four households the binary policy would have flagged
+        land in <b>review</b> instead.</div>
+      </div>
+      <div class="fig">
+        <div class="n"><span data-b="quality.rings_recovered">8</span>/<span data-b="quality.rings_in_test">8</span></div>
+        <div class="k">Rings recovered</div>
+        <div class="v">Nothing was auto-blocked, and no ring was auto-allowed.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. the four screens -->
+  <nav class="screens">
+    <h2>Four screens, one set of frozen artifacts</h2>
+
+    <a class="row lead" href="b-mosaic.html">
+      <span class="nm">Control Center</span>
+      <span class="ds">The queue, the triage split, and what the policy costs.</span>
+      <span class="go">Open</span>
+    </a>
+    <a class="row lead" href="investigator.html">
+      <span class="nm">Investigator</span>
+      <span class="ds">One component: its graph, its evidence, and the four actions.</span>
+      <span class="go">Open</span>
+    </a>
+    <a class="row" href="threshold-cost.html">
+      <span class="nm">Threshold &amp; Cost</span>
+      <span class="ds">Where the operating point came from, and what it is priced against.</span>
+      <span class="go">Open</span>
+    </a>
+    <a class="row" href="benchmark.html">
+      <span class="nm">Benchmark</span>
+      <span class="ds">Whether any of it should be believed.</span>
+      <span class="go">Open</span>
+    </a>
+  </nav>
+
+  <!-- 4. limits -->
+  <section class="limits">
+    <h2 class="claim-h">What this does not claim</h2>
+    <p><b>A rule that never touches the graph beats the graph score here.</b>
+    “Every transaction from an account under 30 days old” separates the held-out
+    split perfectly. Ring accounts in this benchmark are uniformly young, so
+    account age is doing work the graph gets credit for. The Benchmark tab
+    reports it next to our own number rather than around it.</p>
+    <p><b>Removing the structural signals costs nothing.</b> Leave one group out
+    at a time and device, IP and instrument are all free to drop. Only the
+    behavioural and refund group is load-bearing.</p>
+    <p><b>No model is wired behind the explanation.</b> Narration is composed
+    from the scorer's own evidence strings, and the console says so on screen.
+    The detector never depended on it.</p>
+  </section>
+
+  <!-- 5. run -->
+  <section class="run">
+    <h2 class="claim-h">Run it</h2>
+<pre><span class="c"># the benchmark: generate, graph, score, split, evaluate</span>
+python -m riskmesh
+
+<span class="c"># the console</span>
+python -m uvicorn riskmesh.api.main:app --port 8000
+python -m http.server 8080 -d mockups</pre>
+    <p>The pipeline needs CPython 3.10 or newer and nothing else. Only the two
+    API modules import FastAPI.</p>
+  </section>
+
+  <footer>Synthetic data throughout. Defense only, and nothing is ever blocked
+  automatically.</footer>
+
+</div>
+
+<script src="api.js"></script>
+</body>
+</html>

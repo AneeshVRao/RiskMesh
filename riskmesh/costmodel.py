@@ -138,7 +138,7 @@ def derive_costs(design: list[Candidate]) -> dict[str, Any]:
     median_ring = statistics.median(pos)
     median_neg = statistics.median(neg)
     fn = median_ring * FN_ABSORBED_FRACTION
-    fp = review + median_neg * FP_FRICTION_RATE
+    fp = median_neg * FP_FRICTION_RATE
     return {
         "manual_review": round(review, 2),
         "false_negative": round(fn, 2),
@@ -155,9 +155,11 @@ def derive_costs(design: list[Candidate]) -> dict[str, Any]:
                 f"{FN_ABSORBED_FRACTION:.2f}"
             ),
             "false_positive": (
-                f"one manual review (INR {review:,.2f}) plus "
                 f"FP_FRICTION_RATE {FP_FRICTION_RATE:.2f} of median "
-                f"negative-component exposure INR {median_neg:,.2f}"
+                f"negative-component exposure INR {median_neg:,.2f} -- no "
+                "separate review cost: the generic (tp+fp)*C_review term "
+                "already prices one review per flagged component (see "
+                "deferred_decisions.md D3, resolved Phase 10)"
             ),
             "ratio_fn_to_fp": round(fn / fp, 1),
         },
