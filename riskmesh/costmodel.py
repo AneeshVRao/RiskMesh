@@ -1,15 +1,23 @@
 """Expected-loss weight selection, with the non-triviality panel as a hard gate.
 
-The protocol is described in `weight_search_protocol.md`. The panel gate
-predated `select_weights()`: it is already present, with no difficulty gates
-around it, in `96ae30f` ("Freeze the weight-search protocol before running any
-candidate"). The two difficulty gates below -- `MIN_HARD_NEGATIVES_IN_RANGE` and
-`MIN_POSITIVES_BELOW_MAX_NEGATIVE` -- were added in `9cafa71` ("Tighten the
-weight gate, run the search"), the same commit that ran the search over the five
-declared candidates. They tightened the bar rather than relaxed it, and every
-candidate was evaluated under them, but they were not in place before
-`select_weights()` existed, and an earlier version of this docstring claimed
-otherwise. That claim was false; this paragraph corrects it.
+The protocol is described in `weight_search_protocol.md`. In `96ae30f`
+("Freeze the weight-search protocol before running any candidate"),
+`select_weights()` was a stub that raised
+`NotImplementedError("Not run. The protocol is frozen in
+weight_search_protocol.md and awaiting confirmation before any candidate is
+scored.")` -- the search was structurally prevented from running before the
+freeze was confirmed, and that stub is the evidence it worked. The panel gate
+was already present in that commit; the two difficulty gates below --
+`MIN_HARD_NEGATIVES_IN_RANGE` and `MIN_POSITIVES_BELOW_MAX_NEGATIVE` -- were
+not. Both difficulty gates and `select_weights()`'s real body arrived together
+in `9cafa71` ("Tighten the weight gate, run the search"), the same commit that
+ran the search over the five declared candidates, so no ordering between the
+gates and the implementation is provable from history in either direction. The
+gates tightened the bar rather than relaxed it, and every candidate was
+evaluated under them; there is no evidence they were fitted to results. But an
+earlier version of this docstring claimed the gates preceded the
+implementation, and that specific claim is not supported by the history --
+this paragraph replaces it.
 
 The gate is the point of this module. bugs.md L2 records that held-out F1 rose
 from 0.8000 to 0.8889 twice, by two unrelated mechanisms, and that the
@@ -28,9 +36,9 @@ difficulty bounds sit on top of it.
 
 Two further guarantees, both structural rather than remembered:
 
-* `select_weights()` takes design candidates and asserts it received nothing
-  else, exactly as `select_threshold()` does; the threshold sweep inside it uses
-  validation rows only.
+* `select_weights()` takes design candidates and raises if it received anything
+  else, the same discipline `select_threshold()` enforces; the threshold sweep
+  inside it uses validation rows only.
 * `evaluate_frozen_policy()` refuses to touch the test split until the winning
   policy has been written to disk.
 """
@@ -442,17 +450,23 @@ def select_weights(cfg: Config, design: list[Candidate],
             "positives_below_max_negative":
                 f">= {MIN_POSITIVES_BELOW_MAX_NEGATIVE}",
             "declared": (
-                "The panel gate predated select_weights() (commit 96ae30f). The "
-                "two difficulty gates were added in commit 9cafa71, the same "
-                "commit that ran the search over the five declared candidates -- "
-                "they tightened the bar rather than relaxed it, and every "
-                "candidate was evaluated under them. The reason is bugs.md L2: "
-                "held-out F1 rose 0.8000 -> 0.8889 twice, by unrelated "
-                "mechanisms, while the non-triviality panel went PASS -> FAIL "
-                "both times. A higher score on this benchmark can mean a better "
-                "scorer or an easier benchmark and the metric cannot distinguish "
-                "them, so difficulty is constrained structurally rather than "
-                "reported after the fact."
+                "Commit 96ae30f froze the protocol with select_weights() as a "
+                "stub raising NotImplementedError -- the search was "
+                "structurally prevented from running before the freeze was "
+                "confirmed. The panel gate was already present there; the two "
+                "difficulty gates were not. Both difficulty gates and "
+                "select_weights()'s real body arrived together in commit "
+                "9cafa71, the same commit that ran the search over the five "
+                "declared candidates, so no ordering between the gates and the "
+                "implementation is provable from history. They tightened the "
+                "bar rather than relaxed it, and every candidate was evaluated "
+                "under them; there is no evidence they were fitted to results. "
+                "The reason is bugs.md L2: held-out F1 rose 0.8000 -> 0.8889 "
+                "twice, by unrelated mechanisms, while the non-triviality "
+                "panel went PASS -> FAIL both times. A higher score on this "
+                "benchmark can mean a better scorer or an easier benchmark and "
+                "the metric cannot distinguish them, so difficulty is "
+                "constrained structurally rather than reported after the fact."
             ),
             "enforcement": (
                 "gated_expected_loss() raises PanelGateFailure or "
