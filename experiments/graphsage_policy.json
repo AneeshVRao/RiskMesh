@@ -1,0 +1,121 @@
+{
+  "protocol": "graphsage_protocol.md",
+  "torch_version": "2.13.0+cpu",
+  "gates": {
+    "panel_verdict": "PASS",
+    "hard_negatives_inside_positive_range": ">= 4",
+    "positives_below_max_negative": ">= 0.45",
+    "declared": "Reused UNCHANGED from costmodel.py / weight_search_protocol.md / xgboost_protocol.md. Not redeclared for GraphSAGE -- the whole point of this phase is that GraphSAGE's candidates are held to the identical bar the weight vectors and XGBoost's candidates were.",
+    "enforcement": "gated_expected_loss() raises PanelGateFailure or DifficultyGateFailure instead of returning a number. An infeasible candidate has no expected loss at all."
+  },
+  "node_features": "one-hot node type (account/device/ip/instrument) + degree within the component graph, normalised by the matching global cap from config.py -- structural only, deliberately not the linear scorer's 8 signals. See graphsage_protocol.md \u00a72.1.",
+  "costs": {
+    "manual_review": 500.0,
+    "false_negative": 68399.84,
+    "false_positive": 398.43,
+    "derivation": {
+      "manual_review": "20 analyst-minutes per component at INR 1500/hour fully loaded. ASSUMPTION -- the dataset carries no analyst-effort figure.",
+      "false_negative": "median ring-component exposure INR 68,399.84 on train+validation, times FN_ABSORBED_FRACTION 1.00",
+      "false_positive": "FP_FRICTION_RATE 0.02 of median negative-component exposure INR 19,921.59 -- no separate review cost: the generic (tp+fp)*C_review term already prices one review per flagged component (see deferred_decisions.md D3, resolved Phase 10)",
+      "ratio_fn_to_fp": 171.7
+    },
+    "inputs_from_data": {
+      "median_ring_exposure": 68399.84,
+      "median_negative_exposure": 19921.59,
+      "n_positive": 16,
+      "n_negative": 53
+    }
+  },
+  "fit_on": "train only (selection); gates and threshold sweep both computed on validation predictions only, out-of-sample for every candidate -- train's in-sample scores are never mixed in",
+  "candidates": [
+    {
+      "policy": "G1_single_layer",
+      "hyperparameters": {
+        "num_layers": 1,
+        "hidden_dim": 4,
+        "weight_decay": 0.01,
+        "epochs": 50,
+        "lr": 0.05
+      },
+      "panel_verdict": "PASS",
+      "panel_failing_checks": [],
+      "positives_below_max_negative": 0.75,
+      "hard_negatives_inside_positive_range": 8,
+      "n_unique_validation_predictions": 15,
+      "feasible": true,
+      "expected_loss": 12085.87,
+      "loss_per_component": 389.87,
+      "review_cost": 8500.0,
+      "review_rate": 0.5484,
+      "tp": 8,
+      "fp": 9,
+      "fn": 0,
+      "tn": 14,
+      "threshold": 0.18
+    },
+    {
+      "policy": "G2_two_layer",
+      "hyperparameters": {
+        "num_layers": 2,
+        "hidden_dim": 8,
+        "weight_decay": 0.001,
+        "epochs": 100,
+        "lr": 0.02
+      },
+      "panel_verdict": "FAIL",
+      "panel_failing_checks": [
+        "score_distributions_overlap",
+        "positives_below_max_negative",
+        "hard_negative_in_positive_range"
+      ],
+      "positives_below_max_negative": 0.0,
+      "hard_negatives_inside_positive_range": 0,
+      "n_unique_validation_predictions": 21,
+      "feasible": false,
+      "refused_by": "PanelGateFailure",
+      "reason": "non-triviality panel returned FAIL (failing: ['score_distributions_overlap', 'positives_below_max_negative', 'hard_negative_in_positive_range'], positives below max negative 0.0). This weight vector makes the benchmark easier rather than the scorer better, so it has no expected loss to report. bugs.md L2."
+    },
+    {
+      "policy": "G3_unregularised",
+      "hyperparameters": {
+        "num_layers": 2,
+        "hidden_dim": 32,
+        "weight_decay": 0.0,
+        "epochs": 300,
+        "lr": 0.05
+      },
+      "panel_verdict": "FAIL",
+      "panel_failing_checks": [
+        "score_distributions_overlap",
+        "positives_below_max_negative",
+        "hard_negative_in_positive_range"
+      ],
+      "positives_below_max_negative": 0.0,
+      "hard_negatives_inside_positive_range": 0,
+      "n_unique_validation_predictions": 12,
+      "feasible": false,
+      "refused_by": "PanelGateFailure",
+      "reason": "non-triviality panel returned FAIL (failing: ['score_distributions_overlap', 'positives_below_max_negative', 'hard_negative_in_positive_range'], positives below max negative 0.0). This weight vector makes the benchmark easier rather than the scorer better, so it has no expected loss to report. bugs.md L2."
+    }
+  ],
+  "feasible": [
+    "G1_single_layer"
+  ],
+  "infeasible": [
+    "G2_two_layer",
+    "G3_unregularised"
+  ],
+  "winner": "G1_single_layer",
+  "winner_hyperparameters": {
+    "num_layers": 1,
+    "hidden_dim": 4,
+    "weight_decay": 0.01,
+    "epochs": 50,
+    "lr": 0.05
+  },
+  "winner_threshold": 0.18,
+  "winner_expected_loss": 12085.87,
+  "seed": 20260824,
+  "config_fingerprint": "c3ee14627c2c2ce2",
+  "python_version": "3.12.10"
+}
