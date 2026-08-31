@@ -16,7 +16,7 @@ printed on the Benchmark tab rather than left out.
 
 ```bash
 # 1. the benchmark — generate, graph, score, split, evaluate
-python -m riskmesh                  # writes 11 files to out/
+python -m riskmesh                  # writes 12 files to out/
 
 # 2. the console
 python -m uvicorn riskmesh.api.main:app --port 8000     # API
@@ -27,6 +27,7 @@ python -m http.server 8080 -d mockups                   # UI
 ```bash
 python tests/test_riskmesh.py       # 25 checks — pipeline, protocol, reproducibility
 python tests/test_api.py            #  9 checks — payloads, bands, audit log
+python tests/test_ml.py             #  4 checks — XGBoost gate, freeze guard, determinism
 ```
 
 The pipeline and its tests need **CPython 3.10+ and nothing else** — no numpy,
@@ -363,6 +364,18 @@ improves on the full model. This is a different result from Phase 10/11,
 where `behavioral_refund` and `instrument` both cost F1 when removed; no
 weight was changed on the strength of either reading, per the same rule.
 
+**Tier 2 — XGBoost scorer.** `xgboost_protocol.md`, frozen before any
+candidate was scored: four pre-declared `XGBClassifier` configurations over
+the linear scorer's own 8 signals, gated by the identical three feasibility
+gates above, unchanged. **All four were refused** — three (`X1`–`X3`)
+degenerate to a constant prediction on this benchmark's ~30-row training
+split (their `min_child_weight` never clears on a component this small), and
+the deliberately-overfit `X4` genuinely over-separates, exactly as it was
+included to demonstrate. **No candidate reached a held-out read, so XGBoost
+does not beat Tier 1 (F1 0.7778 / expected loss 74,595.13) — there is no
+XGBoost number to compare, not an unfavourable one.** Full mechanism writeup
+in `xgboost_protocol.md` §8; frozen record in `experiments/xgboost_policy.json`.
+
 ---
 
 ## The console
@@ -403,7 +416,7 @@ gates it: kill the endpoint and the ledger, graph and decomposition still render
 | | |
 |---|---|
 | **Four other ring types, three other hard negatives** | The PRD's Initial Development Slice starts with one of each; widening it re-fingerprints every frozen number in the build. This is the change that would fix finding #1 above. |
-| **XGBoost (Tier 2), GraphSAGE (Tier 3)** | Should-have and Could-have. The PRD's kill-switch says Tier 2 does not start until Tier 1 is stable end to end. |
+| **GraphSAGE (Tier 3)** | Could-have. The PRD's kill-switch says later tiers do not start until the current one is stable end to end. |
 | **Bootstrap confidence intervals** | The PRD calls these optional polish that must never delay Tier 1. |
 | **A real LLM behind `/explain`** | The grounding contract and fallback are built and demonstrated; the model is the first thing the PRD says to cut. |
 | **Auth, a database, deployment** | Explicitly out of scope for the buildathon. |
@@ -424,15 +437,16 @@ riskmesh/abstention.py   the three-way band search
 riskmesh/comparisons.py  the five baselines and the ablation table
 riskmesh/evaluate.py     ground-truth rule, threshold freeze, metrics
 riskmesh/experiment.py   the recorded signal experiments (E1-E6)
+riskmesh/ml.py           XGBoost candidates, the same gates reused unchanged
 riskmesh/__main__.py     the one command
 riskmesh/api/            FastAPI: artifacts, bands, payloads, audit, routes
 mockups/                 the four screens + api.js, the live client
-tests/                   25 pipeline checks + 9 API checks
+tests/                   25 pipeline checks + 9 API checks + 4 XGBoost checks
 ```
 
 **Where the reasoning lives.** `implementation_plan.md` is the build log, phase
 by phase. `bugs.md` carries every RISK entry with its measurements.
 `deferred_decisions.md` lists what was knowingly left, with the cost.
-`weight_search_protocol.md` and `abstention_protocol.md` are the two protocols
-that were frozen to git *before* their runs — read the predictions, then the
-results.
+`weight_search_protocol.md`, `abstention_protocol.md` and
+`xgboost_protocol.md` are the three protocols that were frozen to git *before*
+their runs — read the predictions, then the results.
