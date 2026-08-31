@@ -2,3 +2,11 @@ out/
 __pycache__/
 *.pyc
 task_today.md
+
+# Editor/agent tooling -- local machine state, not project source.
+# Previously relied on this machine's global git ignore / .git/info/exclude,
+# which is not portable to a fresh clone.
+.claude/
+.impeccable/
+.pytest_cache/
+.superpowers/
