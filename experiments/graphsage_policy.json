@@ -117,5 +117,34 @@
   "winner_expected_loss": 12085.87,
   "seed": 20260824,
   "config_fingerprint": "c3ee14627c2c2ce2",
-  "python_version": "3.12.10"
+  "python_version": "3.12.10",
+  "held_out": {
+    "note": "The single permitted read, taken after the policy was frozen.",
+    "n_components": 31,
+    "threshold": 0.18,
+    "precision": 0.35,
+    "recall": 0.875,
+    "f1": 0.5,
+    "false_positive_rate": 0.5652,
+    "tp": 7,
+    "fp": 13,
+    "tn": 10,
+    "fn": 1,
+    "rings_recovered": 7,
+    "rings_in_test": 8,
+    "expected_loss": 83579.43,
+    "review_rate": 0.6452,
+    "review_cost": 10000.0,
+    "flag_everything_expected_loss": 24663.89,
+    "false_positives_family": 8,
+    "false_positives_background": 5,
+    "account_level": {
+      "precision": 0.4854,
+      "recall": 0.9259,
+      "f1": 0.6369,
+      "false_positive_rate": 0.726
+    },
+    "design_panel_verdict_at_selection": "PASS",
+    "design_positives_below_max_negative": 0.5
+  }
 }
