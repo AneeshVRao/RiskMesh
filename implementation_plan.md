@@ -1369,3 +1369,97 @@ baseline it was in Phase 10/11. The honest headline stays "the graph score
 beats the strongest non-graph rule tried, on the axis this phase targeted" —
 narrower than a general claim, and that narrowness is deliberate — it just
 now names `shared_device_only`, not `transaction_level`, as that rule.
+
+## Tier 2 — XGBoost scorer
+
+Item 5 of "Tier 1 remaining" said this would not start by training a model —
+it would start by freezing a comparison protocol, the same three feasibility
+gates, and a single held-out read. `xgboost_protocol.md` is that protocol,
+written and committed (`880ccfe`) before `riskmesh/ml.py` existed or any
+candidate had been fit against real data.
+
+### Dependency decision — numpy and xgboost
+
+`requirements.txt` says not to add a dependency without moving the decision
+here first, same rule the FastAPI decision above followed. Doing that now.
+
+**Added:** `numpy`, `xgboost`. **Why:** the PRD names XGBoost as the Tier 2
+should-have model, and `XGBClassifier` needs both.
+
+**What is preserved:** Tier 0's zero-dependency guarantee is intact.
+`python -m riskmesh` and `tests/test_riskmesh.py` still import nothing outside
+the stdlib. The new dependency is confined to `riskmesh/ml.py` and
+`tests/test_ml.py`.
+
+**Reproducibility caveat, named as one:** xgboost's own internal RNG and
+tree-building are not guaranteed bit-identical across library versions, the
+same way `config.py`'s docstring already scopes Python's own `random` module
+to "one interpreter version." Every frozen record `ml.py` produces carries
+the installed `xgboost.__version__` (3.4.1 at freeze time) alongside
+`sys.version`, for the same reason.
+
+### The protocol, briefly
+
+Four pre-declared `XGBClassifier` configurations (`X1_shallow` through
+`X4_unregularised`, table in `xgboost_protocol.md` §2), fit on **train**
+components only, scored **out-of-sample on validation only** for both the
+feasibility gates and the expected-loss threshold sweep — never mixing in a
+candidate's in-sample train predictions, which would bias the gate toward
+looking like every candidate had eroded the benchmark's difficulty regardless
+of whether it generalises. The same three gates from the weight search
+(`costmodel.panel_verdict()`, `hard_negatives_inside_positive_range >= 4`,
+`positives_below_max_negative >= 0.45`) are reused completely unchanged — no
+new, more permissive bar for the new model family. A selected configuration
+would be refit on train+validation combined before a single held-out read
+through `evaluate_frozen_ml_policy()`.
+
+### The result: no candidate is feasible
+
+Run against the current (Phase 12) benchmark, `experiments/xgboost_policy.json`
+frozen, all four candidates refused:
+
+| policy | panel | pbmn | hard-neg | distinct predictions | feasible |
+|---|---|---|---|---|---|
+| `X1_shallow` | FAIL | 0.0000 | 8 | 1 | no |
+| `X2_moderate` | FAIL | 0.0000 | 8 | 1 | no |
+| `X3_stumps` | FAIL | 0.0000 | 8 | 1 | no |
+| `X4_unregularised` | FAIL | 0.1250 | 1 | 23 | no |
+
+**Two different failure mechanisms, not one.** `X1`–`X3`'s `min_child_weight`
+(5, 3, 3), combined with this benchmark's ~30-row training split, means no
+candidate tree split ever clears the bound — every boosted tree in each of
+these three configurations is a single unsplit leaf (confirmed directly
+against `get_booster().trees_to_dataframe()`, not inferred), and the model
+degenerates to one constant prediction for every validation component
+(`n_unique_validation_predictions == 1`). A constant score trips
+`positives_below_max_negative == 0.0000` for a reason unrelated to the one
+that check exists to catch: with every prediction tied, zero positive scores
+are *strictly less than* the tied top negative score. `X4_unregularised`, by
+contrast, genuinely over-separates exactly as predicted when it was added to
+the candidate list specifically to be refused (23 distinct predictions,
+`positives_below_max_negative` 0.1250, `hard_negatives_inside_positive_range`
+1) — the gate firing on a real bad candidate, not only on hand-picked weight
+vectors.
+
+Full mechanism writeup, including the two-mechanism distinction and why
+`positives_below_max_negative` cannot on its own tell "benchmark made
+trivial" apart from "model learned nothing," is in `xgboost_protocol.md` §8.
+
+**Verdict against Tier 1: XGBoost does not beat Tier 1, because no candidate
+reached a held-out reading at all.** `evaluate_frozen_ml_policy()` raised
+`MLPolicyNotFrozen` when called against the frozen record — by design: it
+names no winner, so there is no configuration to refit and nothing the
+protocol permits scoring the test split with. The test split was **not
+read**. Tier 1's frozen numbers stand unchanged: F1 **0.7778**, expected loss
+**74,595.13**, threshold 0.18, on 31 test components.
+
+This is reported as the finding it is, per the protocol's own §6, written
+before any candidate was scored: *"If no candidate is feasible ... that is
+the finding, reported as such — not a reason to add a fifth candidate or
+loosen a gate."* No candidate was added, no gate was loosened, and no
+hyperparameter was adjusted after this result was seen. `tests/test_ml.py`
+proves the gate fires against XGBoost specifically (the `X4_unregularised`
+check), that `select_xgboost_model()` refuses a test-split row structurally,
+that `evaluate_frozen_ml_policy()` refuses to read before the freeze exists,
+and that refitting a frozen configuration twice on identical data reproduces
+identical predictions on the installed xgboost version.
