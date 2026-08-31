@@ -28,6 +28,7 @@ python -m http.server 8080 -d mockups                   # UI
 python tests/test_riskmesh.py       # 25 checks — pipeline, protocol, reproducibility
 python tests/test_api.py            #  9 checks — payloads, bands, audit log
 python tests/test_ml.py             #  4 checks — XGBoost gate, freeze guard, determinism
+python tests/test_gnn.py            #  4 checks — GraphSAGE gate, freeze guard, determinism
 ```
 
 The pipeline and its tests need **CPython 3.10+ and nothing else** — no numpy,
@@ -376,6 +377,23 @@ does not beat Tier 1 (F1 0.7778 / expected loss 74,595.13) — there is no
 XGBoost number to compare, not an unfavourable one.** Full mechanism writeup
 in `xgboost_protocol.md` §8; frozen record in `experiments/xgboost_policy.json`.
 
+**Tier 3 (stretch) — GraphSAGE scorer.** `graphsage_protocol.md`, frozen
+before any candidate was scored: three pre-declared hand-rolled GraphSAGE
+architectures (plain `torch` tensor ops, no `torch_geometric`/`dgl`) over a
+per-component graph built from `riskmesh.graph.Component` — structural node
+features only (one-hot type + degree), deliberately not the linear scorer's
+8 signals, gated by the identical three feasibility gates above, unchanged.
+**One candidate, `G1_single_layer` (the smallest architecture), cleared all
+three gates** — a different outcome from Tier 2's XGBoost attempt, where none
+did. The two larger, 2-layer candidates both failed via genuine
+over-separation. Refit on train+validation and read once: F1 **0.5000**,
+expected loss **83,579.43** — **GraphSAGE does not beat Tier 1** (F1 0.7778 /
+expected loss 74,595.13): it clears the validation gate with margin but
+generalises substantially worse to the held-out test split, the same shape
+of validation-to-test gap the weight search's own `weight_search_protocol.md`
+§8 already reported once. Full mechanism writeup in `graphsage_protocol.md`
+§8; frozen record in `experiments/graphsage_policy.json`.
+
 ---
 
 ## The console
@@ -416,7 +434,7 @@ gates it: kill the endpoint and the ledger, graph and decomposition still render
 | | |
 |---|---|
 | **Four other ring types, three other hard negatives** | The PRD's Initial Development Slice starts with one of each; widening it re-fingerprints every frozen number in the build. This is the change that would fix finding #1 above. |
-| **GraphSAGE (Tier 3)** | Could-have. The PRD's kill-switch says later tiers do not start until the current one is stable end to end. |
+| **A shipped GraphSAGE scorer** | Attempted as Tier 3 stretch work (`graphsage_protocol.md`); one candidate cleared the feasibility gate but its held-out F1 (0.5000) and expected loss (83,579.43) both trail Tier 1's, so nothing from this phase replaces the frozen linear scorer. |
 | **Bootstrap confidence intervals** | The PRD calls these optional polish that must never delay Tier 1. |
 | **A real LLM behind `/explain`** | The grounding contract and fallback are built and demonstrated; the model is the first thing the PRD says to cut. |
 | **Auth, a database, deployment** | Explicitly out of scope for the buildathon. |
@@ -438,10 +456,11 @@ riskmesh/comparisons.py  the five baselines and the ablation table
 riskmesh/evaluate.py     ground-truth rule, threshold freeze, metrics
 riskmesh/experiment.py   the recorded signal experiments (E1-E6)
 riskmesh/ml.py           XGBoost candidates, the same gates reused unchanged
+riskmesh/gnn.py          hand-rolled GraphSAGE candidates, the same gates reused unchanged
 riskmesh/__main__.py     the one command
 riskmesh/api/            FastAPI: artifacts, bands, payloads, audit, routes
 mockups/                 the four screens + api.js, the live client
-tests/                   25 pipeline checks + 9 API checks + 4 XGBoost checks
+tests/                   25 pipeline checks + 9 API checks + 4 XGBoost checks + 4 GraphSAGE checks
 ```
 
 **Where the reasoning lives.** `implementation_plan.md` is the build log, phase

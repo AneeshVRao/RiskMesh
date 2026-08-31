@@ -1463,3 +1463,138 @@ check), that `select_xgboost_model()` refuses a test-split row structurally,
 that `evaluate_frozen_ml_policy()` refuses to read before the freeze exists,
 and that refitting a frozen configuration twice on identical data reproduces
 identical predictions on the installed xgboost version.
+
+## Tier 3 — GraphSAGE scorer (stretch)
+
+Stretch work per the PRD (`v2.0 -- Tier 3, stretch only`, entry condition
+"Tier 1, Tier 2, and the complete demo flow are already stable"). Task
+brief: `task_today.md` (deleted after this phase, per its own step 10), which
+stated the honest expectation going in plainly: Tier 2's XGBoost attempt
+found no feasible candidate at all on this benchmark's ~30-row train split,
+and a GNN, with at least as much capacity and typically needing *more* data
+to train stably, was expected to face the same or worse difficulty.
+`graphsage_protocol.md` is the protocol, written and committed (`242d078`)
+before `riskmesh/gnn.py` existed or any candidate had been fit against real
+data — same discipline `xgboost_protocol.md` followed for Tier 2.
+
+### Dependency decision — torch only
+
+`requirements.txt` says not to add a dependency without moving the decision
+here first, same rule the FastAPI and XGBoost decisions above followed.
+
+**Added:** `torch` (CPU build). **Not added:** `torch_geometric`, `dgl` —
+`task_today.md` specified the hand-rolled approach explicitly, and
+`riskmesh/graph.py`'s own docstring already states the project's preference
+("Union-find is ~15 lines; networkx would be a dependency for the same
+result"). GraphSAGE's core idea — sample/aggregate neighbour features,
+concatenate with the node's own features, one linear layer, repeat for a
+small number of layers, then pool over account nodes — is maybe 60-100 lines
+of plain tensor operations, and a full graph-ML library is unjustified
+weight for a ~105-graph, mostly-under-10-node dataset. `pip install torch`
+(the CPU wheel index) had no friction: one 122 MB wheel, no build step, no
+GPU tooling pulled in.
+
+**What is preserved:** Tier 0's zero-dependency guarantee is intact.
+`python -m riskmesh` and `tests/test_riskmesh.py` still import nothing
+outside the stdlib. The new dependency is confined to `riskmesh/gnn.py` and
+`tests/test_gnn.py`.
+
+**Reproducibility caveat, named as one:** neural-network training has
+run-to-run variance beyond what a fixed seed alone controls in general.
+`torch.manual_seed(cfg.seed)` plus `torch.use_deterministic_algorithms(True)`
+control for it as far as CPU-only, single-process execution allows — the
+same way `config.py`'s docstring already scopes Python's own `random` module
+to "one interpreter version." Every frozen record `gnn.py` produces carries
+the installed `torch.__version__` (2.13.0+cpu at freeze time) alongside
+`sys.version`.
+
+### The graph representation
+
+Built from `riskmesh.graph.Component` — not a new construction path. Nodes:
+one per account, plus one per distinct device/IP/instrument value used by
+`>= 2` accounts in the component, mirroring `__main__._write_graph_edges()`'s
+exact node/edge rule but restricted to `graph.LINKING_ATTRS`, so merchants
+never become nodes (`graph.py` rule 1). Node features are deliberately
+structural only — a one-hot node-type indicator and one degree feature,
+normalised by the matching global cap from `config.py` (`max_device_degree`
+etc.), the same "never normalise by component size" rule `score.py`'s
+docstring states — **not** the linear scorer's 8 signals. Tier 2 already
+tested "same evidence, different model"; this phase's distinct question is
+whether structure alone, learned by message passing, adds anything a flat
+feature vector cannot. Full detail: `graphsage_protocol.md` §2.1.
+
+### The protocol, briefly
+
+Three pre-declared architectures (`G1_single_layer` through
+`G3_unregularised`, table in `graphsage_protocol.md` §2.2 — one fewer than
+XGBoost's four, given the added architectural complexity budget a GNN
+carries even at its smallest setting), fit on **train** components' graphs
+only, scored **out-of-sample on validation only** for both the feasibility
+gates and the expected-loss threshold sweep. The same three gates from the
+weight search and the XGBoost search (`costmodel.panel_verdict()`,
+`hard_negatives_inside_positive_range >= 4`,
+`positives_below_max_negative >= 0.45`) are reused completely unchanged. A
+selected configuration is refit on train+validation combined, from a fresh
+initialisation, before a single held-out read through
+`evaluate_frozen_gnn_policy()`.
+
+### The result: one candidate feasible, held-out read taken, does not beat Tier 1
+
+Run against the current (Phase 12) benchmark, immediately after confirming
+Tier 1's baseline was still current via `rm -rf out && python -m riskmesh`.
+`experiments/graphsage_policy.json` frozen:
+
+| policy | panel | pbmn | hard-neg | distinct predictions | feasible |
+|---|---|---|---|---|---|
+| `G1_single_layer` | PASS | 0.7500 | 8 | 15 | **yes** |
+| `G2_two_layer` | FAIL | 0.0000 | 0 | 21 | no |
+| `G3_unregularised` | FAIL | 0.0000 | 0 | 12 | no |
+
+**This is a different outcome from the one `task_today.md` named as the
+realistic expectation, and it is reported as it occurred.** `G1_single_layer`
+— the smallest architecture, 1 aggregation layer, hidden dim 4, heavy L2 —
+clears all three gates with margin (`positives_below_max_negative` 0.75
+against a 0.45 bound; 8 hard negatives against a minimum of 4) and reaches a
+validation expected loss of 12,085.87 at threshold 0.18. `G2_two_layer` and
+`G3_unregularised` both fail via genuine over-separation (not the degenerate
+constant predictor XGBoost's X1–X3 showed) — `positives_below_max_negative`
+reads exactly 0.0000 for both despite 21 and 12 distinct predictions
+respectively, meaning the single top-scoring negative outranks every
+positive on validation. `G3`'s refusal was predicted going in; `G2`'s was
+not — a genuinely small `weight_decay=1e-3` two-layer model failed exactly as
+badly as the deliberately overfit one, suggesting the second aggregation
+layer itself, not only the absence of regularisation, is what this
+benchmark's ~30-row train split cannot support. Full mechanism writeup:
+`graphsage_protocol.md` §8.
+
+Held out (refit on train+validation, one read, via
+`evaluate_frozen_gnn_policy()`): precision 0.3500, recall 0.8750, **F1
+0.5000**, FPR 0.5652, ring recovery 7/8 (87.5%), **expected loss 83,579.43**,
+review rate 0.6452 (tp 7, fp 13, tn 10, fn 1).
+
+**Verdict against Tier 1: GraphSAGE does not beat Tier 1.** Tier 1's frozen
+numbers, read fresh from `out/eval_report.json` /
+`out/weight_policy.json` immediately before this candidate set was built
+(not assumed from an earlier phase's document): F1 **0.7778**, expected loss
+**74,595.13**, threshold 0.18, on 31 test components — unchanged.
+`G1_single_layer`'s held-out F1 (0.5000) is below Tier 1's, and its held-out
+expected loss (83,579.43) is higher (worse). Both point the same direction:
+substantially worse test-split generalisation than the linear scorer,
+despite clearing every gate on validation with margin — fp rose from 9
+(validation) to 13 (test, out of only 23 test negatives), nearly triple Tier
+1's 3 false positives on the identical test split. This is the same shape of
+finding `weight_search_protocol.md` §8 already reported once (a large
+validation-to-test gap), not the shape `xgboost_protocol.md` §8 reported (no
+candidate ever reaches a held-out reading) — reported plainly either way, per
+this project's standing rule of reporting whichever way an honest read lands.
+
+No candidate was added, no gate was loosened, and no hyperparameter was
+adjusted after any result was seen. `tests/test_gnn.py` proves the gate
+fires against GraphSAGE (the `G3_unregularised` check, with a fallback that
+proves the gate fires on *some* candidate if that specific prediction ever
+stops holding), that `select_gnn_model()` refuses a test-split row
+structurally, that `evaluate_frozen_gnn_policy()` refuses to read before the
+freeze exists (including the no-winner case, copied from
+`riskmesh.ml.MLPolicyNotFrozen`'s pattern), and that refitting a frozen
+configuration twice on identical data reproduces identical predictions on
+the installed torch version, CPU-only.
