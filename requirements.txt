@@ -32,3 +32,24 @@ uvicorn
 # alongside sys.version, for the same reason.
 numpy
 xgboost
+
+# --- GraphSAGE-style GNN scorer only (Tier 3, stretch) ----------------------
+# Decision recorded in implementation_plan.md, "Tier 3 -- GraphSAGE scorer",
+# and in task_today.md's "Dependency decision". Tier 0's zero-dependency
+# guarantee is still not weakened: `python -m riskmesh` and
+# tests/test_riskmesh.py import nothing outside the stdlib. torch is confined
+# to riskmesh/gnn.py and tests/test_gnn.py.
+#
+# CPU build only -- no GPU tooling. torch_geometric and dgl are deliberately
+# NOT added: the GraphSAGE aggregation (sample/aggregate neighbours,
+# concatenate with the node's own features, one linear layer, repeat) is
+# hand-rolled with plain tensor operations in riskmesh/gnn.py, the same
+# preference riskmesh/graph.py's own docstring states for union-find over
+# networkx -- a full graph-ML library is unjustified weight for a ~105-graph,
+# mostly-under-10-node dataset.
+#
+# Reproducibility caveat, same shape as the xgboost one above: neural-network
+# training has run-to-run variance beyond what a fixed seed alone controls in
+# general. Every frozen record gnn.py produces carries the installed
+# torch.__version__ alongside sys.version, for the same reason.
+torch

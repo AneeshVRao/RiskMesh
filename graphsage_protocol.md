@@ -326,7 +326,110 @@ from a new frozen record.
 
 ---
 
-## 8. Outcome
+## 8. Outcome — one candidate feasible, held-out read taken, does not beat Tier 1
 
-*(Appended after the freeze in `experiments/graphsage_policy.json` exists and
-the single held-out read, if any, has been taken. Not written yet.)*
+Record: `experiments/graphsage_policy.json` (byte-copied to
+`out/graphsage_policy.json`). Installed `torch.__version__` **2.13.0+cpu**.
+Costs re-derived on the current benchmark (identical derivation to
+`weight_search_protocol.md` §4/§8 and `xgboost_protocol.md` §8, same
+`derive_costs()` call, same design split): `C_review` 500.00, `C_fn`
+68,399.84, `C_fp` 398.43, ratio 171.7:1. Config fingerprint
+`c3ee14627c2c2ce2`, seed 20260824.
+
+**Unlike Tier 2's XGBoost attempt, one candidate did clear all three gates.**
+This is a different outcome from `task_today.md`'s stated expectation, and it
+is reported exactly as it occurred, not adjusted toward the expectation.
+
+| policy | panel | pbmn | hard-neg | distinct predictions | feasible | reason |
+|---|---|---|---|---|---|---|
+| **G1_single_layer** | PASS | 0.7500 | 8 | 15 | **yes** | clears all three gates |
+| **G2_two_layer** | FAIL | 0.0000 | 0 | 21 | no | genuine over-separation |
+| **G3_unregularised** | FAIL | 0.0000 | 0 | 12 | no | genuine over-separation, as predicted in §2.2 |
+
+**G1, the smallest architecture, is the only feasible candidate.** Its
+1-layer, hidden-dim-4, heavily-`weight_decay`'d configuration produces 15
+distinct validation predictions (not a degenerate constant), passes the
+non-triviality panel with margin (`positives_below_max_negative` 0.75,
+comfortably above the 0.45 bound; 8 hard negatives inside the positive range,
+double the minimum of 4), and reaches a validation expected loss of
+**12,085.87** at threshold 0.18 (tp 8, fp 9, fn 0, tn 14).
+
+**G2 and G3 both fail the same way, and it is the over-separation mechanism,
+not the degenerate-constant one XGBoost's X1–X3 showed.**
+`n_unique_validation_predictions` is 21 and 12 respectively — both models
+produce plenty of distinct scores — yet `positives_below_max_negative` reads
+**exactly 0.0000** for both: the single top-scoring negative component
+outscores every positive on validation. This is consistent with
+`graphsage_protocol.md`'s own §3 prediction that a 2-layer, higher-capacity
+network "has comparable or greater capacity than a 300-tree unregularised
+gradient-boosted ensemble to find a way to make the benchmark look easier" —
+here, on this ~30-row train split, the additional aggregation layer and
+higher hidden dimension push the model to a validation ranking that inverts
+rather than merely flattens the classes. G3 was included specifically
+because it was expected to be refused (§2.2); it was. **G2's refusal is the
+less expected finding**: a 2-hop receptive field with a genuinely small
+`weight_decay=1e-3` (not zero) was intended as a middle ground, comparable in
+spirit to `X2_moderate`, and it failed exactly as badly as the deliberately
+overfit G3. This suggests the second aggregation layer itself, not only the
+absence of regularisation, is what this benchmark's ~30-row train split
+cannot support — a finding this protocol did not anticipate going in, and
+one a future GNN attempt on this dataset should treat as informative rather
+than re-litigate with a fourth similarly-sized 2-layer candidate under this
+same frozen record.
+
+**Winner: G1_single_layer**, threshold 0.18, validation expected loss
+12,085.87. Per §5 step 5, ties would break toward the earlier-declared
+candidate, but no tie arose — G1 is the only feasible candidate.
+
+### Step 8 — the held-out read
+
+`evaluate_frozen_gnn_policy()` was called against the frozen record above.
+Because a winner exists, it refit `G1_single_layer`'s architecture from a
+fresh initialisation (`torch.manual_seed(cfg.seed)`) on **train+validation
+combined** and scored the test split once:
+
+| metric | value |
+|---|---|
+| precision | 0.3500 |
+| recall | 0.8750 |
+| F1 | **0.5000** |
+| false positive rate | 0.5652 |
+| ring recovery | 7/8 (87.5%) |
+| expected loss | **83,579.43** |
+| review rate | 0.6452 (tp 7, fp 13, tn 10, fn 1) |
+
+**No second read was taken.** This is the only held-out number this record
+permits.
+
+### Verdict against the Tier 1 baseline
+
+Tier 1's frozen numbers, read fresh from `out/eval_report.json` and
+`out/weight_policy.json` after `rm -rf out && python -m riskmesh` (step 1 of
+§5, run immediately before this candidate set was built): **F1 0.7778,
+held-out expected loss 74,595.13, threshold 0.18**, on 31 test components —
+unchanged from every prior phase's frozen number, confirmed rather than
+assumed.
+
+**GraphSAGE does not beat Tier 1.** G1_single_layer's held-out F1 (0.5000) is
+below Tier 1's 0.7778, and its held-out expected loss (83,579.43) is *higher*
+(worse) than Tier 1's 74,595.13. Both comparisons point the same direction:
+the GNN generalises substantially worse than the linear scorer on this
+benchmark's test split, despite clearing every gate on validation with
+margin.
+
+**This is the same shape of finding `weight_search_protocol.md` §8 already
+reported once (a large validation-to-test gap) rather than the shape
+`xgboost_protocol.md` §8 reported (no candidate ever reaches a held-out
+reading).** G1 passed the gate comfortably on validation — `pbmn` 0.75
+against a 0.45 bound, not a hair above it — and still lost badly on test:
+tp fell from 8 (validation) to 7, but fp rose from 9 to 13 out of only 23
+test negatives, nearly triple Tier 1's 3 false positives on the identical
+test split. The gate's job is to refuse a candidate whose *validation*
+behaviour cannot be trusted to report an honest expected loss; it is not, and
+was never claimed to be, a guarantee that a candidate clearing it will
+generalise to test. That gap is exactly what a single held-out read, taken
+once and reported regardless of outcome, exists to surface.
+
+**No further read is permitted under this record.** Any future GraphSAGE
+comparison — a different node-feature set, a different candidate list, more
+training data — needs its own frozen protocol.

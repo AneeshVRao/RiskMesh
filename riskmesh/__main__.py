@@ -38,7 +38,8 @@ OUT = ROOT / "out"
 EXPERIMENTS = ROOT / "experiments"
 # Frozen records produced by their own freeze stages, copied into out/ so a
 # single `python -m riskmesh` leaves out/ complete for the API to read.
-FROZEN_RECORDS = ("weight_policy.json", "abstention_policy.json", "xgboost_policy.json")
+FROZEN_RECORDS = ("weight_policy.json", "abstention_policy.json", "xgboost_policy.json",
+                  "graphsage_policy.json")
 MINUTES_PER_DAY = 24 * 60
 
 # Attribute fields that can put two accounts on the same node in the UI graph,
@@ -212,7 +213,7 @@ def main(cfg: Config | None = None, out: Path = OUT) -> dict:
     print(f"  account-level    P {s['precision']:.3f}  R {s['recall']:.3f}  "
           f"F1 {s['f1']:.3f}  FPR {s['false_positive_rate']:.3f}   "
           f"[{s['scored_accounts']} accounts]")
-    print(f"\nwrote 12 files to {out}")
+    print(f"\nwrote 13 files to {out}")
 
     return {"integrity": report, "eval": result, "threshold": frozen}
 
