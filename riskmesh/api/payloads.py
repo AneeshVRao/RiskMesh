@@ -178,7 +178,13 @@ def metrics(arts: Artifacts) -> dict:
             "n_components": ho["n_components"],
         },
         "narration": {
-            "escalate": "all 6 are true rings",
+            "escalate": (
+                f"all {ho['actions']['escalate']} are true rings"
+                if by["escalate_negative"] == 0 else
+                f"{by['escalate_positive']} of {ho['actions']['escalate']} are "
+                f"true rings, {by['escalate_negative']} false positive"
+                f"{'s' if by['escalate_negative'] != 1 else ''}"
+            ),
             "review": f"{by['review_negative_family']} households, "
                       f"{by['review_positive']} rings",
             "allow": f"{by['allow_positive_missed']} rings missed",

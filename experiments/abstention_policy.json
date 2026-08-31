@@ -1,162 +1,164 @@
 {
   "protocol": "abstention_protocol.md",
   "scorer": "A_baseline (unchanged)",
-  "binary_threshold_reference": 0.23,
+  "binary_threshold_reference": 0.14,
   "binary_threshold_note": "Not reused as a fixed boundary. t_lo and t_hi were both freely searched; this value is recorded only so a reader can see where the free search landed relative to the frozen binary policy.",
   "max_review_rate_gate": 0.25,
   "costs": {
     "manual_review": 500.0,
-    "false_negative": 74645.29,
-    "false_positive": 848.23,
+    "false_negative": 76985.91,
+    "false_positive": 308.33,
     "derivation": {
       "manual_review": "20 analyst-minutes per component at INR 1500/hour fully loaded. ASSUMPTION -- the dataset carries no analyst-effort figure.",
-      "false_negative": "median ring-component exposure INR 74,645.29 on train+validation, times FN_ABSORBED_FRACTION 1.00",
-      "false_positive": "one manual review (INR 500.00) plus FP_FRICTION_RATE 0.02 of median negative-component exposure INR 17,411.63",
-      "ratio_fn_to_fp": 88.0
+      "false_negative": "median ring-component exposure INR 76,985.91 on train+validation, times FN_ABSORBED_FRACTION 1.00",
+      "false_positive": "FP_FRICTION_RATE 0.02 of median negative-component exposure INR 15,416.44 -- no separate review cost: the generic (tp+fp)*C_review term already prices one review per flagged component (see deferred_decisions.md D3, resolved Phase 10)",
+      "ratio_fn_to_fp": 249.7
     },
     "inputs_from_data": {
-      "median_ring_exposure": 74645.29,
-      "median_negative_exposure": 17411.63,
+      "median_ring_exposure": 76985.91,
+      "median_negative_exposure": 15416.44,
       "n_positive": 16,
-      "n_negative": 53
+      "n_negative": 57
     }
   },
   "result": {
     "max_review_rate_gate": 0.25,
-    "bands_considered": 2992,
-    "bands_refused_by_coverage": 2159,
+    "bands_considered": 3726,
+    "bands_refused_by_coverage": 1425,
     "panel_verdict": "PASS",
     "selected_on": "validation (expected-loss sweep); review-rate gate on train+validation",
-    "t_lo": 0.23,
-    "t_hi": 0.33,
-    "n": 31,
-    "expected_loss": 4500.0,
-    "loss_per_component": 145.1613,
-    "allow": 22,
+    "t_lo": 0.14,
+    "t_hi": 0.23,
+    "n": 40,
+    "expected_loss": 7308.33,
+    "loss_per_component": 182.7082,
+    "allow": 26,
     "allow_missed_positives": 0,
-    "review": 2,
-    "review_rate": 0.0645,
-    "review_positives": 1,
-    "review_negatives": 1,
-    "review_family": 1,
+    "review": 7,
+    "review_rate": 0.175,
+    "review_positives": 2,
+    "review_negatives": 5,
+    "review_family": 5,
     "escalate": 7,
-    "escalate_tp": 7,
-    "escalate_fp": 0,
-    "design_review_rate": 0.1014,
-    "design_review_positives": 4,
-    "design_review_negatives": 3,
-    "design_review_family": 3
+    "escalate_tp": 6,
+    "escalate_fp": 1,
+    "design_review_rate": 0.137,
+    "design_review_positives": 2,
+    "design_review_negatives": 8,
+    "design_review_family": 7
   },
   "held_out_read": "TAKEN, once, through evaluate_frozen_abstention_policy() after this file was frozen. No further read is permitted under this record.",
   "seed": 20260824,
-  "config_fingerprint": "7c1e4fb2b329796c",
+  "config_fingerprint": "c3ee14627c2c2ce2",
   "held_out": {
     "note": "The single permitted read. Band read back from this file, not recomputed.",
-    "n_components": 31,
+    "n_components": 32,
     "band": {
-      "t_lo": 0.23,
-      "t_hi": 0.33
+      "t_lo": 0.14,
+      "t_hi": 0.23
     },
-    "expected_loss": 6000.0,
-    "loss_per_component": 193.5484,
-    "review_rate": 0.1935,
+    "expected_loss": 6808.33,
+    "loss_per_component": 212.7603,
+    "review_rate": 0.1562,
     "actions": {
       "allow": 19,
-      "review": 6,
-      "escalate": 6
+      "review": 5,
+      "escalate": 8
     },
     "by_action_and_label": {
       "allow_positive_missed": 0,
       "allow_negative": 19,
-      "review_positive": 2,
+      "review_positive": 1,
       "review_negative": 4,
       "review_negative_family": 4,
-      "escalate_positive": 6,
-      "escalate_negative": 0
+      "escalate_positive": 7,
+      "escalate_negative": 1
     },
     "escalate_tier_metrics": {
-      "precision": 1.0,
-      "recall_escalate_only": 0.75,
+      "precision": 0.875,
+      "recall_escalate_only": 0.875,
       "recall_including_review": 1.0,
-      "false_positive_rate_escalate_only": 0.0,
-      "note": "8 test positives, 23 test negatives. recall_including_review counts a deferred ring as caught-but-unconfirmed, not as detected; nothing was auto-allowed."
+      "false_positive_rate_escalate_only": 0.0417,
+      "note": "8 test positives, 24 test negatives. recall_including_review counts a deferred ring as caught-but-unconfirmed, not as detected; nothing was auto-allowed."
     },
     "binary_baseline_same_rows": {
-      "threshold": 0.23,
-      "expected_loss": 9392.92,
+      "threshold": 0.14,
+      "expected_loss": 8041.65,
       "tp": 8,
-      "fp": 4,
+      "fp": 5,
       "fn": 0,
       "tn": 19,
-      "review_rate": 0.3871
+      "review_rate": 0.4062
     },
-    "loss_delta_vs_binary": -3392.92,
-    "validation_expected_loss_for_reference": 4500.0,
-    "sample_variance_note": "Held-out expected loss 6,000.00 against validation's 4,500.00 is a 33.3% regression, and is reported as small-sample variance rather than a defect, exactly as the binary policy's 5,348.23 -> 9,392.92 (76%) regression was. 23 negatives per split; one component moves the total materially. The validation figure must not be quoted as the policy's cost.",
+    "loss_delta_vs_binary": -1233.32,
+    "validation_expected_loss_for_reference": 7308.33,
+    "sample_variance_note": "Held-out expected loss 6,808.33 against validation's 7,308.33 is a 6.8% improvement, and is reported as small-sample variance rather than a defect, the same way the binary policy's own validation-to-test gap is. 24 negatives in the test split; one component moves the total materially. The validation figure must not be quoted as the policy's cost.",
     "d3_sensitivity": {
-      "note": "The headline improvement is inflated by deferred_decisions.md D3: C_fp (848.23) already contains one review cost (500.00), and the binary formula charges a second review on every flag, so each avoided false-positive escalation appears to save 848.23 when the friction-only saving is 348.23. Direction and sign are robust under either accounting; the magnitude roughly halves.",
-      "binary_expected_loss_d3_corrected": 7392.92,
-      "three_way_expected_loss_unchanged": 6000.0,
-      "loss_delta_d3_corrected": -1392.92,
-      "improvement_as_reported": "36.1%",
-      "improvement_d3_corrected": "18.8%"
+      "note": "RESOLVED in Phase 10/11 (deferred_decisions.md D3): C_fp no longer carries an embedded review term, so the generic (tp+fp)*C_review term prices the review exactly once per flagged component. There is now only one cost model, not two under separate accountings -- this field is retained for API/shape compatibility and both figures are identical.",
+      "binary_expected_loss_d3_corrected": 8041.65,
+      "three_way_expected_loss_unchanged": 6808.33,
+      "loss_delta_d3_corrected": -1233.32,
+      "improvement_as_reported": "15.3%",
+      "improvement_d3_corrected": "15.3%"
     },
     "per_action_scores": {
       "allow": {
         "positives": 0,
         "negatives": 19,
-        "negatives_family": 4,
+        "negatives_family": 3,
         "positive_scores": [],
         "negative_scores": [
-          0.0358,
-          0.0381,
-          0.0427,
-          0.044,
-          0.0444,
-          0.0462,
-          0.0477,
-          0.0477,
-          0.0496,
-          0.0519,
-          0.0519,
-          0.0533,
-          0.0556,
-          0.0578,
-          0.0869,
-          0.107,
-          0.1814,
-          0.1956,
-          0.2037
+          0.019204,
+          0.024691,
+          0.024691,
+          0.024691,
+          0.024691,
+          0.024691,
+          0.024691,
+          0.024691,
+          0.024691,
+          0.024691,
+          0.049383,
+          0.049383,
+          0.054183,
+          0.056001,
+          0.059773,
+          0.064852,
+          0.074074,
+          0.10631,
+          0.112654
         ]
       },
       "review": {
-        "positives": 2,
+        "positives": 1,
         "negatives": 4,
         "negatives_family": 4,
         "positive_scores": [
-          0.2866,
-          0.3068
+          0.201822
         ],
         "negative_scores": [
-          0.2503,
-          0.2609,
-          0.2981,
-          0.3201
+          0.19976,
+          0.220245,
+          0.221547,
+          0.225308
         ]
       },
       "escalate": {
-        "positives": 6,
-        "negatives": 0,
-        "negatives_family": 0,
+        "positives": 7,
+        "negatives": 1,
+        "negatives_family": 1,
         "positive_scores": [
-          0.3869,
-          0.4118,
-          0.4241,
-          0.4356,
-          0.4918,
-          0.5246
+          0.237861,
+          0.285507,
+          0.370233,
+          0.479239,
+          0.504366,
+          0.537646,
+          0.590024
         ],
-        "negative_scores": []
+        "negative_scores": [
+          0.259338
+        ]
       }
     }
   }

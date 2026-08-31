@@ -32,8 +32,8 @@ _FINGERPRINTED = {
 _PLAIN = ("graph_edges.json",)
 
 SIGNAL_ORDER = ("device_sharing", "temporal_burst", "instrument_sharing",
-                "failure_refund_rate", "ip_sharing", "account_newness",
-                "merchant_concentration")
+                "instrument_pool_concentration", "failure_refund_rate",
+                "ip_sharing", "account_newness", "merchant_concentration")
 
 
 class ArtifactsNotFrozen(RuntimeError):

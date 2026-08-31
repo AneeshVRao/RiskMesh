@@ -389,11 +389,12 @@ def test_20_abstention_binary_collapse(cfg, cands) -> None:
     is a permanent test, not a design-doc claim, because a future edit to
     either formula that breaks the equivalence would silently make the two
     cost models inconsistent with each other. The frozen number itself --
-    158,588.48 at threshold 0.23 (re-frozen in Phase 10: the hybrid pool-funded
-    ring type and the D3 cost-model fix both move it, and generate.py's random
-    draws changed too, e.g. more validation components) -- is asserted
-    directly, not just the equality of the two formulas, so a regression in
-    the pipeline upstream of the formulas is caught too.
+    8,849.98 at threshold 0.14 (re-frozen in Phase 11: the weight search
+    re-run picked D_drop_flagged over the old A_baseline, which was folded
+    back into `Config()._default_weights()` per the "one subtlety" rule, and
+    its own validation-selected threshold is 0.14, not the old 0.23) -- is
+    asserted directly, not just the equality of the two formulas, so a
+    regression in the pipeline upstream of the formulas is caught too.
     """
     from riskmesh.abstention import three_way_stats
     from riskmesh.costmodel import derive_costs, expected_loss
@@ -402,21 +403,21 @@ def test_20_abstention_binary_collapse(cfg, cands) -> None:
     validation = [c for c in design if c.split == "validation"]
     costs = derive_costs(design)
 
-    binary = expected_loss(validation, 0.23, costs)
-    three_way = three_way_stats(validation, 0.23, 0.23, costs)
+    binary = expected_loss(validation, 0.14, costs)
+    three_way = three_way_stats(validation, 0.14, 0.14, costs)
 
     assert three_way["review"] == 0, "t_lo == t_hi must leave the Review band empty"
     assert three_way["expected_loss"] == binary["expected_loss"], (
-        f"three-way formula at t_lo=t_hi=0.23 gives {three_way['expected_loss']}, "
+        f"three-way formula at t_lo=t_hi=0.14 gives {three_way['expected_loss']}, "
         f"binary costmodel.expected_loss() gives {binary['expected_loss']} -- "
         "the collapse abstention_protocol.md relies on is broken"
     )
-    assert three_way["expected_loss"] == 158588.48, (
-        f"got {three_way['expected_loss']}, expected the frozen 158,588.48 -- "
+    assert three_way["expected_loss"] == 8849.98, (
+        f"got {three_way['expected_loss']}, expected the frozen 8,849.98 -- "
         "either the formula or something upstream of it has changed"
     )
-    check("20 abstention three_way_stats(t_lo=t_hi=0.23) reproduces the frozen "
-          "binary expected loss 158,588.48 exactly")
+    check("20 abstention three_way_stats(t_lo=t_hi=0.14) reproduces the frozen "
+          "binary expected loss 8,849.98 exactly")
 
 
 def test_21_ablation_full_row_reproduces_the_shipped_eval(run_a: dict) -> None:
@@ -589,7 +590,7 @@ def main() -> int:
         print("\nweight-search protocol (frozen, run, A_baseline retained)")
         test_19_panel_gate_refuses_a_failing_weight_vector(cfg, cands)
 
-        print("\nabstention protocol (frozen, run, band 0.23/0.33 retained)")
+        print("\nabstention protocol (frozen, run, band 0.14/0.23)")
         test_20_abstention_binary_collapse(cfg, cands)
 
         print("\nbaselines and ablation (PRD rows 63 and 70, frozen then run)")

@@ -42,7 +42,7 @@ SIGNALS: tuple[str, ...] = (
 
 
 def _default_weights() -> dict[str, float]:
-    """Tier 0 weights, renormalised after RISK-001 zeroed `ip_sharing`.
+    """Tier 0 weights -- Phase 11 re-freeze: D_drop_flagged, not A_baseline.
 
     `ip_sharing` carries 0.00 because the Tier 0 generator places no ring
     information in the IP dimension at all: max-accounts-on-one-non-common-IP is
@@ -54,21 +54,35 @@ def _default_weights() -> dict[str, float]:
     is the right definition once Tier 1 adds a shared-IP ring type; it simply
     contributes nothing until it has something to say. See bugs.md RISK-001.
 
-    The remaining six keep their Tier 0 baseline ratios, renormalised to 1.00,
-    so zeroing one signal does not silently re-rank the others.
+    `instrument_sharing` and `merchant_concentration` ALSO carry 0.00, as of
+    Phase 11. `weight_search_protocol.md`'s re-run (after Phase 10's hybrid
+    pool-funded ring type and the new `instrument_pool_concentration` signal)
+    found `D_drop_flagged` -- which zeros exactly these two, RISK-004's and
+    RISK-002's flagged signals -- tying `A_baseline` on validation expected
+    loss (8,849.98, identical confusion matrix) and winning the tie-break on
+    `positives_below_max_negative` (0.625 vs 0.5625). Per the protocol's own
+    "the one subtlety" clause, `A_baseline` IS whatever this function returns,
+    so the winner is folded back in here rather than left as a frozen record
+    the pipeline does not actually use. Re-running the full search against
+    THIS weight vector as the new `A_baseline` reproduces the same winner
+    (fixed point reached in one extra iteration) -- see
+    `weight_search_protocol.md` Section 8.
+
+    The remaining five keep their Tier 0 baseline ratios, renormalised to
+    1.00, so zeroing three signals does not silently re-rank the other five.
     """
     active = {
         "device_sharing": 0.22,
         "temporal_burst": 0.25,
-        "instrument_sharing": 0.13,
         "instrument_pool_concentration": 0.12,
         "failure_refund_rate": 0.12,
         "account_newness": 0.10,
-        "merchant_concentration": 0.08,
     }
     total = sum(active.values())
     weights = {name: value / total for name, value in active.items()}
     weights["ip_sharing"] = 0.0
+    weights["instrument_sharing"] = 0.0
+    weights["merchant_concentration"] = 0.0
     return weights
 
 
