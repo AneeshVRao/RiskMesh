@@ -1244,3 +1244,93 @@ The honest claim the demo can make is the narrow one: on this benchmark, the
 three-way abstention policy and the cost model are what earn their keep, and the
 graph score is not yet shown to beat a simple attribute rule. Saying more than
 that requires the generator work.
+
+---
+
+## Phase 10-11 — the account-age confound fix, and the re-freeze it forced
+
+**Phase 10's target was stated by the previous section, not invented here:**
+"a second ring type whose accounts are not uniformly young... deliberately not
+attempted this close to the deadline, because it re-fingerprints every number
+in the build." Phase 10 did exactly that — a hybrid pool-funded ring mechanism
+(a configurable fraction of rings, tuned to 0.7, fund every member through a
+small shared-instrument pool instead of personal cards, **and** draw signup
+age from a much wider range, `ring_hybrid_signup_min_days`=5 to
+`ring_hybrid_signup_max_days`=400, instead of the uniformly-young default) —
+plus the 8th signal, `instrument_pool_concentration`, that scores the new
+mechanism, and the D3 cost-model fix (`deferred_decisions.md` D3, closed).
+
+**Phase 10 stopped short of re-running the weight search and abstention
+protocols on purpose**, because both are supposed to select on a benchmark
+that is already final, and the generator was still moving. Phase 11 is that
+re-run: `weight_search_protocol.md` and `abstention_protocol.md` frozen and
+executed against the settled Phase 10 benchmark, `experiments/weight_policy.json`
+and `experiments/abstention_policy.json` re-frozen with the current config
+fingerprint, and every document that quoted a number from either protocol
+updated to match. Full results are in those two files; this section reports
+the one finding the whole two-phase effort exists to produce.
+
+### The actual target: does `transaction_level` still reach F1 1.0000 on held-out?
+
+**No.** Re-running `comparisons.baseline_report()` fresh from `out/baselines.json`
+on the Phase 10/11 benchmark:
+
+| Baseline | Sees graph | Frozen cutoff | Held-out F1 | FPR | Hard-neg F1 |
+|---|---|---|---|---|---|
+| `ring_score` | fully | ≥ 0.23 | **0.8750** | 0.0417 | 0.8750 |
+| `transaction_level` | none | ≥ 5,715.91 | **0.7143** | 0.0417 | 0.7143 |
+| `shared_device_only` | one rule | ≥ 4 | 0.6957 | 0.2917 | 0.6957 |
+| `shared_ip_only` | one rule | ≥ 1 | 0.5000 | 0.6667 | 0.5000 |
+| `random` | none | ≥ 0.084563 | 0.2000 | 0.0417 | 0.4706 |
+
+`transaction_level` — precision 0.8333, recall 0.6250, tp 5 / fp 1 / tn 23 /
+fn 3 — no longer separates the held-out split perfectly, and the shipped
+`ring_score` (F1 0.8750) now **beats** it outright, reversing finding #1 from
+the pre-Phase-10 README. The age-cut sensitivity sweep, re-run on validation,
+confirms the mechanism rather than merely the headline: F1 is no longer flat
+at 1.0000 across every cut from 20 to 180 days (the old confound's signature)
+— it now varies (0.7059 at 10 days, 0.6667 flat from 20-60, falling to 0.6154
+at 90) because a hybrid ring's members are a mix of fresh mules and older
+compromised/synthetic accounts, so "account age ≤ N days" is no longer close
+to a perfect ring classifier at any cut.
+
+**This is the honest result, reported whichever way it landed, per this
+document's own committed-in-advance framing for the original row 63/70 run.**
+It is not a clean sweep: `transaction_level` (0.7143) still beats
+`shared_device_only` (0.6957) and `shared_ip_only` (0.5000), so a naive
+per-transaction rule remains a stronger baseline than two of the graph's own
+one-rule challengers. What changed is specifically the comparison the whole
+phase was aimed at — the graph score against the strongest non-graph
+baseline — and on that comparison the graph score now wins.
+
+### Row 70 — the ablation table, re-run
+
+| Removed | Weight | Threshold | Held-out F1 | Δ | Rings | Hard-neg F1 |
+|---|---|---|---|---|---|---|
+| — full model | — | 0.23 | 0.8750 | — | 7/8 | 0.8750 |
+| `behavioral_refund` | 0.2716 | 0.23 | 0.7059 | **−0.1691** | 6/8 | 0.7059 |
+| `device` | 0.2716 | 0.16 | 0.9333 | **+0.0583** | 7/8 | 0.9333 |
+| `ip` | 0.0000 | 0.23 | 0.8750 | 0.0000 | 7/8 | 0.8750 |
+| `instrument` | 0.1481 | 0.26 | 0.7778 | **−0.0972** | 7/8 | 0.7778 |
+| `temporal` | 0.3086 | 0.25 | 0.8421 | −0.0329 | 8/8 | 0.8421 |
+
+**A new reading this table did not have before: removing `device` improves
+held-out F1**, not just `instrument` as in the original run. This is reported
+plainly, on the same "no weight is changed on the strength of a held-out
+ablation" rule the original row 70 section already committed to — any
+reweighting this suggests belongs in a future weight-search re-run with its
+own freeze, not a same-phase reaction to this table. `ip` again reproduces the
+full model exactly, as it must while `ip_sharing` carries weight 0.00.
+
+### What this does and does not settle
+
+The graph score beating `transaction_level` on this specific benchmark draw is
+not proof the graph is generally better — it is proof that the account-age
+confound this build named as its central limitation is no longer forcing the
+comparison, on this generator, this seed. `shared_device_only` and
+`shared_ip_only` still trail badly, which keeps the original caution alive in
+weaker form: a full graph is not yet shown to beat *every* simpler rule, only
+the one the previous phase's finding #1 was about. The honest headline moves
+from "a non-graph rule beats the graph score" to "the graph score beats the
+strongest non-graph rule tried, on the axis this phase targeted" — narrower
+than a general claim, and that narrowness is deliberate.

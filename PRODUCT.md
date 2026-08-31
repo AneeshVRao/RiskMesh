@@ -37,24 +37,27 @@ leakage.
 
 ## What is actually built (frozen, real numbers)
 
-- **Benchmark:** 5,962 transactions, 789 accounts, 24 injected rings, 24
-  legitimate family hard-negative clusters, 100 candidate components. Seed
-  20260824, config fingerprint `7c1e4fb2b329796c`.
-- **Split:** chronological + ring-level. Test = 31 components (8 positive,
-  23 negative, 8 of the negatives carrying a family cluster).
-- **Scorer:** `A_baseline`, seven signals, weights frozen. Each signal emits
-  `raw`, `normalized`, `weight`, `contribution` and a human-readable `detail`
-  string (e.g. "9 accounts share device d_ring02", "median account age 10
-  days"). The evidence view is a render of this structure, not a reconstruction.
-- **Binary held-out result:** precision 0.6667, recall 1.0000, F1 0.8000,
-  FPR 0.1739, ring recovery 8/8, expected loss 9,392.92 at threshold 0.23.
-- **Three-way abstention policy (current):** Allow < 0.23, Review
-  [0.23, 0.33), Escalate >= 0.33. Held out: expected loss **6,000.00**, review
-  rate 19.35% (6 of 31), and **zero escalated false positives** — all four of
-  the binary policy's false positives are family clusters, and all four land in
-  the review band.
-- **Costs, dataset-derived:** review 500.00, false negative 74,645.29, false
-  positive 848.23 (INR).
+- **Benchmark:** 6,059 transactions, 801 accounts, 24 injected rings (70%
+  hybrid pool-funded, Phase 10), 24 legitimate family hard-negative clusters,
+  105 candidate components. Seed 20260824, config fingerprint
+  `c3ee14627c2c2ce2`.
+- **Split:** chronological + ring-level. Test = 32 components (8 positive,
+  24 negative, 8 of the negatives carrying a family cluster).
+- **Scorer:** `A_baseline`, eight signals, weights frozen (re-frozen Phase 11 —
+  `D_drop_flagged` won the search and was folded in as the new incumbent). Each
+  signal emits `raw`, `normalized`, `weight`, `contribution` and a
+  human-readable `detail` string (e.g. "9 accounts share device d_ring02",
+  "median account age 10 days"). The evidence view is a render of this
+  structure, not a reconstruction.
+- **Binary held-out result:** precision 0.6154, recall 1.0000, F1 0.7619,
+  FPR 0.2083, ring recovery 8/8, expected loss 8,041.65 at threshold 0.14.
+- **Three-way abstention policy (current):** Allow < 0.14, Review
+  [0.14, 0.23), Escalate >= 0.23. Held out: expected loss **6,808.33**, review
+  rate 15.6% (5 of 32), a 15.3% reduction against the binary policy — 4 of the
+  binary policy's 5 false positives (all family clusters) land in the review
+  band; the 5th escalates in the three-way policy too.
+- **Costs, dataset-derived:** review 500.00, false negative 76,985.91, false
+  positive 308.33 (INR, friction only — `deferred_decisions.md` D3 resolved).
 
 ## What this product must prove on screen
 

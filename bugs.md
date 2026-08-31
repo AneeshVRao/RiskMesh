@@ -603,6 +603,51 @@ pre-declared plan met evidence it did not anticipate, and the evidence wins.
   `instrument_sharing_accounts_per_card` (False) stay in `config.py` inert,
   `run_e6` stays in `experiment.py`, record in `experiments/experiment_e6.json`.
 
+- **Forward note, Phase 10/11 — revisited from E6, exactly as this closure
+  statement's own scope caveat pointed to.** Phase 10 added a real
+  funding-network ring type: a configurable fraction of rings
+  (`p_ring_instrument_funded`, tuned to 0.7) are now pool-funded through a
+  small shared-instrument pool (`ring_instrument_pool_size = 4`) instead of the
+  flat 2-3-sharer partial overlap, alongside the majority of rings left
+  unchanged. A new always-on signal, `instrument_pool_concentration`, scores
+  it — accounts-per-distinct-instrument in the pool, the same mechanic E6
+  measured, but applied to a minority of rings rather than all of them, which
+  was the failure mode E6 was rejected for (over-separating a benchmark whose
+  only positive class was the device ring).
+
+  **Measured, the same way RISK-003's tables were: rescoring and comparing
+  per-signal means on train+validation.** `instrument_pool_concentration`
+  reads ring **0.0755**, family **0.0000**, background **0.0000** — a
+  ring-minus-family delta of **+0.0755**, single-signal F1 **0.72**, and
+  the sign is correct on both comparisons that matter (ring > family, ring >
+  background) instead of RISK-004's -0.0938. The new signal does not merely
+  avoid RISK-004's pathology, it discriminates positively where the old one
+  discriminated against.
+
+  **`instrument_sharing` itself changed too, as a side effect of the same
+  generator change, and it is worth naming since it is not the fix.** The
+  hybrid rings' altered card patterns shifted `instrument_sharing`'s own
+  ring/family means to ring 0.2109, family 0.2031 — the delta flipped from
+  RISK-004's -0.0938 to a near-zero **+0.0078**. It is no longer actively
+  harmful, but it is not the signal doing the separating work either; that is
+  `instrument_pool_concentration`.
+
+  **The weight search agrees, on its own criterion.** Phase 11's re-run
+  weight search (`weight_search_protocol.md` §8) selected `D_drop_flagged` —
+  which zeros `instrument_sharing` and `merchant_concentration` — over
+  `A_baseline`, winning the difficulty-gate tie-break with a *sharper*
+  `positives_below_max_negative` (0.625 vs 0.5625) than the incumbent it
+  replaced, while `instrument_pool_concentration` keeps a non-trivial weight
+  (0.1481) in the resulting vector. So the new signal measurably helped rings
+  separate from families on this dimension, confirmed two ways: directly (the
+  per-signal delta above) and indirectly (an independent cost-driven search
+  chose to keep it weighted while zeroing the signal that used to fight it).
+
+  **RISK-004 stays CLOSED.** This is a forward note recording that its own
+  "next attempt should restart from experiment_e6.json" pointer was followed
+  and worked, not a reopening. See `deferred_decisions.md` D2, closed in the
+  same phase for the weight-side half of this story.
+
 ### RISK-002 — merchant_concentration is mis-signed
 
 - **Status:** OPEN, deferred. Surfaced by the sign check added while closing

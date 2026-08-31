@@ -42,7 +42,7 @@ A ring is not a transaction. It is a set of accounts wired together by shared
 infrastructure — one device, one card, one burst of activity at one merchant.
 RiskMesh builds a heterogeneous graph over accounts, devices, IPs, instruments
 and merchants, takes connected components as candidates, and scores each
-component on seven signals.
+component on eight signals.
 
 The hard part is not finding shared infrastructure. It is **not flagging the
 family**. A household shares a device *and* a home IP *and* often a card — the
@@ -64,32 +64,47 @@ Four screens, all reading the same frozen artifacts:
 
 Three findings that a demo could hide and this one does not.
 
-**1. A non-graph rule beats the graph score on this benchmark.** A
-transaction-level baseline — "every transaction from an account under 30 days
-old" — separates the held-out split perfectly (F1 1.0000) where the ring scorer
-reaches 0.8000. The cause is the generator: every ring transaction in the test
-split comes from an account ≤ 25 days old, against a negative median of 316.
-Account age is doing the work the graph is credited with. Fixing it means a
-second ring type whose accounts are not uniformly young, which re-fingerprints
-every number in the build.
+**1. The graph score now beats the strongest non-graph rule — this took two
+phases to get right, and the fix is narrower than it sounds.** The original
+build found a transaction-level baseline — "every transaction from an account
+under 30 days old" — separating the held-out split perfectly (F1 1.0000)
+where the ring scorer reached 0.8000, because every ring account was uniformly
+young. Phase 10 added a second ring mechanism (a minority of rings funded
+through a shared instrument pool, drawing signup age from a much wider range)
+specifically to break that confound, and Phase 11 re-ran the weight search and
+abstention protocols against the settled result. On the current benchmark,
+`transaction_level` reaches held-out F1 **0.7143** and the shipped `ring_score`
+reaches **0.8750** — the graph wins the comparison this build was built to
+win. It is not a clean sweep: `transaction_level` still beats two of the
+graph's own one-rule challengers, `shared_device_only` (0.6957) and
+`shared_ip_only` (0.5000). See `implementation_plan.md` "Phase 10-11" for the
+full table and the account-age-cut sensitivity that confirms the mechanism.
 
-**2. The structural signals are the removable ones.** Leave-one-group-out:
-removing device, IP or instrument costs **nothing**, and removing instrument
-*improves* held-out F1 to 0.8889. Only the behavioural/refund group is
-load-bearing (−0.1684 F1, and 2 of 8 rings lost). No weight was changed on the
-strength of that — re-weighting on a held-out read is exactly the selection this
-benchmark is built to rule out.
+**2. The structural signals are still mostly the removable ones, but not the
+same ones.** Leave-one-group-out, re-run on the current benchmark: removing
+`ip` costs nothing (RISK-001 already zeroed it), removing `instrument` costs
+−0.0972 F1, and removing `device` now *improves* held-out F1 to **0.9333** —
+a different structural group than the original run's `instrument` finding.
+Only the behavioural/refund group remains clearly load-bearing (−0.1691 F1,
+2 of 8 rings lost). No weight was changed on the strength of this — re-weighting
+on a held-out read is exactly the selection this benchmark is built to rule out.
 
-**3. About 42% of the scorer's weight is not earning it.** `temporal_burst`
-(0.278) and `instrument_sharing` (0.144) both separate rings from *background*
-and neither separates rings from *families*, which is the distinction that
-matters. Both are deferred with measured reasons in `deferred_decisions.md`, not
-quietly carried.
+**3. The weight search itself moved the scorer, on its own criterion, not by
+hand.** The Phase 11 re-run of `weight_search_protocol.md` did not retain the
+hand-set incumbent: `D_drop_flagged` — which zeros `instrument_sharing` and
+`merchant_concentration`, the two signals RISK-004 and RISK-002 had flagged —
+tied `A_baseline` on validation expected loss and won the tie-break on a
+sharper difficulty margin. That vector was folded into `Config()`'s defaults
+per the protocol's own re-freeze rule, so those two signals now carry weight
+0.00 as the *shipped* default, not a rejected experiment. `temporal_burst`
+(0.309, `deferred_decisions.md` D1, still open) remains the largest weight and
+still has not been shown to separate rings from families rather than from
+background.
 
-The honest claim this build supports is the narrow one: **the three-way
-abstention policy and the cost model earn their keep; the graph score is not yet
-shown to beat a simple attribute rule.** Anything stronger needs the generator
-work.
+The honest claim this build supports: **the three-way abstention policy, the
+cost model, and — as of Phase 11 — the graph score's win over the strongest
+non-graph baseline all earn their keep on this benchmark.** Anything stronger
+about a general graph-vs-transaction claim still needs more ring types.
 
 ---
 
@@ -103,7 +118,7 @@ work.
 | `graph_edges.json` | Typed nodes, degrees and edges per component — what the UI draws. |
 | `integrity_report.json` | Cardinalities, reuse histograms, class balance, non-triviality panel. |
 | `threshold.json` | The binary threshold, selected on validation, frozen before test is read. |
-| `weight_policy.json` | The weight search: five candidates, three gate refusals. |
+| `weight_policy.json` | The weight search: five candidates, two gate refusals. |
 | `abstention_policy.json` | The Allow / Review / Escalate band. |
 | `eval_report.json` | Held-out metrics at the frozen threshold. |
 | `baselines.json` | The five PRD baselines, each with its own frozen cutoff. |
@@ -128,6 +143,15 @@ accounts — the common infrastructure the graph has to survive.
 and *usually* a coordinated burst. Usually is the point: 30% of rings never
 burst, refund rates vary per ring, and members keep their own traffic. A ring
 that always does everything is separable by one rule.
+
+**A minority of rings (70%, Phase 10) are additionally pool-funded.** Instead
+of the flat partial-instrument overlap above, a hybrid ring funds every member
+through a small shared pool of instruments, and draws signup age from a much
+wider range (5-400 days) rather than uniformly young. This exists specifically
+to break the account-age confound recorded below in "Read this before the
+numbers" — a hybrid ring's members are a mix of fresh mules and older
+compromised/synthetic accounts. The remaining 30% of rings are untouched, so
+the benchmark still contains the original mechanism alongside the new one.
 
 **Families (24) are the hard negative.** A household shares a device *and* a
 home IP *and* often a card. What differs is behaviour: real tenure, activity
@@ -155,30 +179,43 @@ Union-find over what survives; components with ≥ 2 accounts become candidates.
 
 ## The scorer
 
-Weighted sum of seven signals, each with a raw value, a normalised [0,1] value
+Weighted sum of eight signals, each with a raw value, a normalised [0,1] value
 and a human-readable detail string. Weights sum to exactly 1.00.
 
 | Signal | Weight | Measures |
 |---|---|---|
-| `temporal_burst` | 0.278 | Most distinct accounts converging on one merchant in 30 min |
-| `device_sharing` | 0.244 | Most accounts on one device |
-| `instrument_sharing` | 0.144 | Most accounts on one payment instrument |
-| `failure_refund_rate` | 0.133 | Refund + failure rate vs the population baseline |
-| `account_newness` | 0.111 | Inverted median account age |
-| `merchant_concentration` | 0.089 | Share of traffic at one merchant |
+| `temporal_burst` | 0.309 | Most distinct accounts converging on one merchant in 30 min |
+| `device_sharing` | 0.272 | Most accounts on one device |
+| `instrument_pool_concentration` | 0.148 | Accounts funded through one small shared instrument pool (Phase 10) |
+| `failure_refund_rate` | 0.148 | Refund + failure rate vs the population baseline |
+| `account_newness` | 0.123 | Inverted median account age |
+| `instrument_sharing` | **0.00** | Most accounts on one payment instrument — see below |
+| `merchant_concentration` | **0.00** | Share of traffic at one merchant — see below |
 | `ip_sharing` | **0.00** | Most accounts on one non-common IP — see below |
 
-`ip_sharing` carries **zero weight** deliberately. It was mis-signed: families
-ran 0.701 against rings' 0.162, pushing legitimate clusters up and rings down.
-Two causes (RISK-001, closed): the ring injector assigns no shared IP at all, so
-there is no ring information in the IP dimension; and the signal counted
-transactions rather than accounts, turning it into a back-door detector keyed on
-the *absence* of a household. It is kept computed as evidence, ready for a
-shared-IP ring type.
+**Three signals carry zero weight, each deliberately, each documented as a
+finding rather than an oversight.** `ip_sharing` was mis-signed from the start
+(RISK-001): families ran 0.701 against rings' 0.162, pushing legitimate
+clusters up and rings down — the ring injector places no shared IP at all, and
+the original definition counted transactions rather than accounts, making it a
+back-door detector keyed on the *absence* of a household. `instrument_sharing`
+and `merchant_concentration` were zeroed by Phase 11's re-run weight search
+(`weight_search_protocol.md` §8), which picked the policy that zeros exactly
+RISK-004's and RISK-002's flagged signals over the hand-set incumbent, on cost
+grounds, not by hand. All three stay computed as evidence.
 
-Only three signals separate rings from families: `account_newness` (+0.882),
-`failure_refund_rate` (+0.139), `device_sharing` (+0.114). That is the honest
-state of the Tier 1 baseline.
+**Every currently-weighted signal now separates rings from families in the
+correct direction** — a change from the original Tier 0 run, where the
+highest-weighted signal (`temporal_burst`) separated rings from background
+only, and `instrument_sharing` actively favoured families. Ring-minus-family
+deltas on train+validation: `account_newness` +0.4085, `temporal_burst`
++0.2812, `device_sharing` +0.1534, `failure_refund_rate` +0.1260,
+`instrument_pool_concentration` +0.0755. The only mis-signed signal is
+`ip_sharing` (**-0.5357**), which is exactly why it stays at weight 0.00
+(RISK-001) rather than evidence the fix is incomplete. `instrument_sharing`,
+also zero-weighted, is now barely mis-signed either way (+0.0078, up from the
+original run's -0.0938 — see `bugs.md` RISK-004's forward note) as a side
+effect of the same generator change, not because anyone fixed it directly.
 
 ---
 
@@ -227,68 +264,80 @@ while inverted, which is exactly what the hard-failure guard exists to catch.
 
 ## Current figures
 
-After `rm -rf out && python -m riskmesh`. Fingerprint `7c1e4fb2b329796c`,
-seed 20260824, Python 3.12.10.
+After `rm -rf out && python -m riskmesh`. Fingerprint `c3ee14627c2c2ce2`,
+seed 20260824, Python 3.12.10. Re-frozen in Phase 11 against the Phase 10
+benchmark (hybrid pool-funded rings, the 8th signal, the D3 cost-model fix) —
+every figure below moved from the pre-Phase-10 numbers.
 
-**Dataset** — 5,962 transactions, 789 accounts, 976 devices, 906 IPs, 823
-instruments, 40 merchants. 24 rings, 24 families. 100 candidate components (402
-singletons dropped), largest 9 accounts (1.14%), 20 NAT IPs capped. Non-triviality
-verdict **PASS**; shared-device baseline F1 0.7442.
+**Dataset** — 6,059 transactions, 801 accounts, 973 devices, 910 IPs, 776
+instruments, 40 merchants. 24 rings (70% hybrid pool-funded), 24 families. 105
+candidate components (393 singletons dropped), largest 9 accounts (1.1%), 20
+NAT IPs capped. Non-triviality verdict **PASS**; shared-device baseline F1
+0.7442.
 
-**Operating point.** Weight policy `A_baseline` retained after five pre-declared
-candidates behind three hard feasibility gates — three refused, the two feasible
-ones tied exactly. Held out at threshold 0.23, one read: precision 0.6667, recall
-1.0000, F1 0.8000, FPR 0.1739, ring recovery 8/8, expected loss **9,392.92**.
+**Operating point.** Weight policy re-run (`weight_search_protocol.md`,
+Phase 11) against five pre-declared candidates behind three hard feasibility
+gates: `D_drop_flagged` tied the hand-set incumbent exactly and won the
+tie-break on a sharper difficulty margin, so it was folded into
+`Config()._default_weights()` as the new `A_baseline` and the search re-run to
+a fixed point (converged in one extra iteration). Held out at threshold 0.14,
+one read: precision 0.6154, recall 1.0000, F1 0.7619, FPR 0.2083, ring
+recovery 8/8, expected loss **8,041.65**.
 
-> How to describe this: we established an explicit cost model and selected among
-> integrity-valid policies under it. Not "optimized to minimize the cost of missed
-> fraud" — A's loss-minimising point has fn = 0, so `C_fn` is multiplied by zero
-> and never enters the total. The gate structure did real work; the false-negative
-> cost it was derived from currently contributes nothing to why A won.
+> How to describe this: we established an explicit cost model and selected
+> among integrity-valid policies under it. Not "optimized to minimize the cost
+> of missed fraud" — the winner's loss-minimising point has fn = 0, so `C_fn`
+> is multiplied by zero and never enters the total. The gate structure did
+> real work; the false-negative cost it was derived from currently
+> contributes nothing to why this policy won.
 
 **Decision policy.** A three-way band layered on the frozen scorer, which is
 unchanged and not reopened:
 
 ```
-score < 0.23          -> Allow
-0.23 <= score < 0.33  -> Review     (deferred to a human, no automatic action)
-score >= 0.33         -> Escalate
+score < 0.14          -> Allow
+0.14 <= score < 0.23  -> Review     (deferred to a human, no automatic action)
+score >= 0.23         -> Escalate
 ```
 
 Both boundaries were freely searched behind a pre-declared 25% review-coverage
-gate, minimised on validation, frozen to disk before test was read. Held out, one
-read: expected loss **6,000.00** against the binary policy's 9,392.92 on the
-identical rows, at a 19.35% review rate — and **zero escalated false positives**.
-All four of the binary policy's false positives are family components, and all
-four land in the review band. Escalate precision 1.0000, FPR 0.0000, recall
-0.7500, with the other two rings deferred rather than missed.
+gate, minimised on validation, frozen to disk before test was read. Held out,
+one read: expected loss **6,808.33** against the binary policy's 8,041.65 on
+the identical rows, at a 15.6% review rate — a **15.3%** reduction. Unlike the
+original run, this is not a clean sweep: 4 of the binary policy's 5 false
+positives (all family) land in the review band, but the 5th escalates in the
+three-way policy too. Escalate precision 0.8750, FPR 0.0417, recall 0.8750,
+with the remaining ring deferred rather than missed.
 
-Two things not to over-read: the *magnitude* depends on `deferred_decisions.md`
-D3 (18.8% rather than 36.1% under a corrected cost model, though the direction
-and the zero-false-positive result hold either way), and the review tier assumes
-an analyst resolves a deferred case correctly — a stated assumption, not a
-measurement.
+`deferred_decisions.md` D3 (the review-cost double-charge) is **resolved**, not
+a caveat, as of Phase 10 — the 15.3% figure is the only number now, not two
+under separate accountings. The review tier still assumes an analyst resolves
+a deferred case correctly — a stated assumption, not a measurement.
 
 **Baselines** (each at its own frozen cutoff, held-out F1):
 
 | Baseline | Sees graph | F1 | FPR |
 |---|---|---|---|
-| `transaction_level` | none | **1.0000** | 0.0000 |
-| `ring_score` | fully | 0.8000 | 0.1739 |
-| `shared_device_only` | one rule | 0.6957 | 0.3043 |
-| `shared_ip_only` | one rule | 0.5161 | 0.6522 |
-| `random` | none | 0.2857 | 0.6957 |
+| `ring_score` | fully | **0.8750** | 0.0417 |
+| `transaction_level` | none | 0.7143 | 0.0417 |
+| `shared_device_only` | one rule | 0.6957 | 0.2917 |
+| `shared_ip_only` | one rule | 0.5000 | 0.6667 |
+| `random` | none | 0.2000 | 0.0417 |
+
+The shipped scorer now beats every other baseline outright, reversing the
+pre-Phase-10 finding that a non-graph rule won. See "Read this before the
+numbers" above and `implementation_plan.md` "Phase 10-11" for the full story.
 
 **Ablations** (leave-one-group-out, each with its own frozen threshold):
 
 | Removed | F1 | Δ | Rings found |
 |---|---|---|---|
-| — full model | 0.8000 | — | 8/8 |
-| `behavioral_refund` | 0.6316 | **−0.1684** | **6/8** |
-| `device` | 0.8000 | 0.0000 | 8/8 |
-| `ip` | 0.8000 | 0.0000 | 8/8 |
-| `temporal` | 0.8000 | 0.0000 | 8/8 |
-| `instrument` | 0.8889 | **+0.0889** | 8/8 |
+| — full model | 0.8750 | — | 7/8 |
+| `behavioral_refund` | 0.7059 | **−0.1691** | **6/8** |
+| `device` | 0.9333 | **+0.0583** | 7/8 |
+| `ip` | 0.8750 | 0.0000 | 7/8 |
+| `temporal` | 0.8421 | −0.0329 | 8/8 |
+| `instrument` | 0.7778 | **−0.0972** | 7/8 |
 
 ---
 
@@ -343,7 +392,7 @@ gates it: kill the endpoint and the ledger, graph and decomposition still render
 riskmesh/config.py       every knob + the config fingerprint
 riskmesh/generate.py     entities, correlated traffic, both injectors
 riskmesh/graph.py        typed edges, hygiene caps, union-find components
-riskmesh/score.py        seven signals, raw + normalised + detail
+riskmesh/score.py        eight signals, raw + normalised + detail
 riskmesh/split.py        chronological ring-level split
 riskmesh/integrity.py    integrity report + non-triviality panel
 riskmesh/costmodel.py    cost derivation, weight search, feasibility gates
