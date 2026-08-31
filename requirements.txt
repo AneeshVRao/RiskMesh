@@ -18,3 +18,17 @@
 # tests/test_api.py. Only riskmesh/api/routes.py and main.py need these.
 fastapi
 uvicorn
+
+# --- XGBoost scorer only (Tier 2) ------------------------------------------
+# Decision recorded in implementation_plan.md, "Tier 2 -- XGBoost scorer".
+# Tier 0's zero-dependency guarantee is still not weakened: `python -m
+# riskmesh` and tests/test_riskmesh.py import nothing outside the stdlib.
+# numpy and xgboost are confined to riskmesh/ml.py and tests/test_ml.py.
+#
+# Reproducibility caveat, same shape as config.py's docstring scoping Python's
+# own `random` module to "one interpreter version": xgboost's internal RNG and
+# tree-building are not guaranteed bit-identical across library versions.
+# Every frozen record ml.py produces carries the installed xgboost.__version__
+# alongside sys.version, for the same reason.
+numpy
+xgboost
