@@ -27,10 +27,12 @@ is exactly Tier 0's ring definition, arrived at through the *absence* of a
 family marker rather than through any risk concept.
 
 Redefined here as max distinct accounts on one non-common IP, symmetric with
-its siblings. Its weight is 0.00 in Tier 0: the ring injector assigns no shared
-IP, so this measures 1.00 for every ring and every background component and
-separates nothing. It is kept computed as investigator evidence and because it
-becomes genuinely discriminative once a shared-IP ring type exists.
+its siblings. Its weight was 0.00 under Tier 0, when the ring injector assigned
+no shared IP at all and this measured 1.00 for every ring and every background
+component, separating nothing. Task 3 adds a shared-IP ring type
+(`generate.py::_pick_ip`), so this signal now has something real to
+discriminate; the weight stays 0.00 regardless -- re-weighing it is Task 6's
+weight-search job, not this module's.
 
 **Do not normalise a signal by its own component's size.** A ratio of the form
 `part / component_size` saturates at 1.0 on size-2 components, which are 31 of

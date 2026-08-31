@@ -71,6 +71,7 @@ class Label(NamedTuple):
     ring_id: str  # "" when the account is not a ring member
     cluster_id: str  # "" when the account is not in a family cluster
     active_period: str  # "" for background accounts, which span the window
+    ring_type: str = ""  # "" | device | ip | instrument | refund | hybrid
 
 
 @dataclass
@@ -95,7 +96,9 @@ class Account:
     kind: str = "background"  # background | ring | family
     active_period: str = ""
     shared_device: str = ""  # ring/family shared device, when applicable
+    shared_ip: str = ""  # shared-IP / hybrid ring's converged IP
     ring_id: str = ""
+    ring_type: str = ""  # "" | device | ip | instrument | refund | hybrid
     cluster_id: str = ""
     extra: dict[str, float] = field(default_factory=dict)
 
@@ -201,12 +204,29 @@ def _build_background(
 
 
 def _pick_ip(cfg: Config, rng: random.Random, acct: Account, nat_ips: list[str]) -> str:
+    """Mirrors `_pick_device`: a shared-IP/hybrid ring member routes most (not
+    all) traffic through the ring's converged IP -- this is what finally gives
+    `ip_sharing` a ring type to measure (config.py's `ip_sharing` comment).
+
+    Unlike `_pick_device` (unchanged, Tier 0), nothing here is short-circuited
+    on `acct.shared_ip`. The non-shared fallback is computed UNCONDITIONALLY,
+    even on the branch that ends up returning `shared_ip` instead -- an early
+    return that skipped it would make word count depend on whether the
+    fallback happened to need `rng.choice(nat_ips)`/`rng.randrange(400)`,
+    which is exactly the class of bug an `if acct.shared_ip and ...: return`
+    short-circuit reintroduces one line later than it looks. `_pick_device`'s
+    own short-circuit is a pre-existing Tier 0 property this task leaves
+    alone; this function is new, so it does not need to repeat it.
+    """
+    use_shared = rng.random() < acct.extra.get("shared_ip_share", 1.0)
     r = rng.random()
     if r < cfg.p_home_ip:
-        return acct.home_ip
-    if r < cfg.p_home_ip + cfg.p_nat_ip:
-        return rng.choice(nat_ips)
-    return f"ip_travel{rng.randrange(400):03d}"
+        fallback = acct.home_ip
+    elif r < cfg.p_home_ip + cfg.p_nat_ip:
+        fallback = rng.choice(nat_ips)
+    else:
+        fallback = f"ip_travel{rng.randrange(400):03d}"
+    return acct.shared_ip if (acct.shared_ip and use_shared) else fallback
 
 
 def _pick_device(cfg: Config, rng: random.Random, acct: Account) -> str:
@@ -255,6 +275,15 @@ def _emit(
         merchant_id = _pick_merchant(cfg, rng, acct, merchants, pop_weights)
         mu, sigma = CATEGORIES[by_id[merchant_id].category]
         failed = rng.random() < acct.failure_rate
+        # Refund roll drawn unconditionally, THEN gated by `failed` -- not
+        # `0 if failed else rng.random()...`, which skips the draw entirely
+        # when failed is True. Since `failed` itself depends on
+        # acct.failure_rate, and failure_rate now differs by ring type
+        # (Task 3's refund-abuse mechanism), a short-circuited draw would make
+        # the main stream's word count depend on which ring type an account
+        # belongs to -- the exact isolation trap this module's docstring
+        # warns about, just one level further down than the ring injector.
+        refund_roll = rng.random() < acct.refund_rate
         out.append(
             Txn(
                 txn_id=f"t{len(out):06d}",
@@ -266,7 +295,7 @@ def _emit(
                 merchant_id=merchant_id,
                 amount=round(rng.lognormvariate(mu, sigma) * acct.amount_mult, 2),
                 status="failed" if failed else "captured",
-                is_refund=0 if failed else int(rng.random() < acct.refund_rate),
+                is_refund=0 if failed else int(refund_roll),
                 account_age_days=day - acct.signup_day,
             )
         )
@@ -286,94 +315,160 @@ def _period_days(cfg: Config, period: str) -> tuple[int, int]:
     return cfg.split_boundaries[period]
 
 
+RING_TYPES: tuple[str, ...] = ("device", "ip", "instrument", "refund", "hybrid")
+
+# Dedicated-stream primes for the four new ring mechanisms (Tier 1). The four
+# primes already in use below -- 49_979_687, 15_485_863, 32_452_843, 1_000_003
+# -- belong to the pre-existing device-ring / family injectors and are never
+# reused. These four are new and distinct (verified prime, and distinct from
+# the first four -- see task-3-report.md).
+_TYPE_SIGNUP_PRIME = 67_867_967       # non-device ring types' signup-day draw
+_INSTRUMENT_POOL_PRIME = 86_028_121   # instrument concentration (instrument & hybrid)
+_REFUND_RATE_PRIME = 104_395_301      # refund-abuse elevated refund/failure rate
+_REFUND_MERCHANT_PRIME = 122_949_823  # refund-abuse merchant-pool concentration
+
+
+def _ring_type_plan(cfg: Config) -> list[str]:
+    """Which of the five mechanisms each ring index gets.
+
+    Pure counts, zero RNG calls -- the plan itself cannot perturb anything
+    drawn afterward, however the type MIX changes. Ordered in fixed blocks
+    (all device rings, then all ip rings, ...) rather than shuffled, so that
+    changing one type's count only ever shifts the ring INDICES of the types
+    that come after it in this tuple, never the ones before.
+    """
+    counts = {
+        "device": cfg.n_rings_device,
+        "ip": cfg.n_rings_ip,
+        "instrument": cfg.n_rings_instrument,
+        "refund": cfg.n_rings_refund,
+        "hybrid": cfg.n_rings_hybrid,
+    }
+    plan: list[str] = []
+    for t in RING_TYPES:
+        plan.extend([t] * counts[t])
+    return plan
+
+
 def _inject_rings(
     cfg: Config, rng: random.Random, merchants: list[Merchant], pop_weights: list[float],
     start_idx: int,
 ) -> list[Account]:
-    """Shared-device abuse rings: the one ring type in Tier 0.
+    """Five ring mechanisms, one injector.
 
-    Members are freshly-registered thin-history accounts routing most (not all)
-    traffic through one or two shared devices, with partial card overlap, an
-    elevated refund/failure rate, and usually a coordinated burst.
+    **device** -- the original Tier 0 mechanism, unchanged: members route most
+    (not all) traffic through one or two shared devices, with partial card
+    overlap (or, for a pool-funded fraction, a small shared-card pool -- Phase
+    10's `is_hybrid_funded`), an elevated refund/failure rate, and usually a
+    coordinated burst.
 
-    Every "usually" here is deliberate. Rings that always burst, always share a
-    card, and always refund at a fixed rate are separable by a single rule, and
-    a benchmark that a single rule solves measures nothing.
+    **ip** -- members converge on one non-common IP instead of a device. Gives
+    `ip_sharing` (config.py) something to measure for the first time.
+
+    **instrument** -- a small shared-instrument pool, same mule mechanic as
+    the device type's pool-funding branch, but WITHOUT device convergence:
+    members keep their own home/secondary devices.
+
+    **refund** -- behaviourally defined: elevated refund/failure rate and
+    merchant concentration (a small cash-out pool), with no device/IP/
+    instrument convergence at all -- weak-to-absent infrastructure sharing.
+
+    **hybrid** -- device + IP + instrument sharing together, the genuinely
+    multi-attribute case. (Not the same thing as the device type's own
+    `is_hybrid_funded` sub-variant, which only swaps instrument funding.)
+
+    Every "usually"/"most, not all" here is deliberate, same as Tier 0: a
+    mechanism that always converges on everything is separable by a single
+    rule, and a benchmark a single rule solves measures nothing.
+
+    RNG isolation. Every draw on the shared `rng` below (`size`,
+    `base_refund_rate`, `bursts`, `is_hybrid_funded`, the `sharers` sample) runs
+    UNCONDITIONALLY, once per ring, in the same order and over the same-width
+    range regardless of which of the five types that ring index is -- only
+    which mechanism's code path actually USES the result differs. Every
+    mechanism-specific decoration (which attribute converges, at what rate, on
+    which pool) is drawn from a `random.Random` dedicated to that ring and that
+    mechanism, so it can never perturb `rng` at all. The one thing that still
+    needs care even on a dedicated stream: `rng.choice(acct.instruments)` and
+    `rng.choice(acct.merchants)` run later, on the SHARED stream, during
+    emission -- and `_randbelow`'s rejection sampling spends words on a list's
+    LENGTH, not its content. So every mechanism below REPLACES a list's
+    contents (from its own dedicated stream) without ever changing how many
+    elements it has.
     """
     periods = list(cfg.split_boundaries)
+    plan = _ring_type_plan(cfg)
     out: list[Account] = []
     idx = start_idx
 
-    for r in range(cfg.n_rings):
+    for r, ring_type in enumerate(plan):
         period = periods[r % len(periods)]  # round-robin: every split gets rings
         day_lo, day_hi = _period_days(cfg, period)
         size = rng.randint(cfg.ring_size_min, cfg.ring_size_max)
         ring_id = f"ring{r:02d}"
-        shared_device = f"d_ring{r:02d}"
-        refund_rate = rng.uniform(cfg.ring_refund_rate_min, cfg.ring_refund_rate_max)
+        base_refund_rate = rng.uniform(cfg.ring_refund_rate_min, cfg.ring_refund_rate_max)
         bursts = rng.random() >= cfg.p_ring_no_burst
-        # Phase 10: a fraction of rings (currently a majority -- see
-        # `p_ring_instrument_funded` in config.py) are pool-funded (RISK-004's
-        # E6, restarted as a real mechanism). A hybrid ring's
-        # members draw signup age from a much wider range instead of the
-        # uniform thin-history window, which is what breaks the
-        # account-age <= 30 days confound (README finding #1).
-        is_hybrid = (cfg.ring_instrument_pool_size > 0
-                     and rng.random() < cfg.p_ring_instrument_funded)
-        # The two signup-day branches below draw from different-width ranges
-        # (5..400 vs 1..20). `randint`/`randrange` use rejection sampling, so
-        # the NUMBER of underlying words they consume varies with both the
-        # range and the value drawn -- a second instance of the exact isolation
-        # trap this phase exists to fix, just harder to spot than an extra
-        # method call. A dedicated per-ring `Random` sidesteps it the same way
-        # `pool_rng`/`share_rng` do below, rather than relying on both branches
-        # happening to cost the same number of words.
+        # Phase 10, device type only: a fraction of DEVICE rings are pool-
+        # funded instead of partial-overlap. Drawn for every ring, every type,
+        # so a non-device ring's presence at this index never changes whether
+        # this word gets consumed -- see the isolation note above.
+        is_hybrid_funded = (cfg.ring_instrument_pool_size > 0
+                            and rng.random() < cfg.p_ring_instrument_funded)
+        # Dedicated per-ring streams. Constructed for every ring regardless of
+        # type -- cheap, and it keeps "which streams exist" independent of the
+        # type mix too.
         signup_rng = random.Random(cfg.seed * 49_979_687 + r)
+        type_signup_rng = random.Random(cfg.seed * _TYPE_SIGNUP_PRIME + r)
+
+        if ring_type == "refund":
+            rate_rng = random.Random(cfg.seed * _REFUND_RATE_PRIME + r)
+            refund_rate = rate_rng.uniform(cfg.refund_ring_rate_min, cfg.refund_ring_rate_max)
+            failure_rate = cfg.refund_ring_failure_rate
+        else:
+            refund_rate = base_refund_rate
+            failure_rate = cfg.ring_failure_rate
 
         members: list[Account] = []
         for _ in range(size):
-            acct = _new_account(
-                cfg, rng, idx, merchants, pop_weights,
-                # registered shortly before the ring goes active -> low tenure,
-                # except a hybrid ring's mix of fresh mules and older
-                # compromised/synthetic accounts (Phase 10).
-                signup_day=(
+            if ring_type == "device":
+                # Unchanged from Tier 0: thin-history mules, except a
+                # pool-funded ring's mix of fresh mules and older
+                # compromised/synthetic accounts (Phase 10, README finding #1).
+                signup_day = (
                     day_lo - signup_rng.randint(cfg.ring_hybrid_signup_min_days,
-                                                 cfg.ring_hybrid_signup_max_days)
-                    if is_hybrid else
+                                                cfg.ring_hybrid_signup_max_days)
+                    if is_hybrid_funded else
                     day_lo - signup_rng.randint(1, 20)
-                ),
-                kind="ring",
-            )
+                )
+            else:
+                # The four new types get the same thin-history-by-default,
+                # sometimes-older mix, on their OWN dedicated stream so it
+                # cannot perturb the device type's signup_rng or the main
+                # stream. Keeps account_newness from becoming a perfect
+                # ring/non-ring separator now that most rings are young.
+                widen = type_signup_rng.random() < cfg.ring_type_old_signup_fraction
+                signup_day = (
+                    day_lo - type_signup_rng.randint(cfg.ring_hybrid_signup_min_days,
+                                                     cfg.ring_hybrid_signup_max_days)
+                    if widen else
+                    day_lo - type_signup_rng.randint(1, 20)
+                )
+            acct = _new_account(cfg, rng, idx, merchants, pop_weights,
+                                signup_day=signup_day, kind="ring")
             idx += 1
             acct.active_period = period
             acct.ring_id = ring_id
-            acct.shared_device = shared_device
-            acct.extra["shared_device_share"] = cfg.ring_shared_device_share
+            acct.ring_type = ring_type
             acct.refund_rate = refund_rate
-            acct.failure_rate = cfg.ring_failure_rate
+            acct.failure_rate = failure_rate
             acct.extra["burst"] = float(bursts)
+            if ring_type == "device":
+                acct.shared_device = f"d_ring{r:02d}"
+                acct.extra["shared_device_share"] = cfg.ring_shared_device_share
             members.append(acct)
 
-        # Instrument mechanism: exactly one of the two applies per ring, never
-        # both (Phase 10).
-        #
-        # The sharers/share_rng draws below happen unconditionally, every ring,
-        # same as before Phase 10 -- `is_hybrid` only decides which mechanism's
-        # RESULT gets applied, not how many random calls happen. The main
-        # stream, and therefore the family injector that runs next, only
-        # diverges from before by the `is_hybrid` draw itself (see the
-        # RNG-stream note in experiment.py). Getting this wrong (drawing
-        # `sharers` only in the `else` branch) makes the main stream's
-        # consumption depend on `is_hybrid`, a data-dependent branch -- exactly
-        # the E3 trap experiment.py's module docstring names.
-        #
-        # Partial instrument overlap. Originally a flat 2-3 members however
-        # large the ring was, which is RISK-004: a household's shared card
-        # reaches every member, a ring's reached at most three, so the hard
-        # negative outscored the positive on instrument_sharing.
-        # ring_instrument_share scales the sharer count with ring size
-        # instead.
+        # Unconditional every ring, every type -- see isolation note. Applied
+        # below only for ring_type == "device", same as before Phase 10.
         sharers = rng.sample(members, min(len(members), rng.randint(2, 3)))
         if cfg.ring_instrument_share > 0:
             share_rng = random.Random(cfg.seed * 15_485_863 + r)
@@ -384,23 +479,58 @@ def _inject_rings(
             )
         shared_pi = f"pi_{ring_id}"
 
-        # Hybrid (RISK-004 option 2, E6): fund the whole ring through a small
-        # pool of cards instead of a partial overlap on personal cards. This is
-        # the mule mechanic -- few instruments, many accounts -- and it
-        # REPLACES every member's instrument rather than adding to it. The pool
-        # assignment uses a dedicated Random so it cannot perturb the main
-        # stream either.
-        if is_hybrid:
-            pool_rng = random.Random(cfg.seed * 32_452_843 + r)
+        if ring_type == "device":
+            if is_hybrid_funded:
+                pool_rng = random.Random(cfg.seed * 32_452_843 + r)
+                pool = [
+                    f"pi_{ring_id}_f{j}"
+                    for j in range(min(cfg.ring_instrument_pool_size, len(members)))
+                ]
+                for acct in members:
+                    acct.instruments = [pool_rng.choice(pool)]  # length-preserving: 1 -> 1
+            else:
+                for acct in sharers:
+                    acct.instruments.append(shared_pi)
+
+        elif ring_type == "ip":
+            for acct in members:
+                acct.shared_ip = f"ip_ring{r:02d}"
+                acct.extra["shared_ip_share"] = cfg.ring_shared_ip_share
+
+        elif ring_type == "instrument":
+            instr_rng = random.Random(cfg.seed * _INSTRUMENT_POOL_PRIME + r)
             pool = [
-                f"pi_{ring_id}_f{j}"
-                for j in range(min(cfg.ring_instrument_pool_size, len(members)))
+                f"pi_{ring_id}_i{j}"
+                for j in range(min(cfg.ring_type_instrument_pool_size, len(members)))
             ]
             for acct in members:
-                acct.instruments = [pool_rng.choice(pool)]
-        else:
-            for acct in sharers:
-                acct.instruments.append(shared_pi)
+                acct.instruments = [instr_rng.choice(pool)]  # length-preserving: 1 -> 1
+
+        elif ring_type == "refund":
+            merch_rng = random.Random(cfg.seed * _REFUND_MERCHANT_PRIME + r)
+            pool = merch_rng.sample(
+                [m.merchant_id for m in merchants],
+                min(cfg.refund_ring_merchant_pool_size, len(merchants)),
+            )
+            # Length-preserving: replace CONTENT, keep each member's own
+            # merchants-list length, so the later `rng.choice(acct.merchants)`
+            # in _add_burst/_emit consumes the same number of words regardless
+            # of which ring type this index turned out to be.
+            for acct in members:
+                acct.merchants = [merch_rng.choice(pool) for _ in acct.merchants]
+
+        elif ring_type == "hybrid":
+            instr_rng = random.Random(cfg.seed * _INSTRUMENT_POOL_PRIME + r)
+            pool = [
+                f"pi_{ring_id}_h{j}"
+                for j in range(min(cfg.ring_type_instrument_pool_size, len(members)))
+            ]
+            for acct in members:
+                acct.shared_device = f"d_ring{r:02d}"
+                acct.extra["shared_device_share"] = cfg.ring_shared_device_share
+                acct.shared_ip = f"ip_ring{r:02d}"
+                acct.extra["shared_ip_share"] = cfg.ring_shared_ip_share
+                acct.instruments = [instr_rng.choice(pool)]  # length-preserving: 1 -> 1
 
         out.extend(members)
 
@@ -513,6 +643,9 @@ def _add_burst(
             merchant_id = shared_id if shared_merchant else rng.choice(acct.merchants)
             mu, sigma = CATEGORIES[by_id[merchant_id].category]
             failed = rng.random() < acct.failure_rate
+            # See the matching comment in _emit: draw unconditionally, gate
+            # after, so word count does not depend on acct.failure_rate.
+            refund_roll = rng.random() < acct.refund_rate
             out.append(
                 Txn(
                     txn_id=f"t{len(out):06d}",
@@ -524,7 +657,7 @@ def _add_burst(
                     merchant_id=merchant_id,
                     amount=round(rng.lognormvariate(mu, sigma) * acct.amount_mult, 2),
                     status="failed" if failed else "captured",
-                    is_refund=0 if failed else int(rng.random() < acct.refund_rate),
+                    is_refund=0 if failed else int(refund_roll),
                     account_age_days=burst_day - acct.signup_day,
                 )
             )
@@ -598,7 +731,8 @@ def generate(cfg: Config) -> tuple[list[Txn], list[Label]]:
     txns = [t._replace(txn_id=f"t{i:06d}") for i, t in enumerate(txns)]
 
     labels = [
-        Label(a.account_id, a.ring_id, a.cluster_id, a.active_period) for a in accounts
+        Label(a.account_id, a.ring_id, a.cluster_id, a.active_period, a.ring_type)
+        for a in accounts
     ]
     return txns, labels
 

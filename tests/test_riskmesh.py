@@ -70,6 +70,24 @@ def test_01_determinism(cfg: Config, run_a: dict, run_b: dict) -> None:
     check("01 determinism: two runs at one seed give byte-identical transactions.csv")
 
 
+def test_01b_population_scale(cfg: Config, txns) -> None:
+    """Transaction count tracks cfg.target_txns, not a literal (Task 3).
+
+    Previously this bound only existed as a self-check in generate.py's own
+    `__main__` block, which this suite never runs -- so the actual test suite
+    had no check on population scale at all. Anchoring on cfg.target_txns
+    (rather than a hardcoded count) keeps this meaningful whatever the
+    population is later tuned to.
+    """
+    lo, hi = 0.9 * cfg.target_txns, 1.1 * cfg.target_txns
+    assert lo <= len(txns) <= hi, (
+        f"{len(txns)} transactions outside cfg.target_txns={cfg.target_txns} "
+        f"+/-10% [{lo:.0f}, {hi:.0f}]"
+    )
+    check(f"01b population scale: {len(txns)} transactions within "
+          f"cfg.target_txns={cfg.target_txns} +/-10%")
+
+
 def test_02_no_label_leakage(cfg: Config, run_a: dict) -> None:
     header = (run_a["dir"] / "transactions.csv").read_text(encoding="utf-8").splitlines()[0]
     cols = set(header.split(","))
@@ -93,6 +111,33 @@ def test_03_split_isolation(cands) -> None:
             assert seen.get(key, c.split) == c.split, f"{key} spans splits"
             seen[key] = c.split
     check("03 split isolation: no ring appears in two splits")
+
+
+def test_03b_five_ring_types_present_and_split_isolated(labels) -> None:
+    """Task 3: all five ring mechanisms exist, each ring is one type, and
+    that type never spans two splits (a ring-level fact -- the ring's
+    `active_period` IS its split, and every member agrees, so reading either
+    off any one member's label is exact, not a majority vote)."""
+    from riskmesh.generate import RING_TYPES
+
+    types_seen = {lb.ring_type for lb in labels if lb.ring_id}
+    assert types_seen == set(RING_TYPES), (
+        f"expected all five ring types {sorted(RING_TYPES)}, saw {sorted(types_seen)}"
+    )
+
+    ring_type: dict[str, str] = {}
+    ring_split: dict[str, str] = {}
+    for lb in labels:
+        if not lb.ring_id:
+            continue
+        assert ring_type.setdefault(lb.ring_id, lb.ring_type) == lb.ring_type, (
+            f"{lb.ring_id} has members labelled with two different ring types"
+        )
+        assert ring_split.setdefault(lb.ring_id, lb.active_period) == lb.active_period, (
+            f"{lb.ring_id} spans two splits (active_period disagrees across members)"
+        )
+    check(f"03b all five ring types present {sorted(types_seen)}; "
+          f"each of {len(ring_type)} rings is one type inside exactly one split")
 
 
 def test_04_split_assignment_agrees(splits) -> None:
@@ -389,11 +434,14 @@ def test_20_abstention_binary_collapse(cfg, cands) -> None:
     is a permanent test, not a design-doc claim, because a future edit to
     either formula that breaks the equivalence would silently make the two
     cost models inconsistent with each other. The frozen number itself --
-    4,000.00 at threshold 0.18 (re-frozen in Phase 12, after the ring-injector
-    RNG-isolation fix: the weight search re-run confirmed A_baseline outright
-    on the corrected benchmark, with its own validation-selected threshold at
-    0.18) -- is asserted directly, not just the equality of the two formulas,
-    so a regression in the pipeline upstream of the formulas is caught too.
+    257,592.45 at threshold 0.18 (re-derived in Task 3, after the population
+    raise and four new ring types: exposure figures scale with the larger
+    population, so this number moved from the pre-Task-3 4,000.00 -- see
+    task-3-report.md) -- is asserted directly, not just the equality of the
+    two formulas, so a regression in the pipeline upstream of the formulas is
+    caught too. The number itself is not otherwise load-bearing; it is a
+    regression anchor, and it is expected to move again whenever Config's
+    population or cost inputs change.
     """
     from riskmesh.abstention import three_way_stats
     from riskmesh.costmodel import derive_costs, expected_loss
@@ -411,12 +459,12 @@ def test_20_abstention_binary_collapse(cfg, cands) -> None:
         f"binary costmodel.expected_loss() gives {binary['expected_loss']} -- "
         "the collapse abstention_protocol.md relies on is broken"
     )
-    assert three_way["expected_loss"] == 4000.0, (
-        f"got {three_way['expected_loss']}, expected the frozen 4,000.00 -- "
+    assert three_way["expected_loss"] == 257592.45, (
+        f"got {three_way['expected_loss']}, expected the frozen 257,592.45 -- "
         "either the formula or something upstream of it has changed"
     )
     check("20 abstention three_way_stats(t_lo=t_hi=0.18) reproduces the frozen "
-          "binary expected loss 4,000.00 exactly")
+          "binary expected loss 257,592.45 exactly")
 
 
 def test_21_ablation_full_row_reproduces_the_shipped_eval(run_a: dict) -> None:
@@ -572,8 +620,10 @@ def main() -> int:
         print(f"\nRiskMesh Tier 0 checks  (seed {cfg.seed}, config {cfg.fingerprint()})\n")
         print("correctness")
         test_01_determinism(cfg, run_a, run_b)
+        test_01b_population_scale(cfg, txns)
         test_02_no_label_leakage(cfg, run_a)
         test_03_split_isolation(cands)
+        test_03b_five_ring_types_present_and_split_isolated(labels)
         test_04_split_assignment_agrees(splits)
         test_05_hygiene(cfg, txns, graph)
         test_06_hard_negatives_are_hard(txns, labels)
@@ -598,7 +648,7 @@ def main() -> int:
         test_23_baselines_cover_the_five_the_prd_names(run_a)
         test_24_shipped_scorer_is_not_re_swept_in_the_baseline_table(run_a)
 
-        print(f"\n{len(PASSED)}/25 checks passed")
+        print(f"\n{len(PASSED)}/27 checks passed")
         return 0
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
