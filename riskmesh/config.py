@@ -149,8 +149,9 @@ class Config:
     # age from a much wider range. This is RISK-004's rejected experiment E6,
     # reused as a real second ring mechanism instead of an inert toggle: E6 was
     # rejected only for over-separating a benchmark whose only positive class
-    # was the device ring; applied to a MINORITY of rings alongside the
-    # majority untouched, it should not have that failure mode. See bugs.md
+    # was the device ring; applied to a fraction of rings alongside the rest
+    # left untouched (currently a majority hybrid, minority untouched -- see
+    # the value below), it should not have that failure mode. See bugs.md
     # RISK-004 "closed... A future funding-network ring type should restart
     # from experiment_e6.json".
     #
@@ -159,12 +160,13 @@ class Config:
     # mules and older compromised/synthetic accounts, so "account age <= 30
     # days" stops being a perfect ring classifier.
     # 0.4 (the initial candidate) failed the Tier-1 difficulty gate on
-    # train+validation: positives_below_max_negative 0.3125 against a required
-    # >= 0.45. Tuned up against the panel per the project's "tune config,
-    # don't add realism" discipline (task_today.md Step 1) -- 0.7 clears both
-    # Tier-1 gates with margin (positives_below_max_negative 0.5625, hard
-    # negatives inside positive range 9) without approaching 1.0, where the
-    # panel starts to FAIL outright (E6's over-separation failure mode).
+    # train+validation. Tuned up against the panel per the project's "tune
+    # config, don't add realism" discipline -- 0.7 clears both Tier-1 gates
+    # with margin, without approaching 1.0, where the panel starts to FAIL
+    # outright (E6's over-separation failure mode). The exact margin moves
+    # with every regeneration; read it from `weight_search_protocol.md`'s
+    # gate declaration or the current `out/integrity_report.json`'s
+    # non-triviality panel rather than trusting a number quoted here.
     p_ring_instrument_funded: float = 0.7  # fraction of rings that are hybrid
     ring_hybrid_signup_min_days: int = 5
     ring_hybrid_signup_max_days: int = 400
@@ -231,8 +233,9 @@ class Config:
     # on its most-shared instrument, which is concentration rather than
     # headcount. Default False until an experiment is adopted.
     instrument_sharing_component_relative: bool = False
-    # RISK-004 option 2, experiment E6, adopted in Phase 10 as a real (minority)
-    # ring mechanism. A mule network is funded through a small pool of cards
+    # RISK-004 option 2, experiment E6, adopted in Phase 10 as a real
+    # (majority-but-not-all) ring mechanism. A mule network is funded through
+    # a small pool of cards
     # used by many accounts; a household shares one card on top of everyone's
     # own. 0 disables the mechanism entirely. When > 0, every member of a ring
     # selected as hybrid (`p_ring_instrument_funded`) is funded through one card

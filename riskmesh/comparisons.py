@@ -43,7 +43,7 @@ DESIGN_SPLITS = ("train", "validation")
 TXN_LEVEL_AMOUNT_PERCENTILE = 0.95
 TXN_LEVEL_YOUNG_ACCOUNT_DAYS = 30
 
-# The PRD names five feature groups. Mapped onto the seven signals as a
+# The PRD names five feature groups. Mapped onto the eight signals as a
 # PARTITION -- every signal belongs to exactly one group, so "full minus each
 # group in turn" covers the whole scorer with no signal ablated twice or never.
 # The split is structural (what accounts share) against behavioural (how
@@ -266,7 +266,7 @@ def baseline_report(cfg: Config, txns: list[Txn], graph: Graph,
     rows.append({
         "baseline": "ring_score",
         "uses_graph": "fully",
-        "description": "The shipped weighted score over all seven signals, at "
+        "description": "The shipped weighted score over all eight signals, at "
                        "the threshold frozen in out/threshold.json.",
         "cutoff": shipped_threshold,
         "direction": ">=",
@@ -375,7 +375,7 @@ def ablation_report(cfg: Config, labels: list[Label]) -> dict:
         ),
         "grouping": {g: list(s) for g, s in ABLATION_GROUPS.items()},
         "grouping_note": (
-            "A partition of the seven signals: structural (what accounts share) "
+            "A partition of the eight signals: structural (what accounts share) "
             "against behavioural (how accounts act). Asserted at import."
         ),
         "configurations": rows,

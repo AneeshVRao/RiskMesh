@@ -1,6 +1,6 @@
 """Deterministic risk score per connected component (PRD Tier 1 baseline).
 
-Seven signals, each computed as a **raw** value and a **normalised** [0,1] value.
+Eight signals, each computed as a **raw** value and a **normalised** [0,1] value.
 The score is the weighted sum of the normalised values, clipped to [0,1], with
 weights from `config.py` that sum to exactly 1.00.
 

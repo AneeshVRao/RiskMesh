@@ -1247,7 +1247,7 @@ that requires the generator work.
 
 ---
 
-## Phase 10-11 — the account-age confound fix, and the re-freeze it forced
+## Phase 10-12 — the account-age confound fix, and the re-freezes it forced
 
 **Phase 10's target was stated by the previous section, not invented here:**
 "a second ring type whose accounts are not uniformly young... deliberately not
@@ -1267,70 +1267,105 @@ re-run: `weight_search_protocol.md` and `abstention_protocol.md` frozen and
 executed against the settled Phase 10 benchmark, `experiments/weight_policy.json`
 and `experiments/abstention_policy.json` re-frozen with the current config
 fingerprint, and every document that quoted a number from either protocol
-updated to match. Full results are in those two files; this section reports
-the one finding the whole two-phase effort exists to produce.
+updated to match.
+
+**Phase 12 found the settling was incomplete.** A final whole-branch review
+caught a real RNG-isolation bug in `_inject_rings` (Phase 10's own
+instrument-mechanism branch let the main stream's consumption depend on
+`is_hybrid`, a data-dependent branch — exactly the E3 trap
+`riskmesh/experiment.py`'s module docstring names, see `riskmesh/generate.py`).
+Fixing it changes actual generator output without moving the config
+fingerprint (the fingerprint hashes config fields, not generator code — a
+known limitation, not something fixed here), so every number below was
+re-measured against the corrected benchmark: `weight_search_protocol.md` and
+`abstention_protocol.md` re-run again, and this section's row 63/70 tables
+regenerated fresh from `out/baselines.json` / `out/ablations.json` rather than
+patched by hand. Full results for the weight search and abstention band are
+in those two protocol files; this section reports the one finding the whole
+effort exists to produce.
 
 ### The actual target: does `transaction_level` still reach F1 1.0000 on held-out?
 
-**No.** Re-running `comparisons.baseline_report()` fresh from `out/baselines.json`
-on the Phase 10/11 benchmark:
+**No.** `comparisons.baseline_report()`, fresh from `out/baselines.json` on the
+Phase 12 (RNG-fixed) benchmark:
 
-| Baseline | Sees graph | Frozen cutoff | Held-out F1 | FPR | Hard-neg F1 |
-|---|---|---|---|---|---|
-| `ring_score` | fully | ≥ 0.23 | **0.8750** | 0.0417 | 0.8750 |
-| `transaction_level` | none | ≥ 5,715.91 | **0.7143** | 0.0417 | 0.7143 |
-| `shared_device_only` | one rule | ≥ 4 | 0.6957 | 0.2917 | 0.6957 |
-| `shared_ip_only` | one rule | ≥ 1 | 0.5000 | 0.6667 | 0.5000 |
-| `random` | none | ≥ 0.084563 | 0.2000 | 0.0417 | 0.4706 |
+| Baseline | Sees graph | Frozen cutoff | Direction | Held-out F1 | FPR | Hard-neg F1 |
+|---|---|---|---|---|---|---|
+| `ring_score` | fully | 0.18 | `>=` | **0.7778** | 0.1304 | 0.7778 |
+| `transaction_level` | none | 0.253968 | `>=` | **0.5833** | 0.3913 | 0.7000 |
+| `shared_device_only` | one rule | 4 | `>=` | 0.6957 | 0.3043 | 0.6957 |
+| `shared_ip_only` | one rule | 1 | `<=` | 0.5161 | 0.6522 | 1.0000 |
+| `random` | none | 0.084563 | `<=` | 0.0000 | 0.0000 | 0.0000 |
 
-`transaction_level` — precision 0.8333, recall 0.6250, tp 5 / fp 1 / tn 23 /
-fn 3 — no longer separates the held-out split perfectly, and the shipped
-`ring_score` (F1 0.8750) now **beats** it outright, reversing finding #1 from
-the pre-Phase-10 README. The age-cut sensitivity sweep, re-run on validation,
-confirms the mechanism rather than merely the headline: F1 is no longer flat
-at 1.0000 across every cut from 20 to 180 days (the old confound's signature)
-— it now varies (0.7059 at 10 days, 0.6667 flat from 20-60, falling to 0.6154
-at 90) because a hybrid ring's members are a mix of fresh mules and older
-compromised/synthetic accounts, so "account age ≤ N days" is no longer close
-to a perfect ring classifier at any cut.
+The `transaction_level` cutoff shown is `0.253968` — the frozen component-level
+composite score `baseline_report()` actually thresholds on (fraction of a
+component's transactions flagged by refund, failure, amount, or account age),
+not `5,319.97`, which is a Sub-component: the 95th-percentile *amount* cutoff
+one of the four inputs the composite is built from. `random` and
+`shared_ip_only` sweep in the `<=` direction (RISK-001's inverted-signal
+lesson applies to baselines too, not only to the scorer's own signals) — the
+other three sweep `>=`. The Hard-neg F1 column is each baseline's own
+`held_out_hard_negatives_only.f1` from `out/baselines.json`, not a copy of the
+Held-out F1 column: `transaction_level` (0.7000) and `shared_ip_only`
+(1.0000) both differ materially from their own Held-out F1, because a
+baseline's hard-negative-only subset and its full held-out set are different
+populations with different confusion matrices, not the same number reported
+twice.
 
-**This is the honest result, reported whichever way it landed, per this
-document's own committed-in-advance framing for the original row 63/70 run.**
-It is not a clean sweep: `transaction_level` (0.7143) still beats
-`shared_device_only` (0.6957) and `shared_ip_only` (0.5000), so a naive
-per-transaction rule remains a stronger baseline than two of the graph's own
-one-rule challengers. What changed is specifically the comparison the whole
-phase was aimed at — the graph score against the strongest non-graph
-baseline — and on that comparison the graph score now wins.
+`transaction_level` — precision 0.4375, recall 0.875, tp 7 / fp 9 / tn 14 /
+fn 1 — no longer separates the held-out split perfectly, and the shipped
+`ring_score` (F1 0.7778) **beats** it outright, reversing finding #1 from the
+pre-Phase-10 README, the same direction Phase 10/11 already reported (there
+F1 0.8750 vs 0.7143). The gap is wider this time, not narrower: the
+RNG-isolation fix changed which draws happen when, so the exact numbers moved,
+but the transaction_level-vs-ring_score direction held.
+
+**A further, new reading this run: `transaction_level` no longer even beats
+`shared_device_only`.** Phase 10/11 reported `transaction_level` (0.7143)
+ahead of both one-rule challengers, `shared_device_only` (0.6957) and
+`shared_ip_only` (0.5000) — a real but narrower caveat on the headline. Under
+the corrected generator the ranking is `ring_score` (0.7778) >
+`shared_device_only` (0.6957) > `transaction_level` (0.5833) >
+`shared_ip_only` (0.5161) > `random` (0.0000): `transaction_level` fell below
+`shared_device_only` too, so it is no longer even the strongest non-graph
+baseline on this benchmark. This is reported plainly, on the same
+committed-in-advance framing the original row 63/70 run promised: whichever
+way the honest number lands is what gets written down.
 
 ### Row 70 — the ablation table, re-run
 
 | Removed | Weight | Threshold | Held-out F1 | Δ | Rings | Hard-neg F1 |
 |---|---|---|---|---|---|---|
-| — full model | — | 0.23 | 0.8750 | — | 7/8 | 0.8750 |
-| `behavioral_refund` | 0.2716 | 0.23 | 0.7059 | **−0.1691** | 6/8 | 0.7059 |
-| `device` | 0.2716 | 0.16 | 0.9333 | **+0.0583** | 7/8 | 0.9333 |
-| `ip` | 0.0000 | 0.23 | 0.8750 | 0.0000 | 7/8 | 0.8750 |
-| `instrument` | 0.1481 | 0.26 | 0.7778 | **−0.0972** | 7/8 | 0.7778 |
-| `temporal` | 0.3086 | 0.25 | 0.8421 | −0.0329 | 8/8 | 0.8421 |
+| — full model | — | 0.18 | 0.7778 | — | 7/8 | 0.7778 |
+| `behavioral_refund` | 0.2716 | 0.23 | 0.8750 | **+0.0972** | 7/8 | 0.8750 |
+| `device` | 0.2716 | 0.14 | 0.8750 | **+0.0972** | 7/8 | 0.8750 |
+| `ip` | 0.0000 | 0.18 | 0.7778 | 0.0000 | 7/8 | 0.7778 |
+| `instrument` | 0.1481 | 0.21 | 0.7778 | 0.0000 | 7/8 | 0.7778 |
+| `temporal` | 0.3086 | 0.18 | 0.8421 | **+0.0643** | 8/8 | 0.8421 |
 
-**A new reading this table did not have before: removing `device` improves
-held-out F1**, not just `instrument` as in the original run. This is reported
-plainly, on the same "no weight is changed on the strength of a held-out
-ablation" rule the original row 70 section already committed to — any
-reweighting this suggests belongs in a future weight-search re-run with its
-own freeze, not a same-phase reaction to this table. `ip` again reproduces the
-full model exactly, as it must while `ip_sharing` carries weight 0.00.
+**A different reading this table did not have before: removing `behavioral_refund`
+and removing `device` now improve held-out F1 by the exact same margin
+(+0.0972 each)**, not just `device` alone as Phase 10/11 reported. This is
+reported plainly, on the same "no weight is changed on the strength of a
+held-out ablation" rule the original row 70 section already committed to —
+any reweighting this suggests belongs in a future weight-search re-run with
+its own freeze, not a same-phase reaction to this table. `ip` again
+reproduces the full model exactly, as it must while `ip_sharing` carries
+weight 0.00.
 
 ### What this does and does not settle
 
 The graph score beating `transaction_level` on this specific benchmark draw is
 not proof the graph is generally better — it is proof that the account-age
 confound this build named as its central limitation is no longer forcing the
-comparison, on this generator, this seed. `shared_device_only` and
-`shared_ip_only` still trail badly, which keeps the original caution alive in
-weaker form: a full graph is not yet shown to beat *every* simpler rule, only
-the one the previous phase's finding #1 was about. The honest headline moves
-from "a non-graph rule beats the graph score" to "the graph score beats the
-strongest non-graph rule tried, on the axis this phase targeted" — narrower
-than a general claim, and that narrowness is deliberate.
+comparison, on this generator, this seed, and that this holds up under a
+second, independent re-measurement after fixing an unrelated isolation bug.
+`shared_device_only` and `shared_ip_only` still trail badly, which keeps the
+original caution alive in weaker form: a full graph is not yet shown to beat
+*every* simpler rule, only the one the previous phase's finding #1 was about
+— and this run, `transaction_level` itself has slipped behind
+`shared_device_only`, so "the strongest non-graph rule" is no longer the same
+baseline it was in Phase 10/11. The honest headline stays "the graph score
+beats the strongest non-graph rule tried, on the axis this phase targeted" —
+narrower than a general claim, and that narrowness is deliberate — it just
+now names `shared_device_only`, not `transaction_level`, as that rule.

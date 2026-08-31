@@ -198,12 +198,19 @@ casing false positives out of it.
 pool-funded ring type and the 8th signal), so it necessarily moved the config
 fingerprint and required a full re-freeze rather than a standalone patch — see
 `weight_search_protocol.md` and `abstention_protocol.md`, both re-run and
-re-frozen in Phase 11. The new headline numbers, re-frozen under the fixed
-formula: `A_baseline`'s validation expected loss **8,849.98**, held-out
-**8,041.65** at threshold 0.14; the abstention band `t_lo=0.14, t_hi=0.23`
-reduces held-out expected loss to **6,808.33**, a **15.3%** reduction against
-the binary baseline on the same rows — one number now, not two under separate
-accountings, because there is only one cost model to report.
+re-frozen in Phase 11, then again in Phase 12 after an RNG-isolation bug fix
+in `_inject_rings` changed the generator's actual output without moving the
+fingerprint (see `riskmesh/generate.py`'s module comment and
+`weight_search_protocol.md`'s Status header). The current headline numbers,
+re-frozen under the fixed formula and the corrected generator:
+`A_baseline`'s validation expected loss **4,000.00**, held-out **74,595.13**
+at threshold 0.18 (one missed ring dominates this figure — see
+`weight_search_protocol.md` §8); the abstention search this run selects the
+degenerate band `t_lo=0.18, t_hi=0.18`, identical to the binary policy on
+these rows, a **0%** change rather than a reduction (see
+`abstention_protocol.md` §8b) — there is only one cost model to report either
+way, which is the property D3 fixed and remains true regardless of which
+run's numbers are quoted.
 
 **Why this could not simply be reported without a re-freeze.** Fixing the
 formula moves every number that depends on it — exactly what this entry

@@ -130,6 +130,15 @@ Bounds come from `config.py`; the panel is computed on train+val only.
 
 ## Phase 11 — Weight search and abstention band re-frozen against Phase 10
 
+**Superseded by Phase 12 below.** The numbers in this section were current
+when Phase 11 closed; Phase 12 fixed an RNG-isolation bug in the same
+generator mechanism (`riskmesh/generate.py`) that changed actual output
+without moving the config fingerprint, so `weight_search_protocol.md` and
+`abstention_protocol.md` were re-run again and every figure below is now
+historical, not a description of what `tests/test_riskmesh.py` currently
+asserts. Kept for the phase-by-phase record; see Phase 12 for current
+numbers.
+
 - [x] **scripted** — the weight-gate test refuses `B_equal` and (under the new
       weight vector) `E_drop_temporal`, and confirms `A_baseline` and
       `D_drop_flagged` both remain feasible and tie *(test 19)*
@@ -138,8 +147,13 @@ Bounds come from `config.py`; the panel is computed on train+val only.
       the protocol's own re-freeze rule, and the second pass reached a fixed
       point in one iteration
 - [x] **scripted** — `experiments/weight_policy.json` carries the current
-      config fingerprint, and the pipeline's copy into `out/` matches it
-      *(test 18, and the API's one-run assertion, `test_api.py` test 01)*
+      config fingerprint, and the pipeline's copy into `out/` matches it --
+      caught not by test 18 (`_copy_frozen_record` is a byte copy, so
+      byte-for-byte reproducibility cannot detect a stale-but-matching source
+      file by construction) but by config-fingerprint agreement checked at
+      `Artifacts` load time (`test_api.py` test 01/02), plus the
+      weight-search and abstention regression tests that recompute a frozen
+      figure live against the current code and data (test 19, test 20)
 - [x] **scripted** — the binary/three-way collapse at `t_lo = t_hi` reproduces
       the current frozen expected loss (8,849.98 at threshold 0.14) exactly
       *(test 20)*
@@ -155,3 +169,59 @@ Bounds come from `config.py`; the panel is computed on train+val only.
       (`weight_search_protocol.md`, `abstention_protocol.md`,
       `deferred_decisions.md`, `bugs.md` RISK-004, `implementation_plan.md`,
       `README.md`) updated to the re-frozen figures
+
+## Phase 12 — RNG-isolation fix in `_inject_rings`, second re-freeze
+
+A final whole-branch review found that Phase 10's instrument-mechanism
+if/else in `_inject_rings` let the main RNG stream's consumption depend on
+`is_hybrid`, a data-dependent branch — the exact trap
+`riskmesh/experiment.py`'s module docstring names, learned the hard way in
+E3. Fixed by drawing the `sharers`/`share_rng` values unconditionally, every
+ring, and (found only by this phase's own isolation spot-check) giving the
+hybrid-vs-non-hybrid signup-day draw its own dedicated per-ring `Random` too
+— `randint`'s rejection sampling consumes a variable number of words
+depending on the range argument, so two branches with different bounds are
+not isolated merely by drawing the same *number* of `randint` calls.
+
+- [x] **scripted** — spot-check: two runs differing only in
+      `p_ring_instrument_funded` produce byte-identical `fam00` membership,
+      first account id, and total transaction count (verified interactively;
+      not a permanent test, since it requires running the generator twice
+      under different configs, which no fixture in `tests/` currently does)
+- [x] **scripted** — the weight-gate test refuses `B_equal`,
+      `C_separation_proportional` (newly refused this run), and
+      `E_drop_temporal`, and confirms `A_baseline` and `D_drop_flagged` both
+      remain feasible and tie *(test 19)*
+- [x] **manual** — `weight_search_protocol.md` re-run end to end: `A_baseline`
+      won outright on the first pass (threshold 0.18, validation expected
+      loss 4,000.00); `D_drop_flagged` ties it exactly but is a no-op against
+      the current weights, so the fold-back rule (§5 rule 4) was not invoked
+- [x] **scripted** — `experiments/weight_policy.json` carries the current
+      config fingerprint, and the pipeline's copy into `out/` matches it --
+      caught by config-fingerprint agreement at `Artifacts` load time
+      (`test_api.py` test 01/02) and the live-recomputing regression tests
+      (test 19, test 20), not by test 18 (see the Phase 11 row above for why)
+- [x] **scripted** — the binary/three-way collapse at `t_lo = t_hi` reproduces
+      the current frozen expected loss (4,000.00 at threshold 0.18) exactly
+      *(test 20)*
+- [x] **manual** — `abstention_protocol.md` re-run end to end: the free
+      search selects the degenerate band `t_lo=0.18, t_hi=0.18` (identical to
+      the binary policy), held-out expected loss 74,595.13 against the
+      binary policy's 74,595.13 -- a 0% change, not a reduction, because the
+      two policies are bit-for-bit identical on every held-out row
+- [x] **manual** — `implementation_plan.md` "Phase 10-12" reports the
+      account-age-confound target honestly: `transaction_level` no longer
+      reaches held-out F1 1.0000 (now 0.5833, below even `shared_device_only`
+      at 0.6957), and the shipped `ring_score` (0.7778) still beats it
+      outright -- the direction held, the margin and the ranking among
+      baselines both moved
+- [x] **manual** — `riskmesh/api/payloads.py`'s per-signal bug-attribution
+      note fixed: each zero-weighted signal maps to the RISK item that
+      actually zeroed it (`ip_sharing` -> RISK-001, `instrument_sharing` ->
+      RISK-004, `merchant_concentration` -> RISK-002) instead of a single
+      hardcoded `"RISK-001"` string; `tests/test_api.py` test 07 checks the
+      per-signal mapping, not just that a note is present
+- [x] **manual** — every document quoting a weight-search or abstention
+      number, a "minority" fraction that is actually >= 0.5, a stale
+      "seven signals" count, or the weight-search winner's name, re-checked
+      against the fresh `out/` and corrected
