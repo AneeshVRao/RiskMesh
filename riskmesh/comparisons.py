@@ -53,7 +53,7 @@ TXN_LEVEL_YOUNG_ACCOUNT_DAYS = 30
 ABLATION_GROUPS: dict[str, tuple[str, ...]] = {
     "device": ("device_sharing",),
     "ip": ("ip_sharing",),
-    "instrument": ("instrument_sharing",),
+    "instrument": ("instrument_sharing", "instrument_pool_concentration"),
     "temporal": ("temporal_burst",),
     "behavioral_refund": ("failure_refund_rate", "account_newness",
                           "merchant_concentration"),

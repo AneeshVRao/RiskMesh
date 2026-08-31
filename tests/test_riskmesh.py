@@ -316,7 +316,17 @@ def test_19_panel_gate_refuses_a_failing_weight_vector(cfg, cands) -> None:
 
     design = [c for c in cands if c.split in ("train", "validation")]
     costs = derive_costs(design)
-    assert costs["false_negative"] > costs["false_positive"] > costs["manual_review"], (
+    # Phase 10 (D3): C_fp dropped its own embedded review term -- it is
+    # friction-only now, since the generic (tp+fp)*C_review term already
+    # prices one review per flagged component. That removes any structural
+    # guarantee that C_fp > C_review (the old C_fp = review + friction made
+    # that trivially true); what a fraud cost model still requires is that a
+    # missed ring costs more than either a false-positive's friction or a
+    # single review.
+    assert costs["false_negative"] > costs["false_positive"], (
+        "derived costs are not ordered as a fraud cost model requires"
+    )
+    assert costs["false_negative"] > costs["manual_review"], (
         "derived costs are not ordered as a fraud cost model requires"
     )
 
@@ -342,13 +352,29 @@ def test_19_panel_gate_refuses_a_failing_weight_vector(cfg, cands) -> None:
 
     assert refused, (
         "no candidate was refused -- a gate that never fires has not been shown "
-        "to work, and D_drop_flagged is on the candidate list precisely to fire it"
+        "to work, and B_equal is on the candidate list precisely to fire it"
     )
-    assert "D_drop_flagged" in refused, "the known-bad candidate was not refused"
+    # Phase 10: D_drop_flagged zeros instrument_sharing and
+    # merchant_concentration (RISK-004, RISK-002), but leaves the new
+    # instrument_pool_concentration signal active -- unlike instrument_sharing,
+    # it is not a filed defect, so dropping only the flagged pair no longer
+    # removes all instrument-dimension signal from the scorer. Renormalising
+    # onto the remaining (working) signals now clears both difficulty gates
+    # (hard_negatives_inside_positive_range 6, positives_below_max_negative
+    # 0.625 on train+validation). This is the intended effect of fixing
+    # RISK-004's instrument dimension, not a gate regression -- the gate still
+    # fires on B_equal below.
+    assert "D_drop_flagged" in scored, (
+        "D_drop_flagged should now be feasible: it only zeros the flagged "
+        "instrument_sharing/merchant_concentration pair, and the new "
+        "instrument_pool_concentration signal (not a filed defect) still "
+        "carries the instrument dimension"
+    )
     assert "B_equal" in refused, (
-        "B_equal passes the non-triviality panel but drops hard negatives in the "
-        "positive range from 4 to 1 -- the difficulty gate exists to refuse it, "
-        "and if it no longer does, panel PASS has silently become sufficient"
+        "B_equal passes the non-triviality panel but takes "
+        "positives_below_max_negative below the 0.45 difficulty gate -- the "
+        "gate exists to refuse it, and if it no longer does, panel PASS has "
+        "silently become sufficient"
     )
     assert "A_baseline" in scored, "the incumbent must remain feasible"
     check(f"19 weight gates refuse {sorted(refused)}, score {sorted(scored)}")
@@ -363,9 +389,11 @@ def test_20_abstention_binary_collapse(cfg, cands) -> None:
     is a permanent test, not a design-doc claim, because a future edit to
     either formula that breaks the equivalence would silently make the two
     cost models inconsistent with each other. The frozen number itself --
-    5,348.23 at threshold 0.23 -- is asserted directly, not just the equality
-    of the two formulas, so a regression in the pipeline upstream of the
-    formulas is caught too.
+    158,588.48 at threshold 0.23 (re-frozen in Phase 10: the hybrid pool-funded
+    ring type and the D3 cost-model fix both move it, and generate.py's random
+    draws changed too, e.g. more validation components) -- is asserted
+    directly, not just the equality of the two formulas, so a regression in
+    the pipeline upstream of the formulas is caught too.
     """
     from riskmesh.abstention import three_way_stats
     from riskmesh.costmodel import derive_costs, expected_loss
@@ -383,12 +411,12 @@ def test_20_abstention_binary_collapse(cfg, cands) -> None:
         f"binary costmodel.expected_loss() gives {binary['expected_loss']} -- "
         "the collapse abstention_protocol.md relies on is broken"
     )
-    assert three_way["expected_loss"] == 5348.23, (
-        f"got {three_way['expected_loss']}, expected the frozen 5,348.23 -- "
+    assert three_way["expected_loss"] == 158588.48, (
+        f"got {three_way['expected_loss']}, expected the frozen 158,588.48 -- "
         "either the formula or something upstream of it has changed"
     )
     check("20 abstention three_way_stats(t_lo=t_hi=0.23) reproduces the frozen "
-          "binary expected loss 5,348.23 exactly")
+          "binary expected loss 158,588.48 exactly")
 
 
 def test_21_ablation_full_row_reproduces_the_shipped_eval(run_a: dict) -> None:
