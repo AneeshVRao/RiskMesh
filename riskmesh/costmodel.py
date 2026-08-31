@@ -122,12 +122,21 @@ FP_FRICTION_RATE = 0.02
 FN_ABSORBED_FRACTION = 1.00
 
 
-def derive_costs(design: list[Candidate]) -> dict[str, Any]:
+def derive_costs(design: list[Candidate],
+                 fn_absorbed_fraction: float = FN_ABSORBED_FRACTION,
+                 fp_friction_rate: float = FP_FRICTION_RATE) -> dict[str, Any]:
     """Cost inputs traceable to the dataset's own exposure figures.
 
     Computed on design-split candidates only. Medians, not means: component
     exposure is long-tailed and a mean would let one large ring set the price of
     every decision.
+
+    `fn_absorbed_fraction` / `fp_friction_rate` default to this module's own
+    declared constants -- the protocol's actual, frozen cost model. They are
+    parameters (not a change to that model) so a sensitivity sweep can call
+    this same function once per grid cell instead of re-deriving the
+    arithmetic elsewhere; see `riskmesh/freeze.py::_weight_sensitivity()`,
+    which is the only caller that overrides them.
     """
     pos = [c.exposure for c in design if c.is_positive]
     neg = [c.exposure for c in design if not c.is_positive]
@@ -137,8 +146,8 @@ def derive_costs(design: list[Candidate]) -> dict[str, Any]:
     review = ANALYST_COST_PER_HOUR * ANALYST_MINUTES_PER_COMPONENT / 60.0
     median_ring = statistics.median(pos)
     median_neg = statistics.median(neg)
-    fn = median_ring * FN_ABSORBED_FRACTION
-    fp = median_neg * FP_FRICTION_RATE
+    fn = median_ring * fn_absorbed_fraction
+    fp = median_neg * fp_friction_rate
     return {
         "manual_review": round(review, 2),
         "false_negative": round(fn, 2),
@@ -152,10 +161,10 @@ def derive_costs(design: list[Candidate]) -> dict[str, Any]:
             "false_negative": (
                 f"median ring-component exposure INR {median_ring:,.2f} on "
                 f"train+validation, times FN_ABSORBED_FRACTION "
-                f"{FN_ABSORBED_FRACTION:.2f}"
+                f"{fn_absorbed_fraction:.2f}"
             ),
             "false_positive": (
-                f"FP_FRICTION_RATE {FP_FRICTION_RATE:.2f} of median "
+                f"FP_FRICTION_RATE {fp_friction_rate:.2f} of median "
                 f"negative-component exposure INR {median_neg:,.2f} -- no "
                 "separate review cost: the generic (tp+fp)*C_review term "
                 "already prices one review per flagged component (see "

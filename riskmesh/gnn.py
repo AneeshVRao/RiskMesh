@@ -422,9 +422,15 @@ def refit_final_model(cfg: Config, design: list[Candidate], graph: Graph,
 
 
 def evaluate_frozen_gnn_policy(cfg: Config, design: list[Candidate],
-                               test: list[Candidate], graph: Graph,
+                               candidates: list[Candidate], graph: Graph,
                                policy_path: Path) -> list[Candidate]:
     """Test rows -- available only once the winning configuration is on disk.
+
+    Takes the FULL candidate list and filters to the test split internally,
+    symmetric with `costmodel.evaluate_frozen_policy()` /
+    `abstention.evaluate_frozen_abstention_policy()`: a caller cannot hand
+    this function a pre-filtered test view, because there is no path through
+    it that reads `.split` before the frozen-record guards below have run.
 
     Refits the frozen hyperparameters on train+validation (§4.4 of
     `graphsage_protocol.md`) and scores the test rows with that refit. The
@@ -454,6 +460,7 @@ def evaluate_frozen_gnn_policy(cfg: Config, design: list[Candidate],
     hyperparameters = frozen["winner_hyperparameters"]
     model = refit_final_model(cfg, design, graph, hyperparameters)
     graphs = build_component_graphs(cfg, graph)
+    test = [c for c in candidates if c.split == "test"]
     return _score_with(model, test, graphs)
 
 

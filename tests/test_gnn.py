@@ -110,11 +110,12 @@ def test_02_select_asserts_design_only(cfg: Config, cands, graph, costs) -> None
 
 def test_03_frozen_guard(cfg: Config, cands, graph, tmp: Path) -> None:
     design = [c for c in cands if c.split in ("train", "validation")]
-    test_rows = [c for c in cands if c.split == "test"]
     policy_path = tmp / "graphsage_policy_missing.json"
     assert not policy_path.exists()
     try:
-        evaluate_frozen_gnn_policy(cfg, design, test_rows, graph, policy_path)
+        # Full candidate list, not a pre-filtered test view: the guard must
+        # raise before ever reading .split == "test" off any of them.
+        evaluate_frozen_gnn_policy(cfg, design, cands, graph, policy_path)
     except GNNPolicyNotFrozen:
         pass
     else:  # pragma: no cover - the guard is the point of the test

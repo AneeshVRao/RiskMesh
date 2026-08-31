@@ -121,30 +121,19 @@ def _standard_held_out(cfg: Config, design: list[Candidate], test: list[Candidat
 # FP_FRICTION_RATE, both varied around costmodel.py's declared defaults
 # (1.00, 0.02). select_weights() takes a `costs` dict as a plain argument, so
 # this sweep is composition -- repeated calls with a different costs dict --
-# not a change to selection semantics. derive_costs() itself does not expose
-# these two constants as parameters (they are module-level in costmodel.py),
-# so the variant dicts are built here from the same median exposures
-# derive_costs() already returned, using the same formula it documents.
+# not a change to selection semantics. derive_costs() itself now takes both
+# as optional parameters (defaulting to the declared constants) precisely so
+# this sweep can call it once per grid cell rather than re-deriving its
+# arithmetic here.
 _FN_ABSORBED_FRACTIONS = (0.5, 0.75, 1.0)
 _FP_FRICTION_RATES = (0.01, 0.02, 0.05)
 
 
-def _costs_variant(costs: dict[str, Any], fn_fraction: float, fp_rate: float) -> dict[str, Any]:
-    median_ring = costs["inputs_from_data"]["median_ring_exposure"]
-    median_neg = costs["inputs_from_data"]["median_negative_exposure"]
-    return {
-        "manual_review": costs["manual_review"],
-        "false_negative": round(median_ring * fn_fraction, 2),
-        "false_positive": round(median_neg * fp_rate, 2),
-    }
-
-
-def _weight_sensitivity(cfg: Config, design: list[Candidate],
-                        costs: dict[str, Any]) -> dict[str, Any]:
+def _weight_sensitivity(cfg: Config, design: list[Candidate]) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
     for fn_fraction in _FN_ABSORBED_FRACTIONS:
         for fp_rate in _FP_FRICTION_RATES:
-            variant = _costs_variant(costs, fn_fraction, fp_rate)
+            variant = derive_costs(design, fn_fraction, fp_rate)
             result = select_weights(cfg, design, variant)
             winner = result["winner"]
             row: dict[str, Any] = {
@@ -179,7 +168,7 @@ def freeze_weights(cfg: Config | None = None, path: Path | None = None) -> dict[
     costs = derive_costs(design)
 
     meta = select_weights(cfg, design, costs)
-    meta["sensitivity"] = _weight_sensitivity(cfg, design, costs)
+    meta["sensitivity"] = _weight_sensitivity(cfg, design)
     freeze_policy(path, meta)
 
     if meta["winner"] is None:
@@ -369,7 +358,7 @@ def freeze_abstention(cfg: Config | None = None, weight_path: Path | None = None
         )
     weight_record = json.loads(weight_path.read_text(encoding="utf-8"))
 
-    _, cands, labels = _build(cfg)
+    _, cands, _ = _build(cfg)
     design = [c for c in cands if c.split in DESIGN_SPLITS]
     costs = derive_costs(design)
 
@@ -422,8 +411,10 @@ def freeze_xgboost(cfg: Config | None = None, path: Path | None = None) -> dict[
               "(every candidate was refused by the gate)")
         return meta
 
-    test = [c for c in cands if c.split == "test"]
-    scored_test = evaluate_frozen_ml_policy(cfg, design, test, path)
+    # Full candidate list, not a pre-filtered test view -- the guard itself
+    # filters split == "test" internally, symmetric with
+    # costmodel.evaluate_frozen_policy() (G2).
+    scored_test = evaluate_frozen_ml_policy(cfg, design, cands, path)
     meta["held_out"] = _standard_held_out(
         cfg, design, scored_test, labels, meta["winner_threshold"], costs
     )
@@ -449,8 +440,10 @@ def freeze_graphsage(cfg: Config | None = None, path: Path | None = None) -> dic
               "(every candidate was refused by the gate)")
         return meta
 
-    test = [c for c in cands if c.split == "test"]
-    scored_test = evaluate_frozen_gnn_policy(cfg, design, test, graph, path)
+    # Full candidate list, not a pre-filtered test view -- the guard itself
+    # filters split == "test" internally, symmetric with
+    # costmodel.evaluate_frozen_policy() (G2).
+    scored_test = evaluate_frozen_gnn_policy(cfg, design, cands, graph, path)
     meta["held_out"] = _standard_held_out(
         cfg, design, scored_test, labels, meta["winner_threshold"], costs
     )
@@ -485,7 +478,12 @@ def main(argv: list[str] | None = None) -> int:
     }
     for stage in stages:
         meta = runners[stage]()
-        print(f"{stage}: wrote {paths[stage]}  winner={meta.get('winner')}")
+        if stage == "abstention":
+            band = meta["result"]
+            status = f"band t_lo={band['t_lo']} t_hi={band['t_hi']}"
+        else:
+            status = f"winner={meta.get('winner')}"
+        print(f"{stage}: wrote {paths[stage]}  {status}")
     return 0
 
 
