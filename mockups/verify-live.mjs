@@ -146,6 +146,21 @@ const txt = (p, sel) => p.textContent(sel).then((t) => (t || "").trim());
      Object.keys(b.panel.checks).length);
   eq("weight candidates", await p.locator("#weights-body tr").count(),
      b.weight_search.candidates.length);
+  // Task 7a: seven PRD baselines, including Tier 2 (xgboost_scorer) refused
+  // with no held-out read and Tier 3 (gnn_scorer) with a real one. A null
+  // held_out on the refused row previously crashed the renderer's sort
+  // comparator, which the top-level .catch swallowed -- the page fell back
+  // to "API offline" and the static 5-row placeholder with no visible sign
+  // of a bug. This guards against that regressing silently.
+  eq("baseline rows", await p.locator("#base-body tr").count(),
+     b.baselines.baselines.length);
+  const baseText = await p.locator("#base-body").innerText();
+  const refused = b.baselines.baselines.find((r) => r.feasible === false);
+  eq("refused baseline visible", refused && baseText.includes(refused.baseline), true);
+  eq("refusal reason visible", refused && baseText.includes(refused.status), true);
+  const gnn = b.baselines.baselines.find((r) => r.baseline === "gnn_scorer");
+  eq("gnn_scorer row visible", gnn && baseText.includes("gnn_scorer"), true);
+  eq("gnn_scorer F1 rendered", gnn && baseText.includes(f4(gnn.held_out.f1)), true);
   const ss = await p.locator(".ssv").allTextContents();
   const best = Math.max(...Object.values(b.single_signal_max_f1));
   eq("top single-signal F1", ss[0], best.toFixed(4).slice(1));
