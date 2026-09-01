@@ -337,7 +337,7 @@ CLUSTER_TYPES: tuple[str, ...] = ("family", "office", "hostel", "retail")
 _OFFICE_DEVICE_POOL_PRIME = 1_000_000_007  # office's small shared-device pool
 _CLUSTER_SIGNUP_PRIME = 998_244_353        # office/hostel signup-day draw
 _RETAIL_MERCHANT_PRIME = 999_999_937       # retail merchant-pool concentration
-_RETAIL_SHARE_PRIME = 179_424_673          # retail's weak instrument sharers
+_RETAIL_SHARE_PRIME = 179_424_673          # retail's per-member instrument pool
 
 
 def _ring_type_plan(cfg: Config) -> list[str]:
@@ -679,12 +679,16 @@ def _inject_hard_negative_clusters(
     shared-IP ring type specifically.
 
     **retail** -- genuinely unrelated customers, so no device/IP convergence;
-    a weak 2-member instrument overlap gives graph.py a structural edge to
-    form a component from at all (the same fix the refund-abuse ring needed --
-    see `_inject_rings`'s refund branch). A small shared merchant pool plus a
-    coordinated burst is the deliberate collision with `merchant_concentration`
-    and `temporal_burst`, and the hard negative for the refund-abuse ring
-    specifically.
+    EVERY member (not a 2-account sample) draws an instrument from a small
+    shared pool, same mechanic the instrument/hybrid ring types use, so
+    graph.py sees the whole cluster rather than the 2 accounts a fixed
+    2-sharer overlap would have left connected (review fix -- an earlier cut
+    of this dropped 4-8 of every 6-10 member cluster as singletons the
+    scorer never saw, exactly the structural-edge gap the refund-abuse ring
+    hit in Task 3, just reintroduced one mechanism later). A small shared
+    merchant pool plus a coordinated burst is the deliberate collision with
+    `merchant_concentration` and `temporal_burst`, and the hard negative for
+    the refund-abuse ring specifically.
 
     None of the three elevate refund/failure rate -- they are legitimate
     lookalikes, not more rings.
@@ -698,7 +702,9 @@ def _inject_hard_negative_clusters(
     never perturb `rng`. The retail merchant pool is applied length-preserving
     (replace CONTENT, keep each member's own merchants-list length), same
     reason `_inject_rings`'s refund branch does it: `rng.choice(acct.merchants)`
-    runs later, on the shared stream, during emission.
+    runs later, on the shared stream, during emission. The per-member
+    instrument is length-preserving too (1 -> 1), same as the instrument/
+    hybrid ring types.
     """
     periods = list(cfg.split_boundaries)
     plan = _cluster_type_plan(cfg)
@@ -763,11 +769,22 @@ def _inject_hard_negative_clusters(
             )
             for acct in members:
                 acct.merchants = [merch_rng.choice(pool) for _ in acct.merchants]
-            share_rng = random.Random(cfg.seed * _RETAIL_SHARE_PRIME + c)
-            sharers = share_rng.sample(members, min(len(members), 2))
-            shared_pi = f"pi_{cluster_id}"
-            for acct in sharers:
-                acct.instruments.append(shared_pi)
+            # Review fix (task-4-report.md Important #1): a fixed 2-sharer
+            # overlap left 4-8 of every 6-10 member cluster as unconnected
+            # singletons -- graph.py never saw them, so "many accounts
+            # converging on one merchant" was invisible to the scorer. Every
+            # member (not just 2) now draws an instrument from a small SHARED
+            # pool, same `instr_rng.choice(pool)` per-member, length-preserving
+            # pattern the instrument/hybrid ring types already use above --
+            # many-to-few, not many-to-one, so individual sharing stays weak
+            # while the whole cluster becomes reachable by the graph.
+            instr_rng = random.Random(cfg.seed * _RETAIL_SHARE_PRIME + c)
+            instr_pool = [
+                f"pi_{cluster_id}_r{j}"
+                for j in range(min(cfg.retail_instrument_pool_size, len(members)))
+            ]
+            for acct in members:
+                acct.instruments = [instr_rng.choice(instr_pool)]  # 1 -> 1
             for acct in members:
                 acct.extra["burst"] = float(bursts)
 

@@ -71,12 +71,21 @@ def _write_labels(path: Path, labels: list[Label]) -> None:
         w.writerows(labels)
 
 
-def _write_components(path: Path, scores: list[ComponentScore], splits, cands) -> None:
+def _write_components(path: Path, scores: list[ComponentScore], splits, cands,
+                      labels: list[Label]) -> None:
     """Both raw and normalised values per signal, so the evidence a UI or an
-    explanation layer needs is already in the file."""
+    explanation layer needs is already in the file.
+
+    `cluster_type` is looked up from `labels` (via `cluster_id`, not carried
+    on `Candidate` itself -- same as `ring_type` never was) so the payload
+    layer can tell an office/hostel/retail/family cluster apart instead of
+    reading only the boolean `has_family` (review fix: `api/payloads.py` was
+    hardcoding every `has_family` component as `"family"`).
+    """
     by_id = {c.component_id: c for c in cands}
+    cluster_type_by_id = {lb.cluster_id: lb.cluster_type for lb in labels if lb.cluster_id}
     cols = ["component_id", "split", "size", "n_txns", "exposure", "score",
-            "is_positive", "ring_id", "has_family", "cluster_id"]
+            "is_positive", "ring_id", "has_family", "cluster_id", "cluster_type"]
     for name in SIGNALS:
         cols += [f"{name}_raw", f"{name}_norm", f"{name}_detail"]
 
@@ -87,7 +96,8 @@ def _write_components(path: Path, scores: list[ComponentScore], splits, cands) -
             c = by_id[s.component_id]
             row = [s.component_id, splits.by_component[s.component_id].split,
                    s.size, s.n_txns, s.exposure, s.score,
-                   int(c.is_positive), c.ring_id, int(c.has_family), c.cluster_id]
+                   int(c.is_positive), c.ring_id, int(c.has_family), c.cluster_id,
+                   cluster_type_by_id.get(c.cluster_id, "")]
             for name in SIGNALS:
                 sig = s.signals[name]
                 row += [sig.raw, sig.normalized, sig.detail]
@@ -165,7 +175,7 @@ def main(cfg: Config | None = None, out: Path = OUT) -> dict:
 
     _write_transactions(out / "transactions.csv", txns)
     _write_labels(out / "labels.csv", labels)
-    _write_components(out / "components.csv", scores, splits, candidates)
+    _write_components(out / "components.csv", scores, splits, candidates, labels)
     _write_graph_edges(out / "graph_edges.json", graph)
     for name in FROZEN_RECORDS:
         _copy_frozen_record(EXPERIMENTS / name, out / name)

@@ -535,17 +535,20 @@ def test_20_abstention_binary_collapse(cfg, cands) -> None:
     is a permanent test, not a design-doc claim, because a future edit to
     either formula that breaks the equivalence would silently make the two
     cost models inconsistent with each other. The frozen number itself --
-    144,846.28 at threshold 0.18 (re-derived in Task 3: first for the
+    145,123.30 at threshold 0.18 (re-derived in Task 3: first for the
     population raise and four new ring types, 4,000.00 -> 257,592.45; then
     again for the review fix that gave refund-abuse rings a structural edge
-    so they survive as candidates, 257,592.45 -> 203,290.09; re-derived again
-    in Task 4 for the three new hard-negative cluster types and the further
-    population raise, 203,290.09 -> 144,846.28 -- see task-3-report.md and
-    task-4-report.md) -- is asserted directly, not just the equality of the
-    two formulas, so a regression in the pipeline upstream of the formulas is
-    caught too. The number itself is not otherwise load-bearing; it is a
-    regression anchor, and it is expected to move again whenever Config's
-    population, ring mix, or cost inputs change.
+    so they survive as candidates, 257,592.45 -> 203,290.09; re-derived twice
+    more in Task 4 -- once for the three new hard-negative cluster types and
+    the further population raise, 203,290.09 -> 144,846.28, and again for
+    the review fix that gave every retail member (not just 2 sampled
+    sharers) a shared instrument so graph.py stops dropping most of each
+    retail cluster as unconnected singletons, 144,846.28 -> 145,123.30 --
+    see task-3-report.md and task-4-report.md) -- is asserted directly, not
+    just the equality of the two formulas, so a regression in the pipeline
+    upstream of the formulas is caught too. The number itself is not
+    otherwise load-bearing; it is a regression anchor, and it is expected to
+    move again whenever Config's population, ring mix, or cost inputs change.
     """
     from riskmesh.abstention import three_way_stats
     from riskmesh.costmodel import derive_costs, expected_loss
@@ -563,12 +566,12 @@ def test_20_abstention_binary_collapse(cfg, cands) -> None:
         f"binary costmodel.expected_loss() gives {binary['expected_loss']} -- "
         "the collapse abstention_protocol.md relies on is broken"
     )
-    assert three_way["expected_loss"] == 144846.28, (
-        f"got {three_way['expected_loss']}, expected the frozen 144,846.28 -- "
+    assert three_way["expected_loss"] == 145123.3, (
+        f"got {three_way['expected_loss']}, expected the frozen 145,123.30 -- "
         "either the formula or something upstream of it has changed"
     )
     check("20 abstention three_way_stats(t_lo=t_hi=0.18) reproduces the frozen "
-          "binary expected loss 144,846.28 exactly")
+          "binary expected loss 145,123.30 exactly")
 
 
 def test_21_ablation_full_row_reproduces_the_shipped_eval(run_a: dict) -> None:

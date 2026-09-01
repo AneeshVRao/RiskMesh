@@ -311,7 +311,10 @@ def policy_b_equal(cfg: Config, design: list[Candidate]) -> dict[str, float]:
 
 
 def policy_c_separation(cfg: Config, design: list[Candidate]) -> dict[str, float]:
-    """Weight proportional to each signal's ring-minus-family separation.
+    """Weight proportional to each signal's ring-minus-hard-negative-cluster
+    separation (Task 4: `has_family` covers office/hostel/retail alongside
+    family now, not family alone -- "family" here is a holdover name for
+    what the comparison group actually is; the computation is unchanged).
 
     Uses the diagnostic that drove every RISK fix in this build. Signals with a
     non-positive delta get zero.

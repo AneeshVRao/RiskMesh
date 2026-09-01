@@ -39,8 +39,9 @@ def contribution(weight: float, normalized: float) -> float:
 #
 #   1. same split as the subject
 #   2. opposite is_positive, excluding the subject itself
-#   3. prefer has_family -- the panel is "ring vs HOUSEHOLD", and a generic
-#      background negative would not tell that story
+#   3. prefer has_family -- the panel is "ring vs HARD-NEGATIVE CLUSTER"
+#      (family/office/hostel/retail), and a generic background negative
+#      would not tell that story
 #   4. minimise |score difference|, rounded to 9dp to avoid float-repr ties
 #   5. tiebreak A: higher score wins (prefer the harder case)
 #   6. tiebreak B: lexicographically smallest component_id -- a total order, so

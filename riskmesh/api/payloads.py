@@ -60,7 +60,7 @@ def rings(arts: Artifacts, split: str = DEFAULT_SPLIT,
             "size": c["size"],
             "n_txns": c["n_txns"],
             "exposure": c["exposure"],
-            "label": c["ring_id"] or ("family" if c["has_family"] else None),
+            "label": c["ring_id"] or (c["cluster_type"] or None),
             "is_positive": c["is_positive"],
             "has_family": c["has_family"],
         })
@@ -107,7 +107,7 @@ def _facts(comp: dict) -> dict:
     burst_of = int(m[1]) if len(m) > 1 else comp["size"]
     return {
         "component_id": comp["component_id"],
-        "label": comp["ring_id"] or ("family" if comp["has_family"] else None),
+        "label": comp["ring_id"] or (comp["cluster_type"] or None),
         "score": comp["score"],
         "accounts": comp["size"],
         "median_account_age_days": int(sig["account_newness"]["raw"]),

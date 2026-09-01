@@ -310,6 +310,13 @@ class Config:
     retail_signup_min_days: int = 15
     retail_signup_max_days: int = 540
     retail_merchant_pool_size: int = 2
+    # Review fix (task-4-report.md Important #1): EVERY member draws an
+    # instrument from this small shared pool (same length-preserving
+    # `instr_rng.choice(pool)` pattern the instrument/hybrid ring types use),
+    # not just 2 sampled sharers -- a fixed 2-sharer overlap left most of a
+    # 6-10 member cluster as unconnected singletons, invisible to graph.py.
+    # Kept small ("many-to-few") so individual sharing stays weak.
+    retail_instrument_pool_size: int = 3
     # Drawn for every new-type cluster regardless of type (G3) -- only retail
     # acts on it, same discipline as p_ring_instrument_funded being drawn for
     # every ring even though only the device type uses it.
