@@ -127,8 +127,27 @@ def _freeze_cutoff(validation: list[Candidate],
 
 
 def _read_once(test: list[Candidate], values: dict[str, float],
-               cutoff: float, direction: str) -> dict[str, float | int]:
-    """Apply a frozen cutoff to the held-out split. Selects nothing."""
+               cutoff: float, direction: str) -> dict[str, float | int | str]:
+    """Apply a frozen cutoff to the held-out split. Selects nothing.
+
+    Carries its own `cutoff`/`direction` in the returned dict -- a metric with
+    no operating point attached is not interpretable on its own, and that gap
+    is exactly what let an F1 measured at one operating point get paired with
+    an expected loss measured at another (coordinator correction, Task 7).
+
+    Named `cutoff`, not `threshold`, to match every row this feeds (the five
+    value-swept baselines and `ring_score`) -- all five already report their
+    operating point under a row-level `cutoff` field, a naming choice that
+    predates this fix. The Tier 3 (GraphSAGE) row uses `threshold` instead,
+    at both row level and inside its own `held_out`, because it is built
+    entirely from graphsage_protocol.md's own vocabulary
+    (`winner_threshold`), not from this function. Two names for what is, in
+    both cases, "the value a score is compared against to decide flag/no-flag"
+    -- kept as two names rather than unified, so this table's five long-
+    standing rows are not renamed as a side effect of this fix, and each row
+    is at least internally consistent between its row-level field and its
+    nested one.
+    """
     assert all(c.split == "test" for c in test), "_read_once got non-test candidates"
     flags = [
         (values[c.component_id] >= cutoff if direction == ">="
@@ -136,7 +155,7 @@ def _read_once(test: list[Candidate], values: dict[str, float],
         for c in test
     ]
     counts = confusion(flags)
-    return {**counts, **prf(counts)}
+    return {**counts, **prf(counts), "cutoff": cutoff, "direction": direction}
 
 
 # --------------------------------------------------------------------------
@@ -260,13 +279,25 @@ def _tier2_xgboost_row() -> dict:
     }
 
 
-def _tier3_graphsage_row(tier1_f1: float, tier1_expected_loss: float) -> dict:
+def _tier3_graphsage_row() -> dict:
     """PRD baseline 7: 'GNN scorer, if Tier 3 is completed'.
 
     graphsage_protocol.md's winner (G2_two_layer) is fed here verbatim from
-    its own frozen `held_out` block. Tier 1's own held-out F1 and expected loss
-    are attached alongside it, unedited, so a reader can compare the two
-    columns directly -- this function does not judge which is better.
+    its own frozen `held_out` block. Tier 1's own held-out F1 and expected
+    loss are attached alongside it under `tier1_reference`, unedited, so a
+    reader can compare the two columns directly -- this function does not
+    judge which is better.
+
+    `tier1_reference` is `weight_policy.json`'s OWN held_out block (the
+    weight search's single permitted read, at ITS cost-selected threshold
+    0.10) -- not `baselines.json`'s `ring_score` row, which measures the
+    shipped scorer's best F1 at a DIFFERENT, independently validation-swept
+    cutoff (0.22). Coordinator correction, Task 7: an earlier version of this
+    function paired ring_score's F1 (0.75, cutoff 0.22) with
+    weight_policy.json's expected loss (92,263.55, threshold 0.10) -- two
+    different operating points presented as one model's numbers. Every value
+    below carries the threshold it was measured at, specifically so that
+    mistake cannot happen silently again.
     """
     gs = _read_frozen("graphsage_policy.json")
     assert gs["winner"] is not None, (
@@ -274,6 +305,7 @@ def _tier3_graphsage_row(tier1_f1: float, tier1_expected_loss: float) -> dict:
         "feasible Tier 3 candidate exists and must be updated if that changes"
     )
     ho = gs["held_out"]
+    wp_ho = _read_frozen("weight_policy.json")["held_out"]
     return {
         "baseline": "gnn_scorer",
         "tier": 3,
@@ -288,6 +320,7 @@ def _tier3_graphsage_row(tier1_f1: float, tier1_expected_loss: float) -> dict:
         "winner_hyperparameters": gs["winner_hyperparameters"],
         "threshold": gs["winner_threshold"],
         "held_out": {
+            "threshold": gs["winner_threshold"],
             "precision": ho["precision"], "recall": ho["recall"], "f1": ho["f1"],
             "false_positive_rate": ho["false_positive_rate"],
             "tp": ho["tp"], "fp": ho["fp"], "tn": ho["tn"], "fn": ho["fn"],
@@ -303,11 +336,14 @@ def _tier3_graphsage_row(tier1_f1: float, tier1_expected_loss: float) -> dict:
         # this row exists to avoid.
         "held_out_hard_negatives_only": None,
         "tier1_reference": {
-            "f1": tier1_f1,
-            "expected_loss": tier1_expected_loss,
-            "note": "Tier 1's own held-out reading, unedited, for direct "
-                    "comparison against the two rows above -- not an "
-                    "assessment of which tier wins.",
+            "source": "experiments/weight_policy.json held_out (cost-selected "
+                      "operating point, NOT baselines.json's ring_score row)",
+            "threshold": wp_ho["threshold"],
+            "f1": wp_ho["f1"],
+            "expected_loss": wp_ho["expected_loss"],
+            "note": "Tier 1's own held-out reading, at its own cost-selected "
+                    "threshold, unedited, for direct comparison against the "
+                    "row above -- not an assessment of which tier wins.",
         },
     }
 
@@ -389,13 +425,12 @@ def baseline_report(cfg: Config, txns: list[Txn], graph: Graph,
 
     # PRD baselines 6 and 7 -- "if Tier 2/3 is completed", and both tiers are.
     # Sourced verbatim from their own frozen records, never refit or
-    # re-scored here. Tier 1's own held-out reading (this same ring_score row,
-    # plus weight_policy.json's expected loss) rides along on the Tier 3 row
-    # so the two can be read side by side without opening a second file.
-    tier1_f1 = rows[-1]["held_out"]["f1"]
-    tier1_expected_loss = _read_frozen("weight_policy.json")["held_out"]["expected_loss"]
+    # re-scored here. Tier 3's row carries its own Tier 1 comparison
+    # (weight_policy.json's held_out, at ITS cost-selected threshold) rather
+    # than borrowing this file's ring_score row above -- see
+    # _tier3_graphsage_row()'s docstring for why those two must not be mixed.
     rows.append(_tier2_xgboost_row())
-    rows.append(_tier3_graphsage_row(tier1_f1, tier1_expected_loss))
+    rows.append(_tier3_graphsage_row())
 
     return {
         "measurement": "prd-row-63-baseline-sanity-checks",

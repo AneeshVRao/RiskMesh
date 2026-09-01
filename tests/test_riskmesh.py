@@ -718,6 +718,15 @@ def test_25_baseline_table_has_seven_rows_tier2_refused_tier3_present(run_a: dic
     with no fabricated metric (G5), Tier 3 (a winner) with its real held-out
     read, sourced from experiments/xgboost_policy.json and
     experiments/graphsage_policy.json verbatim, never refit or re-scored.
+
+    Coordinator correction: `tier1_reference` must be weight_policy.json's OWN
+    held_out block (Tier 1 at ITS cost-selected threshold 0.10, F1 0.5432,
+    loss 92,263.55) -- NOT baselines.json's `ring_score` row (Tier 1 at a
+    DIFFERENT, independently validation-swept cutoff 0.22, F1 0.75). An
+    earlier version of this check asserted the latter, which is exactly the
+    mixed-operating-point pairing the coordinator flagged as wrong; every
+    metric asserted below carries the threshold it was measured at so that
+    mistake cannot silently recur.
     """
     import json
 
@@ -727,6 +736,7 @@ def test_25_baseline_table_has_seven_rows_tier2_refused_tier3_present(run_a: dic
 
     xg = json.loads(Path("experiments/xgboost_policy.json").read_text(encoding="utf-8"))
     gs = json.loads(Path("experiments/graphsage_policy.json").read_text(encoding="utf-8"))
+    wp = json.loads(Path("experiments/weight_policy.json").read_text(encoding="utf-8"))
 
     tier2 = next(b for b in base["baselines"] if b["baseline"] == "xgboost_scorer")
     assert xg["winner"] is None, "xgboost_policy.json now has a winner -- update the fixture"
@@ -739,15 +749,28 @@ def test_25_baseline_table_has_seven_rows_tier2_refused_tier3_present(run_a: dic
     tier3 = next(b for b in base["baselines"] if b["baseline"] == "gnn_scorer")
     assert tier3["feasible"] is True
     assert tier3["winner"] == gs["winner"] == "G2_two_layer"
+    assert tier3["held_out"]["threshold"] == gs["winner_threshold"]
     assert tier3["held_out"]["f1"] == gs["held_out"]["f1"]
     assert tier3["held_out"]["expected_loss"] == gs["held_out"]["expected_loss"]
-    assert tier3["tier1_reference"]["f1"] == \
-        next(b for b in base["baselines"] if b["baseline"] == "ring_score")["held_out"]["f1"]
+
+    ref = tier3["tier1_reference"]
+    assert ref["threshold"] == wp["held_out"]["threshold"] == 0.1, ref
+    assert ref["f1"] == wp["held_out"]["f1"], ref
+    assert ref["expected_loss"] == wp["held_out"]["expected_loss"], ref
+    ring = next(b for b in base["baselines"] if b["baseline"] == "ring_score")
+    assert ref["f1"] != ring["held_out"]["f1"], (
+        "tier1_reference must be weight_policy.json's own cost-selected read, "
+        "not ring_score's independently-swept F1 at a different cutoff -- "
+        "these two happen to differ in this benchmark, which is exactly what "
+        "makes mixing them detectable"
+    )
 
     check(f"25 baseline table carries all seven PRD baselines; Tier 2 refused "
           f"explicitly ({tier2['candidates_tried']} candidates, no held-out read); "
           f"Tier 3 winner {tier3['winner']} held-out F1 {tier3['held_out']['f1']} "
-          f"vs Tier 1 F1 {tier3['tier1_reference']['f1']}")
+          f"@ {tier3['held_out']['threshold']} vs Tier 1 F1 {ref['f1']} @ "
+          f"{ref['threshold']} (same-operating-point pair, loss "
+          f"{tier3['held_out']['expected_loss']:,.2f} vs {ref['expected_loss']:,.2f})")
 
 
 def test_26_threshold_sweep_has_six_columns_on_validation_only(run_a: dict) -> None:
