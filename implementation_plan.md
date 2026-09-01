@@ -285,6 +285,13 @@ candidates; singletons are dropped.
 
 ## Phase 5 — Deterministic scorer
 
+**Superseded table below — kept as the historical record of what Phase 5
+shipped, not a description of the current scorer.** This table predates the
+eighth signal (`instrument_pool_concentration`, Phase 10) and every weight
+below has moved at least once since (`weight_search_protocol.md`'s Phase 11
+and Task 6 re-freezes). See README.md "The scorer" for the current 8-signal
+vector and weights.
+
 **Files:** `riskmesh/score.py`
 
 Seven signals. Each is computed as a **raw** value and a **normalized** [0,1]
@@ -681,6 +688,18 @@ objective — see below).
 
 ## Tier 1 — cost model and weight selection (DONE)
 
+**Superseded — kept as the historical record of the first weight-search run,
+not a description of the current frozen policy.** Every figure in this
+section (threshold 0.23, F1 0.8000, expected loss 9,392.92, `A_baseline`'s
+weight vector) predates Tasks 3-6's population raise, five-ring-type/
+four-hard-negative-type rebuild, and re-freeze. The current weight-search
+protocol, gates, and mechanism described just below are still accurate in
+kind (the same three feasibility gates, the same "protocol frozen before any
+candidate runs" discipline); only the numbers moved. See README.md "Two Tier
+1 operating points" and `experiments/weight_policy.json` for the current
+frozen result: `A_baseline` (== `E_drop_temporal`, folded back) at threshold
+0.10, held-out F1 0.5432, expected loss 92,263.55.
+
 Protocol frozen in `weight_search_protocol.md` before any candidate was scored;
 code in `riskmesh/costmodel.py`; record in `out/weight_policy.json`.
 
@@ -779,54 +798,67 @@ frozen protocol and its own single held-out read (item 1 below).
 
 **Remaining, roughly in order:**
 
-1. ~~**Abstention / manual-review band.**~~ **DONE.** Protocol frozen in
-   `abstention_protocol.md` before any band was scored; code in
-   `riskmesh/abstention.py`; record in `experiments/abstention_policy.json`.
-   Free two-threshold search (`t_lo`, `t_hi` both swept, 0.23 *not* pinned),
-   behind a pre-declared `MAX_REVIEW_RATE = 0.25` coverage gate on
-   train+validation enforced by `ReviewBandGateFailure`, objective minimised on
-   validation only, single held-out read through
-   `evaluate_frozen_abstention_policy()`.
+**Status as of this documentation sweep: items 1-4 done as described below
+(numbers superseded, mechanism unchanged); items 5-7 also now done, by later
+work this list did not originally schedule as adjacent — see each item's own
+note.**
 
-   Selected band `t_lo = 0.23`, `t_hi = 0.33`. Held out: expected loss
-   **6,000.00** against the binary baseline's 9,392.92 on the identical rows
-   (−36.1%, or −18.8% under a D3-corrected cost model — see below), review rate
-   19.35%, and **zero escalated false positives** — all four of the binary
-   policy's held-out false positives are family components and all four land
-   inside the review band, which is exactly what the argument below predicted.
-   Escalate-tier precision 1.0000, FPR 0.0000; escalate-tier recall 0.7500 with
-   the remaining two rings deferred to review rather than missed, and nothing
-   auto-allowed on either split.
+1. ~~**Abstention / manual-review band.**~~ **DONE, numbers superseded.**
+   Protocol frozen in `abstention_protocol.md` before any band was scored;
+   code in `riskmesh/abstention.py`; record in
+   `experiments/abstention_policy.json`. Free two-threshold search (`t_lo`,
+   `t_hi` both swept), behind a pre-declared `MAX_REVIEW_RATE = 0.25`
+   coverage gate on train+validation enforced by `ReviewBandGateFailure`,
+   objective minimised on validation only, single held-out read through
+   `evaluate_frozen_abstention_policy()` — this mechanism is still exactly
+   what runs today. The band selected here (`t_lo = 0.23`, `t_hi = 0.33`,
+   expected loss 6,000.00 against 9,392.92, zero escalated false positives)
+   is the single-ring-type Phase-1 benchmark's result and no longer describes
+   the current frozen record. **Current** (Task 6's re-freeze,
+   `experiments/abstention_policy.json`): band `t_lo = 0.10`, `t_hi = 0.20` —
+   the first non-degenerate band this project has ever selected, every prior
+   re-freeze through Phase 12 having collapsed to `t_lo == t_hi`. Held out:
+   three-way expected loss **75,529.35** against the binary policy's
+   **92,263.55** on the same 112 test components — an **18.1% improvement**.
+   See README "Decision policy" for the full current reading.
 
    The one new assumption, named as an assumption: a reviewed component is
    resolved correctly, so it costs one review and neither `C_fp` nor `C_fn`.
-   That is a Phase-1 cost-model assumption, not an empirical measurement. The
-   improvement's *magnitude* is also sensitive to `deferred_decisions.md` D3
-   (`C_fp` double-charges a review); its direction and the zero-false-positive
-   finding are not.
+   That is a Phase-1 cost-model assumption, not an empirical measurement, and
+   is still exactly what the current record assumes. `deferred_decisions.md`
+   D3 (the review-cost double-charge this paragraph used to flag as
+   unresolved) is resolved as of Phase 10.
 2. **SQLite persistence and the FastAPI service.** Endpoints over the existing
    artifacts; no modelling change.
 3. **React investigator console.** The `detail` strings in `score.py` were built
    for this and are produced by the same computation as the score, so the
    evidence view does not need reconstructing.
 4. **LLM explanation layer**, reading those same `detail` strings.
-5. **XGBoost (Tier 2)** — and it does **not** start by training a model. It
-   starts by freezing a comparison protocol, exactly as the weight search did:
-   candidate set, feasibility gates (the same three), what beating the baseline
-   means, and a single held-out read. The Tier 1 baseline it must beat is F1
-   0.8000 / expected loss 9,392.92 at threshold 0.23. Ring-level splits already
-   prevent the obvious leakage; the non-obvious risk is described immediately
-   below.
-6. **RISK-002** (`merchant_concentration` mis-signed against all negatives:
-   delta **-0.0522**, weighted contribution **-0.0046** at weight 0.0889 — see
-   `bugs.md`. Ring-minus-**family** alone is the opposite sign, **+0.0103**; the
-   two deltas measure different comparisons and neither substitutes for the
-   other, per RISK-003's lesson that ring-vs-background can mask ring-vs-family)
-   — **stays deprioritised.** It is FLAG-level, the smallest weight in the
-   scorer, and the weight search found no feasible candidate that improved on
-   leaving it alone.
-7. **Additional ring and hard-negative types**, which is also what would let
-   RISK-004's instrument work be revisited from E6.
+5. **XGBoost (Tier 2) — DONE, see "Tier 2 — XGBoost scorer" below (superseded
+   in turn by Task 6's re-run).** The plan described here — freeze a
+   comparison protocol first, the same three feasibility gates, a single
+   held-out read — is exactly what happened. The "Tier 1 baseline it must
+   beat" quoted here (F1 0.8000 / expected loss 9,392.92 at threshold 0.23)
+   is the Phase-1 number; the **current** Tier 1 baseline, at its own
+   cost-selected operating point, is F1 0.5432 / expected loss 92,263.55 at
+   threshold 0.10 (`experiments/weight_policy.json` `held_out`) — see
+   README's "Two Tier 1 operating points" for why this is a different
+   question from `out/threshold.json`'s separately F1-selected 0.75. XGBoost
+   still has no feasible candidate against the current benchmark either, so
+   no comparison against either number was ever made.
+6. **RISK-002 — DONE, resolved by weight, not by the fix this item
+   anticipated.** The delta and weighted-contribution quoted here
+   (-0.0522 / -0.0046 at weight 0.0889) are the Phase-1 numbers; `bugs.md`'s
+   RISK-002 entry now reads "RESOLVED BY WEIGHT" — the signal has carried
+   weight 0.00 since Phase 11's `D_drop_flagged` fold-back, confirmed
+   unchanged by Task 6, so the FLAG-level concern this item described no
+   longer applies to the shipped scorer. The feature-level mis-sign itself
+   was never fixed, and `bugs.md` says so.
+7. **Additional ring and hard-negative types — DONE (Tasks 3-4).** Five ring
+   types and four hard-negative cluster types now exist; RISK-004's
+   instrument work was in fact revisited from E6 as this item anticipated —
+   see `bugs.md` RISK-004's forward note and Phase 10's
+   `instrument_pool_concentration` signal.
 
 ### Why abstention comes before XGBoost
 
@@ -1372,6 +1404,17 @@ now names `shared_device_only`, not `transaction_level`, as that rule.
 
 ## Tier 2 — XGBoost scorer
 
+**Superseded by Task 6's re-run against the Tasks 3-4 benchmark — kept as the
+historical record of the first XGBoost attempt.** The result below (all four
+candidates degenerate to a constant prediction on a ~30-row training split)
+is Phase-12's finding. Task 6 re-ran the identical protocol against the
+rebuilt benchmark's much larger 124-row training split and found the
+**opposite failure mechanism**: no candidate degenerates any more, but all
+four now over-separate instead (`positives_below_max_negative` 0.0435-0.2174,
+all below the 0.45 floor) — still no feasible candidate, same top-line
+verdict, for a different reason. See README "Tier 2 — XGBoost scorer" and
+`experiments/xgboost_policy.json` for the current record.
+
 Item 5 of "Tier 1 remaining" said this would not start by training a model —
 it would start by freezing a comparison protocol, the same three feasibility
 gates, and a single held-out read. `xgboost_protocol.md` is that protocol,
@@ -1465,6 +1508,18 @@ and that refitting a frozen configuration twice on identical data reproduces
 identical predictions on the installed xgboost version.
 
 ## Tier 3 — GraphSAGE scorer (stretch)
+
+**Superseded by Task 6's re-run against the Tasks 3-4 benchmark — kept as the
+historical record of the first GraphSAGE attempt.** The result below (one of
+three candidates feasible, held-out F1 0.5000, does not beat Tier 1 on either
+metric) is Phase-12's finding. Task 6 re-ran the identical protocol against
+the rebuilt benchmark and found **all three candidates feasible for the
+first time**; the winner, `G2_two_layer`, reaches held-out F1 0.5412 at
+threshold 0.03 — effectively tied with the current Tier 1 baseline's F1
+0.5432 (both at their own cost-selected thresholds) and ~41% lower expected
+loss (54,308.35 vs 92,263.55), a mixed but materially different result from
+the one below. See README "Tier 3 (stretch) — GraphSAGE scorer" and
+`experiments/graphsage_policy.json` for the current record.
 
 Stretch work per the PRD (`v2.0 -- Tier 3, stretch only`, entry condition
 "Tier 1, Tier 2, and the complete demo flow are already stable"). Task
