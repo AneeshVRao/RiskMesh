@@ -248,6 +248,20 @@ def integrity_report(
     for rid, rtype in ring_type_by_ring.items():
         ring_type_by_split[ring_period_by_ring[rid]][rtype] += 1
 
+    # Task 4: which of the four hard-negative mechanisms each cluster is, and
+    # where it landed -- same one-per-cluster exactness as rings above (every
+    # member of a cluster agrees, split.py's own cluster-level guarantee).
+    cluster_type_by_cluster = {lb.cluster_id: lb.cluster_type for lb in labels if lb.cluster_id}
+    cluster_period_by_cluster = {
+        lb.cluster_id: lb.active_period for lb in labels if lb.cluster_id
+    }
+    cluster_type_counts = Counter(cluster_type_by_cluster.values())
+    cluster_type_by_split: dict[str, Counter] = {
+        name: Counter() for name in cfg.split_boundaries
+    }
+    for cid, ctype in cluster_type_by_cluster.items():
+        cluster_type_by_split[cluster_period_by_cluster[cid]][ctype] += 1
+
     days = [t.ts_minute // MINUTES_PER_DAY for t in txns]
     per_split_class: dict[str, dict[str, int]] = {}
     for name in cfg.split_boundaries:
@@ -322,6 +336,10 @@ def integrity_report(
             "family_size_distribution": {
                 str(k): v for k, v in sorted(Counter(family_sizes.values()).items())
             },
+            "cluster_type_distribution": dict(sorted(cluster_type_counts.items())),
+            "cluster_type_by_split": {
+                name: dict(sorted(c.items())) for name, c in cluster_type_by_split.items()
+            },
         },
         "temporal_coverage": {
             "days": [min(days, default=0), max(days, default=0)],
@@ -350,6 +368,7 @@ def print_report(report: dict[str, Any]) -> None:
     print(f"{report['injected']['rings']} rings, "
           f"{report['injected']['family_clusters']} family clusters injected")
     print(f"ring types: {report['injected']['ring_type_distribution']}")
+    print(f"cluster types: {report['injected']['cluster_type_distribution']}")
 
     print(f"\ncomponents: {h['candidate_components']} candidates, "
           f"{h['singletons_dropped']} singletons dropped")

@@ -72,6 +72,7 @@ class Label(NamedTuple):
     cluster_id: str  # "" when the account is not in a family cluster
     active_period: str  # "" for background accounts, which span the window
     ring_type: str = ""  # "" | device | ip | instrument | refund | hybrid
+    cluster_type: str = ""  # "" | family | office | hostel | retail
 
 
 @dataclass
@@ -100,6 +101,7 @@ class Account:
     ring_id: str = ""
     ring_type: str = ""  # "" | device | ip | instrument | refund | hybrid
     cluster_id: str = ""
+    cluster_type: str = ""  # "" | family | office | hostel | retail
     extra: dict[str, float] = field(default_factory=dict)
 
 
@@ -326,6 +328,16 @@ _TYPE_SIGNUP_PRIME = 67_867_967       # non-device ring types' signup-day draw
 _INSTRUMENT_POOL_PRIME = 86_028_121   # instrument concentration (instrument & hybrid)
 _REFUND_RATE_PRIME = 104_395_301      # refund-abuse elevated refund/failure rate
 _REFUND_MERCHANT_PRIME = 122_949_823  # refund-abuse merchant-pool concentration
+
+CLUSTER_TYPES: tuple[str, ...] = ("family", "office", "hostel", "retail")
+
+# Dedicated-stream primes for the three new hard-negative cluster mechanisms
+# (Task 4). Distinct from every prime above and from each other -- verified
+# prime, see task-4-report.md.
+_OFFICE_DEVICE_POOL_PRIME = 1_000_000_007  # office's small shared-device pool
+_CLUSTER_SIGNUP_PRIME = 998_244_353        # office/hostel signup-day draw
+_RETAIL_MERCHANT_PRIME = 999_999_937       # retail merchant-pool concentration
+_RETAIL_SHARE_PRIME = 179_424_673          # retail's weak instrument sharers
 
 
 def _ring_type_plan(cfg: Config) -> list[str]:
@@ -610,6 +622,7 @@ def _inject_families(
             idx += 1
             acct.active_period = period
             acct.cluster_id = cluster_id
+            acct.cluster_type = "family"
             acct.home_device = household_device
             acct.home_ip = household_ip
             acct.refund_rate = refund_rate
@@ -623,6 +636,142 @@ def _inject_families(
             if shares_card:
                 acct.instruments.append(shared_pi)
             out.append(acct)
+
+    return out
+
+
+_NEW_CLUSTER_TYPES: tuple[str, ...] = ("office", "hostel", "retail")
+
+
+def _cluster_type_plan(cfg: Config) -> list[str]:
+    """Which of the three new mechanisms each new-cluster index gets.
+
+    Same discipline as `_ring_type_plan`: pure counts, zero RNG calls, fixed
+    blocks (all office, then all hostel, then all retail) so changing one
+    type's count only ever shifts the indices of the types after it.
+    """
+    counts = {
+        "office": cfg.n_clusters_office,
+        "hostel": cfg.n_clusters_hostel,
+        "retail": cfg.n_clusters_retail,
+    }
+    plan: list[str] = []
+    for t in _NEW_CLUSTER_TYPES:
+        plan.extend([t] * counts[t])
+    return plan
+
+
+def _inject_hard_negative_clusters(
+    cfg: Config, rng: random.Random, merchants: list[Merchant], pop_weights: list[float],
+    start_idx: int,
+) -> list[Account]:
+    """Office / hostel / retail-chain: three more hard negatives, alongside
+    (never replacing) `_inject_families`'s household mechanism, which this
+    function runs strictly after and never touches.
+
+    **office** -- many accounts on one corporate IP, funnelled through a small
+    device pool (few devices, many accounts), long tenure, diverse merchants
+    (left alone -- `_new_account`'s own preference list is already diverse).
+
+    **hostel** -- many accounts on one shared-Wi-Fi IP, but INDIVIDUALLY-OWNED
+    devices (no device convergence at all) and young-ish accounts -- the
+    deliberate collision with `account_newness`, and the hard negative for the
+    shared-IP ring type specifically.
+
+    **retail** -- genuinely unrelated customers, so no device/IP convergence;
+    a weak 2-member instrument overlap gives graph.py a structural edge to
+    form a component from at all (the same fix the refund-abuse ring needed --
+    see `_inject_rings`'s refund branch). A small shared merchant pool plus a
+    coordinated burst is the deliberate collision with `merchant_concentration`
+    and `temporal_burst`, and the hard negative for the refund-abuse ring
+    specifically.
+
+    None of the three elevate refund/failure rate -- they are legitimate
+    lookalikes, not more rings.
+
+    RNG isolation, same discipline as `_inject_rings`: the two draws on the
+    shared `rng` below (`bursts`, `size`) run UNCONDITIONALLY, once per new
+    cluster, in the same order and over the same-width range regardless of
+    which of the three types that index is -- only which mechanism actually
+    USES the result differs. Every mechanism-specific decoration runs on a
+    `random.Random` dedicated to that cluster and that mechanism, so it can
+    never perturb `rng`. The retail merchant pool is applied length-preserving
+    (replace CONTENT, keep each member's own merchants-list length), same
+    reason `_inject_rings`'s refund branch does it: `rng.choice(acct.merchants)`
+    runs later, on the shared stream, during emission.
+    """
+    periods = list(cfg.split_boundaries)
+    plan = _cluster_type_plan(cfg)
+    out: list[Account] = []
+    idx = start_idx
+
+    for c, ctype in enumerate(plan):
+        period = periods[c % len(periods)]
+        day_lo, day_hi = _period_days(cfg, period)
+        cluster_id = f"{ctype}{c:02d}"
+
+        # Unconditional every new cluster, every type -- see isolation note.
+        # `random()` and `randint` on a FIXED shared width never depend on
+        # which type this index is, so the type mix can never desync `rng`.
+        bursts = rng.random() < cfg.p_retail_burst
+        size = rng.randint(cfg.cluster_size_min, cfg.cluster_size_max)
+
+        signup_rng = random.Random(cfg.seed * _CLUSTER_SIGNUP_PRIME + c)
+
+        members: list[Account] = []
+        for _ in range(size):
+            if ctype == "office":
+                signup_day = day_lo - signup_rng.randint(
+                    cfg.office_signup_min_days, cfg.office_signup_max_days)
+            elif ctype == "hostel":
+                signup_day = day_lo - signup_rng.randint(
+                    cfg.hostel_signup_min_days, cfg.hostel_signup_max_days)
+            else:  # retail -- ordinary tenure, not young: its hard-negative
+                   # collision is temporal/merchant, not account_newness
+                signup_day = day_lo - signup_rng.randint(
+                    cfg.retail_signup_min_days, cfg.retail_signup_max_days)
+            acct = _new_account(cfg, rng, idx, merchants, pop_weights,
+                                signup_day=signup_day, kind=ctype)
+            idx += 1
+            acct.active_period = period
+            acct.cluster_id = cluster_id
+            acct.cluster_type = ctype
+            members.append(acct)
+
+        if ctype == "office":
+            pool_rng = random.Random(cfg.seed * _OFFICE_DEVICE_POOL_PRIME + c)
+            pool = [f"d_{cluster_id}_{j}"
+                   for j in range(min(cfg.office_device_pool_size, len(members)))]
+            shared_ip = f"ip_{cluster_id}"
+            for acct in members:
+                acct.home_device = pool_rng.choice(pool)
+                acct.shared_ip = shared_ip
+                acct.extra["shared_ip_share"] = cfg.office_shared_ip_share
+
+        elif ctype == "hostel":
+            shared_ip = f"ip_{cluster_id}"
+            for acct in members:
+                # Individually-owned devices: home/secondary device untouched.
+                acct.shared_ip = shared_ip
+                acct.extra["shared_ip_share"] = cfg.hostel_shared_ip_share
+
+        else:  # retail
+            merch_rng = random.Random(cfg.seed * _RETAIL_MERCHANT_PRIME + c)
+            pool = merch_rng.sample(
+                [m.merchant_id for m in merchants],
+                min(cfg.retail_merchant_pool_size, len(merchants)),
+            )
+            for acct in members:
+                acct.merchants = [merch_rng.choice(pool) for _ in acct.merchants]
+            share_rng = random.Random(cfg.seed * _RETAIL_SHARE_PRIME + c)
+            sharers = share_rng.sample(members, min(len(members), 2))
+            shared_pi = f"pi_{cluster_id}"
+            for acct in sharers:
+                acct.instruments.append(shared_pi)
+            for acct in members:
+                acct.extra["burst"] = float(bursts)
+
+        out.extend(members)
 
     return out
 
@@ -698,7 +847,15 @@ def generate(cfg: Config) -> tuple[list[Txn], list[Label]]:
     rings = _inject_rings(cfg, rng, merchants, pop_weights, len(background))
     families = _inject_families(cfg, rng, merchants, pop_weights,
                                len(background) + len(rings))
-    accounts = background + rings + families
+    # Office/hostel/retail run strictly AFTER _inject_families, which is
+    # never touched by this call -- the family mechanism's own shared-rng
+    # sequence is complete before this function draws anything (G3: the new
+    # types' count mix cannot perturb family, and family cannot perturb rings,
+    # already fully built above).
+    hard_negatives = _inject_hard_negative_clusters(
+        cfg, rng, merchants, pop_weights, len(background) + len(rings) + len(families))
+    clusters = families + hard_negatives
+    accounts = background + rings + clusters
 
     txns: list[Txn] = []
 
@@ -719,7 +876,10 @@ def generate(cfg: Config) -> tuple[list[Txn], list[Label]]:
         _emit(cfg, rng, acct, day_lo, day_hi, rng.randint(6, 12),
               merchants, pop_weights, by_id, nat_ips, txns)
 
-    for acct in families:
+    # All four cluster types, family and the three new ones, share one
+    # per-account emission count -- same width regardless of type, same
+    # reason ring types all share `rng.randint(6, 12)` above (G3).
+    for acct in clusters:
         day_lo, day_hi = _period_days(cfg, acct.active_period)
         _emit(cfg, rng, acct, day_lo, day_hi, rng.randint(8, 16),
               merchants, pop_weights, by_id, nat_ips, txns)
@@ -731,19 +891,25 @@ def generate(cfg: Config) -> tuple[list[Txn], list[Label]]:
             _add_burst(cfg, rng, members, cfg.ring_burst_minutes,
                        cfg.ring_burst_participation, by_id, nat_ips, txns)
 
-    for cluster_id in sorted({a.cluster_id for a in families}):
-        members = [a for a in families if a.cluster_id == cluster_id]
-        if members[0].extra.get("coburst", 0.0):
+    for cluster_id in sorted({a.cluster_id for a in clusters}):
+        members = [a for a in clusters if a.cluster_id == cluster_id]
+        ctype = members[0].cluster_type
+        if ctype == "family" and members[0].extra.get("coburst", 0.0):
             _add_burst(cfg, rng, members,
                        cfg.ring_burst_minutes * cfg.family_coburst_window_multiplier,
                        cfg.family_coburst_participation, by_id, nat_ips, txns,
                        shared_merchant=cfg.family_coburst_shared_merchant)
+        elif ctype == "retail" and members[0].extra.get("burst", 0.0):
+            _add_burst(cfg, rng, members, cfg.ring_burst_minutes,
+                       cfg.retail_burst_participation, by_id, nat_ips, txns,
+                       shared_merchant=True)
 
     txns.sort(key=lambda t: (t.ts_minute, t.account_id))
     txns = [t._replace(txn_id=f"t{i:06d}") for i, t in enumerate(txns)]
 
     labels = [
-        Label(a.account_id, a.ring_id, a.cluster_id, a.active_period, a.ring_type)
+        Label(a.account_id, a.ring_id, a.cluster_id, a.active_period, a.ring_type,
+              a.cluster_type)
         for a in accounts
     ]
     return txns, labels
@@ -788,6 +954,7 @@ if __name__ == "__main__":
     print(f"accts/device dist  {sorted(Counter(per_device.values()).items())}")
     print(f"NAT ip accounts    min={min(nat_counts)} max={max(nat_counts)} (cap {cfg.max_ip_degree})")
     print(f"ring accounts      {sum(1 for l in labels if l.ring_id)}")
-    print(f"family accounts    {sum(1 for l in labels if l.cluster_id)}")
+    print(f"cluster accounts   {sum(1 for l in labels if l.cluster_id)} "
+          f"(family/office/hostel/retail)")
     print("phase 2-3 checks ok")
 

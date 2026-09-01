@@ -69,6 +69,11 @@ class Candidate:
     is_positive: bool
     ring_id: str  # the majority ring, when positive
     has_family: bool
+    cluster_id: str  # the majority hard-negative cluster, "" if none (audit
+                      # finding #16: has_family alone cannot tell test_03
+                      # WHICH cluster a component belongs to, so it could not
+                      # check split isolation for clusters the way it does
+                      # for rings via ring_id)
     n_txns: int
     exposure: float
 
@@ -84,6 +89,7 @@ def build_candidates(
     for s in scores:
         comp = comps[s.component_id]
         ring_counts: dict[str, int] = defaultdict(int)
+        cluster_counts: dict[str, int] = defaultdict(int)
         has_family = False
         for a in comp.accounts:
             lb = by_account[a]
@@ -91,6 +97,7 @@ def build_candidates(
                 ring_counts[lb.ring_id] += 1
             if lb.cluster_id:
                 has_family = True
+                cluster_counts[lb.cluster_id] += 1
 
         ring_id, n_members = "", 0
         if ring_counts:
@@ -98,6 +105,14 @@ def build_candidates(
         is_positive = bool(
             ring_id and n_members >= cfg.positive_component_ring_fraction * comp.size
         )
+
+        # Majority cluster, same pick rule as ring_id -- but unlike ring_id
+        # this is not gated behind is_positive: clusters are never "positive",
+        # so there is no fraction threshold to gate on. Purely informational,
+        # used for the split-isolation check and per-cluster-type reporting.
+        cluster_id = ""
+        if cluster_counts:
+            cluster_id = max(cluster_counts.items(), key=lambda kv: (kv[1], kv[0]))[0]
 
         out.append(
             Candidate(
@@ -110,6 +125,7 @@ def build_candidates(
                 is_positive=is_positive,
                 ring_id=ring_id if is_positive else "",
                 has_family=has_family,
+                cluster_id=cluster_id,
                 n_txns=s.n_txns,
                 exposure=s.exposure,
             )

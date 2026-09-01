@@ -102,7 +102,7 @@ class Config:
     n_accounts: int = 1300  # background population; ring/family accounts are extra
     n_merchants: int = 40
     n_nat_ips: int = 20
-    target_txns: int = 15000
+    target_txns: int = 19300
     # NAT reuse is emergent from p_nat_ip rather than a fixed per-IP account
     # count. What has to hold is that every NAT IP lands far above max_ip_degree
     # so hygiene actually caps it -- that is the property the tests check.
@@ -261,6 +261,61 @@ class Config:
     family_signup_min_days: int = 15
     family_signup_max_days: int = 540
 
+    # --- hard-negative clusters: office / hostel / retail-chain (Task 4) ----
+    # Three more legitimate lookalike types, alongside (not replacing) the
+    # family mechanism above. Each shares >=1 structural attribute type with a
+    # ring mechanism -- office shares device+ip, hostel shares ip (the hard
+    # negative for the shared-IP ring specifically), retail shares a weak
+    # instrument overlap (the same structural-edge fix the refund-abuse ring
+    # needed: a component with zero shared attribute is not a candidate, it is
+    # singletons). None of the three carry ring-like abuse behaviour (elevated
+    # refund/failure rate) -- that is what keeps them legitimate lookalikes
+    # rather than more rings.
+    n_clusters_office: int = 15
+    n_clusters_hostel: int = 15
+    n_clusters_retail: int = 15
+    # Shared across all three -- same discipline as ring_size_min/max being
+    # one width for all five ring types (G3): if office/hostel/retail each had
+    # their own size range, changing the count MIX among them would perturb
+    # the shared rng's word consumption. "Many accounts" per the brief --
+    # bigger than a family (2-8) but kept under max_ip_degree/max_device_degree
+    # (12) so office's and hostel's shared IP is never capped away as common
+    # infrastructure.
+    cluster_size_min: int = 6
+    cluster_size_max: int = 10
+
+    # office / shared corporate network: shared IP + a small device pool, long
+    # tenure, diverse merchants (left untouched -- _new_account's own
+    # preference list is already diverse).
+    office_shared_ip_share: float = 0.85  # not 1.0 -- some traffic off-network
+    office_device_pool_size: int = 4
+    office_signup_min_days: int = 200
+    office_signup_max_days: int = 900
+
+    # hostel / shared Wi-Fi: shared IP, INDIVIDUALLY-OWNED devices (no device
+    # convergence at all), young-ish accounts -- the deliberate collision with
+    # account_newness, and the hard negative for the shared-IP ring
+    # specifically.
+    hostel_shared_ip_share: float = 0.75
+    hostel_signup_min_days: int = 1
+    hostel_signup_max_days: int = 45
+
+    # retail-chain / customer convergence: genuinely unrelated customers, so
+    # no device/IP convergence -- a weak 2-account instrument overlap gives
+    # graph.py an edge to form a component from at all (same fix the
+    # refund-abuse ring needed). Ordinary tenure (background-like, not young)
+    # -- retail's collision is temporal_burst/merchant_concentration, not
+    # account_newness. A small shared merchant pool plus a coordinated burst
+    # is the hard negative for the refund-abuse ring specifically.
+    retail_signup_min_days: int = 15
+    retail_signup_max_days: int = 540
+    retail_merchant_pool_size: int = 2
+    # Drawn for every new-type cluster regardless of type (G3) -- only retail
+    # acts on it, same discipline as p_ring_instrument_funded being drawn for
+    # every ring even though only the device type uses it.
+    p_retail_burst: float = 0.75
+    retail_burst_participation: float = 0.8
+
     # --- graph hygiene ---------------------------------------------------
     # Caps sit well above realistic ring size (<= ring_size_max) so a real ring
     # is never capped away. Every capped node is listed in the integrity report.
@@ -352,6 +407,8 @@ class Config:
             raise ValueError("device cap would clip a legitimate ring")
         if self.ring_size_max > self.max_ip_degree:
             raise ValueError("ip cap would clip a legitimate shared-IP/hybrid ring")
+        if self.cluster_size_max > self.max_ip_degree:
+            raise ValueError("ip cap would clip a legitimate office/hostel cluster")
 
     # --- derived ---------------------------------------------------------
     @property

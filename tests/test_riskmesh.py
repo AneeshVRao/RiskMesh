@@ -105,12 +105,19 @@ def test_02_no_label_leakage(cfg: Config, run_a: dict) -> None:
 
 
 def test_03_split_isolation(cands) -> None:
+    """Task 4 (audit finding #16): `Candidate` now carries a `cluster_id`
+    alongside `ring_id`, so this check covers hard-negative clusters too, not
+    just rings -- closing the gap where the PRD's "legitimate hard-negative
+    clusters remain within a single split" was claimed but never verified at
+    the candidate level (split.py's own `_assert_no_cluster_spans_splits`
+    already enforced it structurally; this is the independent check)."""
     seen: dict[str, str] = {}
     for c in cands:
-        for key in ([c.ring_id] if c.ring_id else []):
+        keys = ([c.ring_id] if c.ring_id else []) + ([c.cluster_id] if c.cluster_id else [])
+        for key in keys:
             assert seen.get(key, c.split) == c.split, f"{key} spans splits"
             seen[key] = c.split
-    check("03 split isolation: no ring appears in two splits")
+    check("03 split isolation: no ring or hard-negative cluster appears in two splits")
 
 
 def test_03b_five_ring_types_present_and_split_isolated(labels) -> None:
@@ -168,6 +175,60 @@ def test_03c_every_ring_type_yields_a_positive_candidate(cands, labels) -> None:
           f"{dict(sorted(pos_types.items()))}")
 
 
+def test_03d_four_cluster_types_present_and_split_isolated(labels) -> None:
+    """Task 4, mirrors 03b: all four hard-negative cluster mechanisms exist,
+    each cluster is one type, and that type never spans two splits (a
+    cluster-level fact -- the cluster's `active_period` IS its split, and
+    every member agrees, so reading either off any one member's label is
+    exact, not a majority vote)."""
+    from riskmesh.generate import CLUSTER_TYPES
+
+    types_seen = {lb.cluster_type for lb in labels if lb.cluster_id}
+    assert types_seen == set(CLUSTER_TYPES), (
+        f"expected all four cluster types {sorted(CLUSTER_TYPES)}, saw {sorted(types_seen)}"
+    )
+
+    cluster_type: dict[str, str] = {}
+    cluster_split: dict[str, str] = {}
+    for lb in labels:
+        if not lb.cluster_id:
+            continue
+        assert cluster_type.setdefault(lb.cluster_id, lb.cluster_type) == lb.cluster_type, (
+            f"{lb.cluster_id} has members labelled with two different cluster types"
+        )
+        assert cluster_split.setdefault(lb.cluster_id, lb.active_period) == lb.active_period, (
+            f"{lb.cluster_id} spans two splits (active_period disagrees across members)"
+        )
+    check(f"03d all four cluster types present {sorted(types_seen)}; "
+          f"each of {len(cluster_type)} clusters is one type inside exactly one split")
+
+
+def test_03e_every_cluster_type_yields_a_candidate_component(cands, labels) -> None:
+    """Task 4, mirrors 03c: label presence (03d) is not enough on its own.
+
+    A cluster type with no structural edge at all reduces to singleton
+    accounts -- graph.py forms no component from merchant-only sharing -- and
+    never becomes a scoreable candidate, exactly what the refund-abuse ring
+    type hit in Task 3 before its structural-edge fix (weak instrument
+    sharers). Asserted per type, not in aggregate, so one invisible type
+    cannot hide behind the other three's counts. Unlike 03c, this does not
+    require the candidate to be POSITIVE -- clusters are never "positive",
+    only rings are -- it only requires that graph.py formed a component
+    containing that cluster's accounts at all, in any split.
+    """
+    from riskmesh.generate import CLUSTER_TYPES
+
+    type_by_cluster = {lb.cluster_id: lb.cluster_type for lb in labels if lb.cluster_id}
+    seen_types = Counter(type_by_cluster[c.cluster_id] for c in cands if c.cluster_id)
+    missing = [t for t in CLUSTER_TYPES if seen_types.get(t, 0) < 1]
+    assert not missing, (
+        f"cluster type(s) {missing} contribute zero candidate components "
+        f"(counts: {dict(sorted(seen_types.items()))}) -- structurally undetectable"
+    )
+    check("03e every cluster type yields >=1 candidate component: "
+          f"{dict(sorted(seen_types.items()))}")
+
+
 def test_04_split_assignment_agrees(splits) -> None:
     labelled = [c for c in splits.by_component.values() if c.is_labelled]
     assert labelled, "no labelled components"
@@ -204,11 +265,21 @@ def _shared_attr_types(accounts: set[str], txns) -> set[str]:
 
 
 def test_06_hard_negatives_are_hard(txns, labels) -> None:
-    fams: dict[str, set[str]] = defaultdict(set)
+    """Task 4 (audit finding #8): the check below asserts that each cluster
+    shares AT LEAST ONE attribute type with SOME ring -- `shared & ring_attrs`
+    is non-empty. `ring_attrs` itself is the UNION of attribute types shared
+    across every ring type (typically device_id, ip_id, and instrument_id all
+    at once, since the five ring mechanisms between them cover all three).
+    The message below used to read as if every cluster shared the whole union
+    with every ring, which the assertion never checked and is not true of any
+    individual cluster type (office shares device+ip, hostel shares ip only,
+    retail shares a weak instrument overlap only) -- fixed to describe what is
+    actually asserted."""
+    clusters: dict[str, set[str]] = defaultdict(set)
     rings: dict[str, set[str]] = defaultdict(set)
     for lb in labels:
         if lb.cluster_id:
-            fams[lb.cluster_id].add(lb.account_id)
+            clusters[lb.cluster_id].add(lb.account_id)
         if lb.ring_id:
             rings[lb.ring_id].add(lb.account_id)
 
@@ -216,13 +287,15 @@ def test_06_hard_negatives_are_hard(txns, labels) -> None:
     for accts in rings.values():
         ring_attrs |= _shared_attr_types(accts, txns)
 
-    for cid, accts in fams.items():
+    for cid, accts in clusters.items():
         shared = _shared_attr_types(accts, txns)
         assert shared & ring_attrs, (
-            f"family {cid} shares {shared or 'nothing'}, rings share {ring_attrs} "
-            "-- an easy negative, not a hard one"
+            f"cluster {cid} shares {shared or 'nothing'}, rings collectively share "
+            f"{ring_attrs} -- an easy negative, not a hard one"
         )
-    check(f"06 hard negatives: all {len(fams)} families share {sorted(ring_attrs)} with rings")
+    check(f"06 hard negatives: each of {len(clusters)} clusters shares >=1 of "
+          f"rings' shared-attribute union {sorted(ring_attrs)} with some ring "
+          "(not that every cluster shares all of it)")
 
 
 def test_06b_inverse_direction_signals(cfg: Config, cands) -> None:
@@ -287,8 +360,8 @@ def test_07_to_11_non_triviality(cfg: Config, cands) -> None:
           f"(bound {cfg.min_positive_below_max_negative_fraction:.0%})")
 
     n_fam = checks["hard_negative_in_positive_range"]["value"]
-    assert n_fam >= 1, "no family cluster reaches the positive score range"
-    check(f"09 non-triviality: {n_fam} family clusters land inside the positive range")
+    assert n_fam >= 1, "no hard-negative cluster reaches the positive score range"
+    check(f"09 non-triviality: {n_fam} hard-negative clusters land inside the positive range")
 
     fit = [c for c in cands if c.split in ("train", "validation")]
     per_signal = single_signal_f1(fit)
@@ -462,11 +535,13 @@ def test_20_abstention_binary_collapse(cfg, cands) -> None:
     is a permanent test, not a design-doc claim, because a future edit to
     either formula that breaks the equivalence would silently make the two
     cost models inconsistent with each other. The frozen number itself --
-    203,290.09 at threshold 0.18 (re-derived in Task 3: first for the
+    144,846.28 at threshold 0.18 (re-derived in Task 3: first for the
     population raise and four new ring types, 4,000.00 -> 257,592.45; then
     again for the review fix that gave refund-abuse rings a structural edge
-    so they survive as candidates, 257,592.45 -> 203,290.09 -- see
-    task-3-report.md) -- is asserted directly, not just the equality of the
+    so they survive as candidates, 257,592.45 -> 203,290.09; re-derived again
+    in Task 4 for the three new hard-negative cluster types and the further
+    population raise, 203,290.09 -> 144,846.28 -- see task-3-report.md and
+    task-4-report.md) -- is asserted directly, not just the equality of the
     two formulas, so a regression in the pipeline upstream of the formulas is
     caught too. The number itself is not otherwise load-bearing; it is a
     regression anchor, and it is expected to move again whenever Config's
@@ -488,12 +563,12 @@ def test_20_abstention_binary_collapse(cfg, cands) -> None:
         f"binary costmodel.expected_loss() gives {binary['expected_loss']} -- "
         "the collapse abstention_protocol.md relies on is broken"
     )
-    assert three_way["expected_loss"] == 203290.09, (
-        f"got {three_way['expected_loss']}, expected the frozen 203,290.09 -- "
+    assert three_way["expected_loss"] == 144846.28, (
+        f"got {three_way['expected_loss']}, expected the frozen 144,846.28 -- "
         "either the formula or something upstream of it has changed"
     )
     check("20 abstention three_way_stats(t_lo=t_hi=0.18) reproduces the frozen "
-          "binary expected loss 203,290.09 exactly")
+          "binary expected loss 144,846.28 exactly")
 
 
 def test_21_ablation_full_row_reproduces_the_shipped_eval(run_a: dict) -> None:
@@ -654,6 +729,8 @@ def main() -> int:
         test_03_split_isolation(cands)
         test_03b_five_ring_types_present_and_split_isolated(labels)
         test_03c_every_ring_type_yields_a_positive_candidate(cands, labels)
+        test_03d_four_cluster_types_present_and_split_isolated(labels)
+        test_03e_every_cluster_type_yields_a_candidate_component(cands, labels)
         test_04_split_assignment_agrees(splits)
         test_05_hygiene(cfg, txns, graph)
         test_06_hard_negatives_are_hard(txns, labels)
@@ -678,7 +755,7 @@ def main() -> int:
         test_23_baselines_cover_the_five_the_prd_names(run_a)
         test_24_shipped_scorer_is_not_re_swept_in_the_baseline_table(run_a)
 
-        print(f"\n{len(PASSED)}/28 checks passed")
+        print(f"\n{len(PASSED)}/30 checks passed")
         return 0
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

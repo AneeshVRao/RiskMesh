@@ -76,7 +76,7 @@ def _write_components(path: Path, scores: list[ComponentScore], splits, cands) -
     explanation layer needs is already in the file."""
     by_id = {c.component_id: c for c in cands}
     cols = ["component_id", "split", "size", "n_txns", "exposure", "score",
-            "is_positive", "ring_id", "has_family"]
+            "is_positive", "ring_id", "has_family", "cluster_id"]
     for name in SIGNALS:
         cols += [f"{name}_raw", f"{name}_norm", f"{name}_detail"]
 
@@ -87,7 +87,7 @@ def _write_components(path: Path, scores: list[ComponentScore], splits, cands) -
             c = by_id[s.component_id]
             row = [s.component_id, splits.by_component[s.component_id].split,
                    s.size, s.n_txns, s.exposure, s.score,
-                   int(c.is_positive), c.ring_id, int(c.has_family)]
+                   int(c.is_positive), c.ring_id, int(c.has_family), c.cluster_id]
             for name in SIGNALS:
                 sig = s.signals[name]
                 row += [sig.raw, sig.normalized, sig.detail]
