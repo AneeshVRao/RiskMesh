@@ -21,14 +21,22 @@ from dataclasses import asdict, dataclass, field
 
 # The eight deterministic signals, in report order.
 #
-# `temporal_burst` carries the largest weight because coordination in time was
-# expected to separate a ring from a family sharing one device. Measurement says
-# otherwise: ring 0.344 vs family 0.352 normalised, so it separates rings from
-# background and NOT from the hard negatives. The weight is unchanged pending
-# RISK-003; the justification is corrected here rather than left standing as a
-# claim the data contradicts. The signals that do discriminate ring from family
-# are account_newness (+0.882), failure_refund_rate (+0.139), device_sharing
-# (+0.114).
+# `temporal_burst` carries ZERO weight as of Task 6's re-freeze (see
+# `_default_weights()` below and `deferred_decisions.md` D1, now closed): it
+# separates rings from each of the four hard-negative cluster types
+# individually but not well enough against all four combined for a single
+# weight to earn its keep -- `E_drop_temporal` beat the prior incumbent
+# outright on validation expected loss and was folded back in. The signals
+# that DO discriminate ring from family on the current benchmark (train+
+# validation, ring vs family-only, normalised means from `out/components.csv`)
+# are account_newness (+0.6625), failure_refund_rate (+0.2654),
+# instrument_pool_concentration (+0.1150). `device_sharing`, despite carrying
+# the largest weight (0.3929), is ring-vs-family NEGATIVE (-0.1686) on the
+# current five-ring-type data -- it is only positive against ALL negatives
+# (+0.0468), because most ring types besides `device`/`hybrid` never touch a
+# shared device at all while every family does. See README "The scorer" for
+# the full reading; this is exactly the ring-vs-family-vs-ring-vs-all-negatives
+# trap RISK-002/RISK-003 already named, now observed on the top weight.
 SIGNALS: tuple[str, ...] = (
     "device_sharing",
     "temporal_burst",
