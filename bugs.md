@@ -4,13 +4,19 @@ One entry per bug, newest at the top. Fill in **every** field before touching
 code — the point of this file is to reason about a fix rather than guess at one.
 Delete an entry once its fix is verified by the matching `testing.md` row.
 
-Open bugs: 1 deferred (RISK-002). 4 closed (RISK-001, RISK-003, RISK-004, B1).
+Open bugs: 0 deferred. 5 closed/resolved (RISK-001, RISK-002, RISK-003,
+RISK-004, B1). RISK-002 moved from "OPEN, deferred" to "RESOLVED BY WEIGHT"
+during Task 8's documentation sweep, once its weight was confirmed at 0.00
+since Phase 11 — see its entry below; the underlying feature-level mis-sign
+was never fixed and the entry says so.
 Standing lessons: L1 (size-based normalisation), L2 (held-out F1 as an objective).
 
 Knowingly-deferred *decisions* (as opposed to bugs) live in
-`deferred_decisions.md`. D1 there records that `temporal_burst` is still carried
-at weight 0.2778 even though the ablation showed it costs ~0.05 of achievable
-ceiling F1 — a deliberate deferral the cost-model stage owns, not an oversight.
+`deferred_decisions.md`. D1 there recorded that `temporal_burst` was carried
+at a large weight despite an open redundancy question; Task 6's re-freeze
+answered it (weight now 0.0000) and D1 is closed. D4 is a new, currently open
+entry: the shipped `out/threshold.json` is F1-selected, not loss-selected,
+contrary to a PRD Must-have.
 
 ---
 
@@ -569,13 +575,22 @@ would be worse. This is the one point in the RISK-004 sequence where the
 pre-declared plan met evidence it did not anticipate, and the evidence wins.
 
 - **Status: CLOSED — rejected as a production scoring signal for the current
-  benchmark and ring type.** `instrument_sharing` stays computed and stays at
-  weight 0.1444, because removing it measurably breaks the benchmark (above), but
-  it is not a signal this build relies on to make a call. Three pre-registered
-  attempts -- generator-side scaling (E4), feature renormalisation (E5),
-  funding-pool mechanism (E6) -- were run and rejected, and the zero-weight
-  fallback was run and rejected too. No further variants. Tracked as **D2** in
-  `deferred_decisions.md` for the weight/cost stage.
+  benchmark and ring type.** `instrument_sharing` stays computed, but no longer
+  stays at weight 0.1444 — Phase 11's weight search zeroed it (see the forward
+  note below, and `deferred_decisions.md` D2, RESOLVED), and Task 6's re-freeze
+  against the current five-ring-type benchmark reproduces the same zero weight.
+  The "removing it measurably breaks the benchmark" measurement immediately
+  above this line describes the *zero-weight-plus-renormalise-the-rest*
+  fallback tried and rejected earlier in this entry (which redistributed its
+  weight onto `account_newness` and broke the panel) — that is a different
+  operation from what actually shipped: Phase 11 zeroed `instrument_sharing`
+  *together with* adding `instrument_pool_concentration` as a companion
+  signal, which does not break the panel (D2's Resolution has the numbers).
+  Three pre-registered attempts -- generator-side scaling (E4), feature
+  renormalisation (E5), funding-pool mechanism (E6) -- were run and rejected as
+  fixes to `instrument_sharing` itself; that is what stays rejected. No
+  further variants. Tracked as **D2** in `deferred_decisions.md` for the
+  weight/cost stage, RESOLVED there.
 
   **Scope of this closure, stated explicitly so it is not over-read.** What was
   rejected is instrument sharing *as a discriminative signal against this
@@ -648,42 +663,58 @@ pre-declared plan met evidence it did not anticipate, and the evidence wins.
   and worked, not a reopening. See `deferred_decisions.md` D2, closed in the
   same phase for the weight-side half of this story.
 
-### RISK-002 — merchant_concentration is mis-signed
+### RISK-002 — merchant_concentration is mis-signed — RESOLVED BY WEIGHT
 
-- **Status:** OPEN, deferred. Surfaced by the sign check added while closing
-  RISK-001. Reported as FLAG, not FAIL — see below.
-- **Symptom:** on normalised values (the numbers that enter the score),
-  `merchant_concentration` means 0.2483 on positives against **all negatives**
-  (family + background) 0.2998, delta -0.0515. At weight
-  0.0889 it contributes -0.0046 — the wrong direction. This is the
-  ring-vs-all-negatives comparison that `signal_sign_check` and the panel's
-  `no_weighted_signal_mis_signed` gate both use.
+- **Status: RESOLVED BY WEIGHT, not by fixing the feature.** Weight has been
+  **0.00** since Phase 11's `D_drop_flagged` fold-back (the same weight
+  search that zeroed `instrument_sharing`, `deferred_decisions.md` D2), and
+  Task 6's re-freeze against the current five-ring-type, four-hard-negative-
+  type benchmark reproduces the same zero weight for
+  `merchant_concentration` (`experiments/weight_policy.json`,
+  `A_baseline`/`D_drop_flagged`/`E_drop_temporal` all agree). It no longer
+  contributes to the score in any direction, correct or otherwise. This entry
+  used to read "OPEN, deferred" quoting weight 0.0889 and delta -0.0515 —
+  both stale since Phase 11; resolved against the current numbers below,
+  per Task 8's brief.
+- **Symptom, as originally found and still true of the feature itself,
+  updated to current data:** on normalised values (train+validation, current
+  benchmark, `out/integrity_report.json` -> `non_triviality.signal_sign_check`),
+  `merchant_concentration` means **0.2725** on positives against **all
+  negatives** (family + office + hostel + retail + background) **0.3141**,
+  delta **-0.0416**. At weight 0.00 the `weighted_contribution` is 0.00 —
+  the sign no longer matters to the score, but the underlying feature is
+  still mis-signed exactly as originally found. This is the ring-vs-all-
+  negatives comparison `signal_sign_check` and the panel's
+  `no_weighted_signal_mis_signed` gate both use (and why that gate's FLAG
+  list is empty: it only inspects weight > 0 signals).
 
-  **Not the same number as the ring-vs-family delta.** Ring-minus-**family
-  only** is +0.0103 (ring 0.2483, family 0.2380 — see `audit.md`'s per-signal
-  table), the opposite sign. Both are correct measurements of different
-  comparisons: RISK-002's mis-sign is driven by background (mean 2.17
-  accounts, so a small component's top merchant naturally holds a large share
-  of few transactions), not by family. This is exactly the trap RISK-003
-  fell into — an all-negatives mean can hide or invert what the hard-negative
-  comparison shows — so any report of this signal should say which
-  denominator it used.
-- **Expected:** a weighted signal should be higher on positives.
+  **Not the same number as the ring-vs-family delta**, still — this is the
+  same trap RISK-003 named and D1's closure re-confirmed on a different
+  signal (`device_sharing`). Ring-minus-**family only**, current data
+  (`out/components.csv`): ring 0.2725, family 0.2258, delta **+0.0467** —
+  the opposite sign from the all-negatives comparison, driven by
+  background's small mean component size (a small component's top merchant
+  naturally holds a large share of few transactions) rather than by family.
+- **Expected:** a weighted signal should be higher on positives. Moot now
+  that the weight is 0.00.
 - **Error:** no exception. `non_triviality.signal_sign_check` in
-  `out/integrity_report.json`, and the `no_weighted_signal_mis_signed` FLAG row.
-- **Files involved:** `riskmesh/score.py` (signal 7), `riskmesh/config.py` (weight).
+  `out/integrity_report.json`, and the `no_weighted_signal_mis_signed` FLAG row
+  (empty on the current run, since it only lists weight > 0 signals).
+- **Files involved:** `riskmesh/score.py` (signal), `riskmesh/config.py` (weight,
+  now 0.00 via `_default_weights()`'s fold-back, not a dedicated fix).
 - **Reproduce:** `python -m riskmesh`, seed 20260824.
-- **Suspected cause:** ring members inherit the ordinary sticky-merchant
-  behaviour from `_new_account`; the ring injector adds a burst at one
-  merchant but does not otherwise concentrate spend. Background components
-  are small (mean 2.17 accounts), so their top merchant naturally carries a
-  larger share of few transactions. Same shape of defect as RISK-001 but an
-  order of magnitude weaker.
-- **Fix:** deferred. The magnitude is small (-0.0046 of a +0.2653 total
-  separation, ~1.7%) and resolving it means deciding whether ring cash-out
-  concentration should be injected at all — a generator scope question for
-  Tier 1, not a weight tweak. Not touched while closing RISK-001, to keep
-  that change's before/after comparison attributable to one cause.
+- **Suspected cause (unchanged, the feature itself was never touched):** ring
+  members inherit the ordinary sticky-merchant behaviour from `_new_account`;
+  the ring injector adds a burst at one merchant but does not otherwise
+  concentrate spend. Small background components' top merchant naturally
+  carries a larger share of few transactions. Same shape of defect as
+  RISK-001, an order of magnitude weaker.
+- **Fix:** none applied to the feature. The weight search's cost-driven
+  selection zeroed it as a side effect of a different objective (the same
+  mechanism D2 describes for `instrument_sharing`), which resolves the
+  scoring harm without resolving whether ring cash-out concentration should
+  be injected at all — that generator-scope question remains genuinely open
+  but is no longer urgent while the weight is 0.00.
 
 ### RISK-001 — ip_concentration is scored with the wrong sign — CLOSED
 

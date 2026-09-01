@@ -9,22 +9,56 @@ decision — not when someone decides it looks fine.
 
 ---
 
-## D1 — `temporal_burst` keeps a large weight (now 0.3086) despite the redundancy question being open
+## D1 — RESOLVED by Task 6's re-freeze — `temporal_burst` now carries weight 0.00
 
-**Owner: the cost-model / weight-optimisation stage. Not optional cleanup.**
+**Was: `temporal_burst` keeps a large weight (0.2778, later 0.3086) despite the
+redundancy question being open.**
 
-**Still open after the Phase 11 re-freeze, and now with a weaker tie than
-before, not a stronger one.** The original run's `E_drop_temporal` cleared all
-three feasibility gates and tied `A_baseline` at *exactly* 5,348.23 validation
-expected loss. Under the Phase 10/11 benchmark and the re-frozen weight vector
-(`temporal_burst` now 0.3086, up from 0.2778, since `D_drop_flagged` folded
-into `A_baseline` and renormalised over five signals instead of six), `E` is
-**no longer even feasible** — it fails the difficulty gate outright
-(`positives_below_max_negative` 0.4375 < 0.45; see `weight_search_protocol.md`
-§8, second pass). So the exact three-way tie that used to be D1's strongest
-evidence no longer exists as a measurement under the current weights; the
-signal's redundancy is neither newly confirmed nor newly refuted by this
-phase, and the question stays exactly where it was: open.
+**Resolution.** This entry's own text (below) named the one thing that would
+"plausibly change the answer": *"A second ring type that bursts without
+sharing devices."* Tasks 3-4 added exactly that — four new ring types
+(`ip`, `instrument`, `refund`, `hybrid`) that burst through the identical
+code path as the original `device` type (`_inject_rings`'s unconditional
+`bursts = rng.random() >= cfg.p_ring_no_burst` draw, applied to every ring
+regardless of type) — plus three new hard-negative cluster types alongside
+family. Task 6's re-run `weight_search_protocol.md` search then answered the
+open question with a real result, not a tie: `E_drop_temporal` (which zeros
+`temporal_burst`) beat the prior incumbent `A_baseline` **outright** on
+validation expected loss (43,331.85 vs 57,601.30 — not a tie, a win), cleared
+both difficulty gates with room to spare (pbmn 0.6458 against the 0.45 floor,
+52 hard negatives against the floor of 4), and held the winning position
+across the full `FN_ABSORBED_FRACTION x FP_FRICTION_RATE` sensitivity grid.
+Per the protocol's own fold-back rule, `E_drop_temporal`'s vector became the
+new `Config()._default_weights()` incumbent, and a second pass against it
+reached a fixed point in one further iteration (`A_baseline`,
+`D_drop_flagged`, and `E_drop_temporal` now all describe the identical
+vector). `temporal_burst` is weight **0.0000** in the shipped scorer.
+
+**The mechanism is not the one this entry's hedge anticipated, and that is
+worth stating plainly rather than glossing over.** The hedge speculated a
+second bursting-without-device-sharing ring type would make `temporal_burst`
+*more* valuable, by giving it something to detect that `device_sharing`
+could not. What was actually measured (`riskmesh/config.py`'s
+`_default_weights()` docstring, `riskmesh/score.py`'s `_burst()` docstring):
+`temporal_burst` separates rings from each of the four hard-negative cluster
+types individually well (single-signal F1 0.71 against family, up to 0.91
+against office/hostel) but only weakly against all four combined — a genuine
+mixture effect no single weight can resolve, because the four hard-negative
+types differ in how and whether they collide with it. More ring diversity
+made the signal *harder* to weight usefully, not easier. This is a complete,
+evidence-backed answer to the question this entry's owner ("the cost-model /
+weight-optimisation stage") was asked to decide: under an explicit cost
+model with the panel and difficulty gates enforced, the optimal weight for
+`temporal_burst` is zero, and the criterion that justified it is the same
+expected-loss objective and feasibility gates every other candidate was held
+to — no ad hoc rule, no relaxed bound.
+
+**Superseded background, kept for provenance rather than restated.** The
+paragraphs below described the state of this question through the Phase 11
+re-freeze, when `E_drop_temporal` had gone from tying the incumbent to
+failing the difficulty gate outright — the opposite trajectory from Task 6's
+result. That history is why this was the longest-open entry in this file,
+and it is left as the record of why the answer was not obvious in advance.
 
 **What was measured.** The Tier 1 ablation gate
 (`experiments/ablation_temporal_burst.json`) removed `temporal_burst` and
@@ -60,9 +94,17 @@ but: given an explicit false-positive/false-negative cost, is the optimal weight
 for `temporal_burst` zero, and if it is non-zero, what criterion justified it?
 Whatever the answer, the reasoning goes in this file's entry before it is closed.
 
-**Do not** read the weight (0.2778 at the time this measurement was taken,
-0.3086 as of the Phase 11 re-freeze) as evidence that anyone has judged it
-correct. It is carried forward on purpose, with the cost recorded here.
+**[Answered by Task 6 — see the Resolution at the top of this entry.]** The
+optimal weight is zero, under the identical expected-loss criterion and
+feasibility gates this paragraph called for, measured against the harder
+benchmark Task 3-4 built. The paragraph above is kept as the exact question
+that was eventually answered, not as a still-open ask.
+
+**Historical note, no longer current advice.** This paragraph used to read
+"do not read the weight as evidence that anyone has judged it correct" —
+true of the 0.2778/0.3086 weights it referred to at the time, false of the
+current weight (0.0000), which the cost model above did explicitly judge.
+Kept for the record of what this entry withheld judgement on before Task 6.
 
 **Interaction with D2, found while testing it, and now realised rather than
 hypothetical.** This entry originally warned that zero-weighting
@@ -70,9 +112,12 @@ hypothetical.** This entry originally warned that zero-weighting
 0.3247 in the isolated test). Phase 11's weight search did exactly that — it
 zeroed `instrument_sharing` (D2, now closed, see below) as part of a different
 policy (`D_drop_flagged`, which also zeros `merchant_concentration`), and
-`temporal_burst` duly rose, to 0.3086. D1 stays open: the redundancy question
-was never resolved by that move, and the current weight is once again carried
-forward, not validated.
+`temporal_burst` duly rose, to 0.3086. At the time this paragraph was written,
+D1 stayed open: the redundancy question was never resolved by that move, and
+the weight was once again carried forward, not validated. Task 6's re-freeze,
+recorded in the Resolution at the top of this entry, is what finally answered
+it — by a different mechanism (a mixture effect across four hard-negative
+types) than the one D2's interaction with D1 predicted.
 
 Related: `bugs.md` RISK-003, `implementation_plan.md` (Tier 1 ablation gate).
 
@@ -164,10 +209,15 @@ turns out to be unsatisfiable, the honest conclusion is that the generator needs
 harder negative that does not depend on this signal — which is Tier 1 ring-type
 work, not weight work.
 
-**Do not** read the current 0.1444 as evidence that anyone has judged the weight
-correct. Three attempts to make the signal work have failed and so has removing
-it; the weight is carried forward because every alternative measured worse, not
-because it is right.
+**This paragraph is historical.** `instrument_sharing` no longer carries
+0.1444 — as the Resolution at the top of this entry already states, it has
+carried weight **0.00** since Phase 11's `D_drop_flagged` fold-back, and
+Task 6's re-freeze against the current five-ring-type benchmark reproduces
+`A_baseline`/`D_drop_flagged` tying at that same zero weight
+(`experiments/weight_policy.json`). Do not read the 0.00 either as evidence
+of a settled judgement on the *feature* — as the Resolution explains, it is
+zero now because `instrument_pool_concentration` carries the instrument-axis
+signal instead, not because `instrument_sharing`'s own defect was fixed.
 
 Related: `bugs.md` RISK-004 and L1, `experiments/experiment_e4.json`,
 `experiments/experiment_e5.json`, `experiments/experiment_e6.json`.
@@ -222,3 +272,86 @@ rather than patching the formula in place under the old frozen numbers.
 Related: `weight_search_protocol.md` §4, §8, `abstention_protocol.md` §2, §8b,
 `riskmesh/costmodel.py` (`derive_costs`, `expected_loss`),
 `riskmesh/abstention.py` (`three_way_stats`).
+
+---
+
+## D4 — OPEN — the shipped operating threshold is F1-selected, not loss-selected, contrary to a PRD Must-have
+
+**Owner: whichever phase next revisits `out/threshold.json`. Not optional
+cleanup — this is a Must-have compliance gap, found during Task 8's
+documentation sweep, that the original audit missed.**
+
+**What was decided.** `PRD.md`'s "Threshold optimization" row is a
+**Must-have**: *"Selects an operating threshold based on expected financial
+loss rather than maximizing a single ML metric,"* with the acceptance
+criterion *"selected threshold minimizes expected validation loss under
+documented cost assumptions; held-out test results then reported"* and the
+PRD's own worked example (line 641) stating plainly: *"We do not choose the
+threshold that maximizes F1. We choose the operating point that minimizes
+expected financial loss under explicit cost assumptions."*
+
+`out/threshold.json` — the threshold the pipeline actually ships and the
+`/metrics`, `/rings`, and `/threshold-analysis` endpoints actually serve — is
+produced by `select_threshold()`, which selects **the threshold that
+maximises F1** on validation (`selection_metric: "f1"` is printed directly in
+the file). It is not loss-selected. This is exactly the thing the PRD's own
+sentence says not to do.
+
+**This is not a mislabelled duplicate of the D1-style redundancy questions
+above — a genuinely loss-selected threshold already exists and is frozen.**
+`select_weights()`'s own expected-loss search, run as part of the weight
+search protocol, does select a threshold by minimising expected validation
+loss, and its result is frozen in `experiments/weight_policy.json`'s
+`held_out` block: threshold 0.10, held-out F1 0.5432, expected loss 92,263.55.
+The gap is not "no loss-selected threshold was ever computed" — it is that
+**the pipeline's headline number, and everything the console displays, comes
+from the other selection procedure.** Two real, frozen, correctly-computed
+thresholds exist on this benchmark, and the PRD names one of them as
+mandatory while the pipeline ships the other.
+
+**What was measured, so the cost of each choice is explicit, not asserted.**
+
+| | `out/threshold.json` (shipped) | `weight_policy.json` `held_out` (PRD-compliant) |
+|---|---|---|
+| threshold | 0.22 | 0.10 |
+| selected by | maximise F1 on validation | minimise expected loss on validation |
+| held-out F1 | 0.7500 | 0.5432 |
+| held-out expected loss | not the objective this threshold was chosen for | **92,263.55** |
+| held-out FPR | 0.0787 | 0.4045 |
+| ring recovery | 13/20 | 16/20 |
+
+Switching the shipped threshold to the loss-selected one would roughly
+**halve F1** (0.75 -> 0.54) and **more than quintuple FPR** (0.0787 -> 0.4045)
+while catching three more rings (13 -> 16 of 20) — a materially different,
+much higher-review-volume operating point (51.8% review rate against the
+current threshold's much lower flag rate), not a cosmetic change.
+
+**Why this was not fixed here.** Switching `out/threshold.json`'s selection
+metric would move every headline number this documentation sweep just wrote
+down a second time (README's "Current figures", `PRODUCT.md`, the API's
+served metrics, every test asserting the current 0.22/0.75 figures) and is
+scoped modelling/product work — deciding whether the console should serve
+the loss-selected point, some other explicit cost-based point, or keep F1 as
+a documented, disclosed departure from the PRD — not a side effect of a
+documentation-only task. This entry exists so the gap is on record rather
+than quietly inherited as "the way it has always been," per this file's own
+opening sentence.
+
+**What the owning phase must actually decide.** Not "which threshold is
+better" — both are real and defensible for different purposes. The decision
+is whether `out/threshold.json` should be produced by an expected-loss
+selection (to satisfy the PRD Must-have literally, at the cost of the
+console's current low-FPR operating point) or whether the F1-selected
+threshold stays the shipped default with the PRD gap disclosed permanently
+(the position this documentation sweep takes, pending that decision).
+Whatever the answer, the reasoning goes in this entry before it is closed.
+
+**Do not** read the fact that `out/threshold.json` is F1-selected as evidence
+that anyone has judged it PRD-compliant. It is carried forward because
+Task 8's brief instructed "document this gap openly ... do NOT change the
+selection metric," not because the gap has been resolved.
+
+Related: `PRD.md` "Threshold optimization" (Must-have row), line 343 ("False-
+Positive Cost Model"), line 641 (worked example), line 686 (Assumption 3);
+README "Two Tier 1 operating points"; `riskmesh/evaluate.py`
+(`select_threshold`); `riskmesh/costmodel.py` (`select_weights`).
