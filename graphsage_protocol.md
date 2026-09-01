@@ -1,20 +1,16 @@
 # GraphSAGE-search protocol — frozen before any candidate is scored
 
-**Status: WRITTEN, NOT YET RUN (re-freeze pending — Tasks 3–5 benchmark).**
-This document is committed before `select_gnn_model()` is run against the
-Tasks 3–5 benchmark (five ring types, four hard-negative cluster types,
-19,310 transactions, config fingerprint `28e054e8fa8436e9`, up from
-`c3ee14627c2c2ce2`), and before any candidate's score is looked at — exactly
-the discipline `weight_search_protocol.md` and `xgboost_protocol.md`
-followed. §8 previously recorded the prior benchmark's outcome
-(`G1_single_layer` feasible, held-out F1 0.5000, did not beat Tier 1); that
-record no longer reproduces under the new fingerprint and has been cleared
-back to a pending placeholder so this header is not left contradicting a
-populated results section. §8 is appended only after the freeze in
-`experiments/graphsage_policy.json` exists and the single held-out read (if
-any candidate is feasible) has been taken through
-`evaluate_frozen_gnn_policy()`. The graph representation and three candidates
-(§2), the gates (§3), and the fitting discipline (§4) are unchanged.
+**Status: RUN and CLOSED (Task 6 re-freeze). Outcome in §8 — all three
+candidates feasible for the first time (including the deliberately-overfit
+`G3_unregularised`), `G2_two_layer` wins, and the held-out result is mixed:
+it does not beat Tier 1 on F1 but does beat Tier 1 on expected loss.** This
+document was committed (see git history at this section's prior revision)
+before `select_gnn_model()` ran against the Tasks 3–5 benchmark (five ring
+types, four hard-negative cluster types, 19,310 transactions, config
+fingerprint `28e054e8fa8436e9`, folded by `weight_search_protocol.md`'s own
+re-freeze to `fdf4fc217347d36b` before this stage ran). The graph
+representation and three candidates (§2), the gates (§3), and the fitting
+discipline (§4) are unchanged.
 
 Code: `riskmesh/gnn.py`. Read this alongside `xgboost_protocol.md` and
 `task_today.md` — Tier 2's XGBoost attempt found **no feasible candidate at
@@ -336,15 +332,108 @@ from a new frozen record.
 ---
 
 
-## 8. Outcome — PENDING
+## 8. Outcome — all three candidates feasible, `G2_two_layer` wins, mixed held-out result
 
-Not yet run. This section is populated, in full, only after
-`python -m riskmesh.freeze graphsage` has produced
-`experiments/graphsage_policy.json` against the Tasks 3-5 benchmark
-(fingerprint `28e054e8fa8436e9`, or its post-weight-fold-back successor if
-`weight_search_protocol.md`'s re-run changes the incumbent `A_baseline`
-before this stage runs) and the single held-out read, if any candidate is
-feasible, has been taken through `evaluate_frozen_gnn_policy()`. The prior
-run's finding (`G1_single_layer` the only feasible candidate, held-out F1
-0.5000 against Tier 1's 0.7778, does not beat Tier 1) is superseded and lives
-in git history at this section's prior revision, not reproduced here.
+Record: `experiments/graphsage_policy.json` (byte-copied to
+`out/graphsage_policy.json`). Installed `torch.__version__` **2.13.0+cpu**.
+Costs re-derived on the Tasks 3-5 benchmark (identical derivation to
+`weight_search_protocol.md` §4/§8 and `xgboost_protocol.md` §8, same
+`derive_costs()` call, same design split): `C_review` 500.00, `C_fn`
+41,748.15, `C_fp` 597.65, ratio **69.9:1**. Config fingerprint
+`fdf4fc217347d36b` (post weight-fold-back), seed 20260824.
+
+**All three candidates cleared every gate — the first run, of any of the
+three model families this project has tried, where the deliberately
+overfit-prone candidate is not refused.**
+
+| policy | panel | pbmn | hard-neg | distinct predictions | feasible | threshold | expected loss |
+|---|---|---|---|---|---|---|---|
+| G1_single_layer | PASS | 0.6522 | 41 | 47 | yes | 0.12 | 64,187.20 |
+| **G2_two_layer** | PASS | **1.0000** | 34 | 52 | **yes** | 0.03 | **51,015.40** |
+| G3_unregularised | PASS | 0.9130 | 23 | 32 | yes | 0.00 | 96,019.05 |
+
+**This is a materially different shape of result from the pre-Task-6 run**,
+where `G2` and `G3` both failed on genuine over-separation
+(`positives_below_max_negative` reading exactly 0.0000 for both) and `G1`
+was the only feasible candidate. Here `G2` reaches a *perfect*
+`positives_below_max_negative` of 1.0000 -- every validation positive scores
+above every validation negative -- yet still clears the gate, because
+`hard_negatives_inside_positive_range` (34, well above the 4 minimum) and
+the base non-triviality panel both hold; a validation split where positives
+cleanly separate from negatives is not automatically a "made the benchmark
+easier" result if the difficulty was already present and the model is simply
+separating what the data actually supports on this particular draw. `G3`
+technically clears every gate too, but its selected operating point
+(threshold **0.00**, review rate **100%**, tp 23/fp 77/fn 0/tn 0) is
+identical in every count to validation flag-everything
+(`weight_search_protocol.md` §8's 96,019.05 flag-everything figure) --
+`G3`'s scores are separated enough to clear the panel, but not usefully
+enough to beat flagging every component, so its "feasible" status is real
+but its practical value at this operating point is nil.
+
+**`G2_two_layer` wins** on validation expected loss (51,015.40), beating
+both `G1` (64,187.20, review rate 71%) and `G3` (96,019.05, review rate
+100%). Per §5, ties would break toward the earlier-declared candidate, but
+no tie arose here.
+
+### Step 8 — the held-out read
+
+`evaluate_frozen_gnn_policy()` was called against the frozen record above.
+Because a winner exists, it refit `G2_two_layer`'s architecture from a fresh
+initialisation (`torch.manual_seed(cfg.seed)`) on **train+validation
+combined** and scored the 112 test components once:
+
+| metric | value |
+|---|---|
+| precision | 0.3710 |
+| recall | **1.0000** |
+| F1 | 0.5412 |
+| false positive rate | 0.4382 |
+| ring recovery | 17/20 (85.0%) |
+| expected loss | **54,308.35** |
+| review rate | 0.5536 (tp 23, fp 39, tn 50, fn 0) |
+
+Account level: precision 0.4189, recall 1.0000, F1 0.5904, FPR 0.4968.
+False positives: 30 family/office/hostel/retail, 9 background.
+
+**No second read was taken.** This is the only held-out number this record
+permits.
+
+### Verdict against the Tier 1 baseline
+
+Tier 1's frozen numbers, read fresh from `out/eval_report.json` after
+`rm -rf out && python -m riskmesh` (step 1 of §5): **F1 0.75** at threshold
+0.22, on 112 test components. `weight_search_protocol.md` §8's held-out
+expected loss (the linear scorer's own frozen operating point) is
+**92,263.55** at threshold 0.10.
+
+**The result is mixed, and it is reported exactly that way rather than
+collapsed into a single verdict.** `G2_two_layer`'s held-out F1 (0.5412) is
+below Tier 1's (0.75) -- **GraphSAGE does not beat Tier 1 on F1.** But its
+held-out expected loss (54,308.35) is *lower* (better) than Tier 1's
+(92,263.55) -- a **41.1%** reduction -- **GraphSAGE does beat Tier 1 on
+expected loss.** Per §6, stated before this run, "beating Tier 1" means the
+candidate's held-out F1 **or** held-out expected loss is at least as good as
+Tier 1's; by that literal, pre-declared definition, `G2_two_layer` beats
+Tier 1. The mechanism is legible, not an artifact: `G2`'s selected threshold
+(0.03) drives recall to 1.0000 -- it misses zero of the 20 test-split rings
+-- at the cost of a high false-positive rate (0.4382, nearly 6x Tier 1's
+FPR on the same rows). F1 penalises that trade-off symmetrically; expected
+loss, at this benchmark's 69.9:1 `C_fn`/`C_fp` ratio, rewards it heavily,
+because missing zero rings is worth far more than the extra review-and-
+friction cost of 39 false positives. **This is not evidence GraphSAGE
+"generalises better" than the linear scorer** -- it is evidence that a
+model whose validation-selected operating point happens to sit at very high
+recall will score well under an expected-loss objective this lopsided,
+regardless of model family; `weight_search_protocol.md` §8's own
+`A_baseline` shows the same recall-heavy shape (0.9565) for the identical
+structural reason (dropping `temporal_burst` pushed its threshold low too).
+The two scorers are not simply comparable at a single operating point: Tier
+1's frozen threshold (0.22) is F1-selected, not expected-loss-selected, so
+this comparison holds two different selection objectives up against each
+other's preferred metric, which is the honest comparison the protocol
+defines, not a matched one.
+
+**No further read is permitted under this record.** Any future GraphSAGE
+comparison — a different node-feature set, a different candidate list, more
+training data — needs its own frozen protocol.

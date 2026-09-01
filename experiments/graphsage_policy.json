@@ -11,19 +11,19 @@
   "node_features": "one-hot node type (account/device/ip/instrument) + degree within the component graph, normalised by the matching global cap from config.py -- structural only, deliberately not the linear scorer's 8 signals. See graphsage_protocol.md \u00a72.1.",
   "costs": {
     "manual_review": 500.0,
-    "false_negative": 68399.84,
-    "false_positive": 398.43,
+    "false_negative": 41748.15,
+    "false_positive": 597.65,
     "derivation": {
       "manual_review": "20 analyst-minutes per component at INR 1500/hour fully loaded. ASSUMPTION -- the dataset carries no analyst-effort figure.",
-      "false_negative": "median ring-component exposure INR 68,399.84 on train+validation, times FN_ABSORBED_FRACTION 1.00",
-      "false_positive": "FP_FRICTION_RATE 0.02 of median negative-component exposure INR 19,921.59 -- no separate review cost: the generic (tp+fp)*C_review term already prices one review per flagged component (see deferred_decisions.md D3, resolved Phase 10)",
-      "ratio_fn_to_fp": 171.7
+      "false_negative": "median ring-component exposure INR 41,748.15 on train+validation, times FN_ABSORBED_FRACTION 1.00",
+      "false_positive": "FP_FRICTION_RATE 0.02 of median negative-component exposure INR 29,882.72 -- no separate review cost: the generic (tp+fp)*C_review term already prices one review per flagged component (see deferred_decisions.md D3, resolved Phase 10)",
+      "ratio_fn_to_fp": 69.9
     },
     "inputs_from_data": {
-      "median_ring_exposure": 68399.84,
-      "median_negative_exposure": 19921.59,
-      "n_positive": 16,
-      "n_negative": 53
+      "median_ring_exposure": 41748.15,
+      "median_negative_exposure": 29882.72,
+      "n_positive": 48,
+      "n_negative": 176
     }
   },
   "fit_on": "train only (selection); gates and threshold sweep both computed on validation predictions only, out-of-sample for every candidate -- train's in-sample scores are never mixed in",
@@ -39,19 +39,19 @@
       },
       "panel_verdict": "PASS",
       "panel_failing_checks": [],
-      "positives_below_max_negative": 0.75,
-      "hard_negatives_inside_positive_range": 8,
-      "n_unique_validation_predictions": 15,
+      "positives_below_max_negative": 0.6522,
+      "hard_negatives_inside_positive_range": 41,
+      "n_unique_validation_predictions": 47,
       "feasible": true,
-      "expected_loss": 12085.87,
-      "loss_per_component": 389.87,
-      "review_cost": 8500.0,
-      "review_rate": 0.5484,
-      "tp": 8,
-      "fp": 9,
+      "expected_loss": 64187.2,
+      "loss_per_component": 641.87,
+      "review_cost": 35500.0,
+      "review_rate": 0.71,
+      "tp": 23,
+      "fp": 48,
       "fn": 0,
-      "tn": 14,
-      "threshold": 0.18
+      "tn": 29,
+      "threshold": 0.12
     },
     {
       "policy": "G2_two_layer",
@@ -62,18 +62,21 @@
         "epochs": 100,
         "lr": 0.02
       },
-      "panel_verdict": "FAIL",
-      "panel_failing_checks": [
-        "score_distributions_overlap",
-        "positives_below_max_negative",
-        "hard_negative_in_positive_range"
-      ],
-      "positives_below_max_negative": 0.0,
-      "hard_negatives_inside_positive_range": 0,
-      "n_unique_validation_predictions": 21,
-      "feasible": false,
-      "refused_by": "PanelGateFailure",
-      "reason": "non-triviality panel returned FAIL (failing: ['score_distributions_overlap', 'positives_below_max_negative', 'hard_negative_in_positive_range'], positives below max negative 0.0). This weight vector makes the benchmark easier rather than the scorer better, so it has no expected loss to report. bugs.md L2."
+      "panel_verdict": "PASS",
+      "panel_failing_checks": [],
+      "positives_below_max_negative": 1.0,
+      "hard_negatives_inside_positive_range": 34,
+      "n_unique_validation_predictions": 52,
+      "feasible": true,
+      "expected_loss": 51015.4,
+      "loss_per_component": 510.15,
+      "review_cost": 29500.0,
+      "review_rate": 0.59,
+      "tp": 23,
+      "fp": 36,
+      "fn": 0,
+      "tn": 41,
+      "threshold": 0.03
     },
     {
       "policy": "G3_unregularised",
@@ -84,67 +87,69 @@
         "epochs": 300,
         "lr": 0.05
       },
-      "panel_verdict": "FAIL",
-      "panel_failing_checks": [
-        "score_distributions_overlap",
-        "positives_below_max_negative",
-        "hard_negative_in_positive_range"
-      ],
-      "positives_below_max_negative": 0.0,
-      "hard_negatives_inside_positive_range": 0,
-      "n_unique_validation_predictions": 12,
-      "feasible": false,
-      "refused_by": "PanelGateFailure",
-      "reason": "non-triviality panel returned FAIL (failing: ['score_distributions_overlap', 'positives_below_max_negative', 'hard_negative_in_positive_range'], positives below max negative 0.0). This weight vector makes the benchmark easier rather than the scorer better, so it has no expected loss to report. bugs.md L2."
+      "panel_verdict": "PASS",
+      "panel_failing_checks": [],
+      "positives_below_max_negative": 0.913,
+      "hard_negatives_inside_positive_range": 23,
+      "n_unique_validation_predictions": 32,
+      "feasible": true,
+      "expected_loss": 96019.05,
+      "loss_per_component": 960.19,
+      "review_cost": 50000.0,
+      "review_rate": 1.0,
+      "tp": 23,
+      "fp": 77,
+      "fn": 0,
+      "tn": 0,
+      "threshold": 0.0
     }
   ],
   "feasible": [
-    "G1_single_layer"
-  ],
-  "infeasible": [
+    "G1_single_layer",
     "G2_two_layer",
     "G3_unregularised"
   ],
-  "winner": "G1_single_layer",
+  "infeasible": [],
+  "winner": "G2_two_layer",
   "winner_hyperparameters": {
-    "num_layers": 1,
-    "hidden_dim": 4,
-    "weight_decay": 0.01,
-    "epochs": 50,
-    "lr": 0.05
+    "num_layers": 2,
+    "hidden_dim": 8,
+    "weight_decay": 0.001,
+    "epochs": 100,
+    "lr": 0.02
   },
-  "winner_threshold": 0.18,
-  "winner_expected_loss": 12085.87,
+  "winner_threshold": 0.03,
+  "winner_expected_loss": 51015.4,
   "seed": 20260824,
-  "config_fingerprint": "c3ee14627c2c2ce2",
+  "config_fingerprint": "fdf4fc217347d36b",
   "python_version": "3.12.10",
   "held_out": {
     "note": "The single permitted read, taken after the policy was frozen.",
-    "n_components": 31,
-    "threshold": 0.18,
-    "precision": 0.35,
-    "recall": 0.875,
-    "f1": 0.5,
-    "false_positive_rate": 0.5652,
-    "tp": 7,
-    "fp": 13,
-    "tn": 10,
-    "fn": 1,
-    "rings_recovered": 7,
-    "rings_in_test": 8,
-    "expected_loss": 83579.43,
-    "review_rate": 0.6452,
-    "review_cost": 10000.0,
-    "flag_everything_expected_loss": 24663.89,
-    "false_positives_family": 8,
-    "false_positives_background": 5,
+    "n_components": 112,
+    "threshold": 0.03,
+    "precision": 0.371,
+    "recall": 1.0,
+    "f1": 0.5412,
+    "false_positive_rate": 0.4382,
+    "tp": 23,
+    "fp": 39,
+    "tn": 50,
+    "fn": 0,
+    "rings_recovered": 17,
+    "rings_in_test": 20,
+    "expected_loss": 54308.35,
+    "review_rate": 0.5536,
+    "review_cost": 31000.0,
+    "flag_everything_expected_loss": 109190.85,
+    "false_positives_family": 30,
+    "false_positives_background": 9,
     "account_level": {
-      "precision": 0.4854,
-      "recall": 0.9259,
-      "f1": 0.6369,
-      "false_positive_rate": 0.726
+      "precision": 0.4189,
+      "recall": 1.0,
+      "f1": 0.5904,
+      "false_positive_rate": 0.4968
     },
     "design_panel_verdict_at_selection": "PASS",
-    "design_positives_below_max_negative": 0.5
+    "design_positives_below_max_negative": 0.6458
   }
 }
