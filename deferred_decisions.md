@@ -220,7 +220,11 @@ zero now because `instrument_pool_concentration` carries the instrument-axis
 signal instead, not because `instrument_sharing`'s own defect was fixed.
 
 Related: `bugs.md` RISK-004 and L1, `experiments/experiment_e4.json`,
-`experiments/experiment_e5.json`, `experiments/experiment_e6.json`.
+`experiments/experiment_e5.json`, `experiments/experiment_e6.json`; `bugs.md`
+RISK-005 (the identical mis-signed-against-a-specific-hard-negative-type
+pattern, found on `device_sharing` against family and office clusters, masked
+by the same kind of aggregate-negatives check that hid this signal's own
+RISK-004-era problem).
 
 ---
 
@@ -355,3 +359,70 @@ Related: `PRD.md` "Threshold optimization" (Must-have row), line 343 ("False-
 Positive Cost Model"), line 641 (worked example), line 686 (Assumption 3);
 README "Two Tier 1 operating points"; `riskmesh/evaluate.py`
 (`select_threshold`); `riskmesh/costmodel.py` (`select_weights`).
+
+---
+
+## D5 — OPEN — no weight-search candidate re-enables `ip_sharing`, and it is now the scorer's one clear recall gap
+
+**Owner: the next weight-search re-freeze. Not optional cleanup.**
+
+**What was decided.** `ip_sharing` has carried weight 0.00 since Tier 0
+(RISK-001) — correctly, at the time, since no `ip`-type ring existed and the
+signal measured nothing but back-door household detection. Task 3 then added
+a real shared-IP ring type. `weight_search_protocol.md`'s five candidates
+(`A_baseline`, `B_equal`, `C_separation_proportional`, `D_drop_flagged`,
+`E_drop_temporal`) were declared before Task 3 existed and none of them
+re-introduces `ip_sharing`: `A`/`D`/`E` all zero it identically to the
+pre-Task-3 vector, `B_equal` and `C_separation_proportional` are both refused
+by the difficulty gate before their weight on this signal matters. The
+candidate set simply predates the ring type it would need to react to.
+
+**What this costs, measured, not estimated.** Per-ring-type recall on the
+current held-out test split (23 positive components — verified directly by
+scoring `test` under `ring_score`'s frozen threshold 0.22 and grouping by
+`ring_type`, not read off a single aggregate number):
+
+| ring type | n | `ring_score` recall | `transaction_level` recall |
+|---|---|---|---|
+| device | 4 | 4/4 | 2/4 |
+| hybrid | 4 | 4/4 | 4/4 |
+| instrument | 7 | 5/7 | 5/7 |
+| **ip** | 4 | **1/4** | 2/4 |
+| refund | 4 | 4/4 | 4/4 |
+| **total** | 23 | **18/23** | 17/23 |
+
+`ip`-type rings are the scorer's one clear weak spot: 1 of 4 caught, the
+worst recall of any ring type and the only one where the naive
+`transaction_level` baseline (which has no shared-IP concept at all) does
+*better*. The mechanism is exactly what the weight vector predicts — the one
+signal built to detect shared-IP convergence contributes nothing to the
+score for any component, `ip`-type ring or not.
+
+**Why this was not fixed here.** Re-declaring the weight-search candidate
+set (adding a sixth candidate that restores `ip_sharing`, or re-deriving the
+existing five's ratios to include it) is a new selection protocol run,
+subject to Global Constraint G4 (frozen before any candidate is scored) —
+exactly the kind of re-freeze this documentation sweep is not authorised to
+trigger. Doing it here would also move every headline number this sweep just
+wrote down a second time.
+
+**What the owning phase must actually decide.** Whether a new weight-search
+candidate that restores non-zero weight to `ip_sharing` clears the panel and
+difficulty gates on the current five-ring-type benchmark, and if so, whether
+it beats the current incumbent on expected loss — the same question every
+prior candidate was held to, no relaxed bar for this one. If no such
+candidate is feasible, the honest conclusion is a generator-side one:
+`ip_sharing`'s current definition may need a different design before a
+linear weight can use it without over- or under-separating, the same shape
+of finding `deferred_decisions.md` D2 reached for `instrument_sharing`.
+
+**Do not** read `ip_sharing`'s weight of 0.00 as evidence that the shared-IP
+ring type has been evaluated and found not worth detecting. It is carried
+forward because no candidate that could re-enable it has ever been run
+against a benchmark where doing so would matter.
+
+Related: `bugs.md` RISK-001 (why the weight was originally zeroed, before any
+IP ring type existed); README "Read this before the numbers" finding 1 and
+"Baselines" (the F1/FPR comparison this recall gap explains); `weight_search_protocol.md`
+§2 (candidate declarations); `riskmesh/config.py` (`ring_type_ip`,
+`ring_shared_ip_share`).

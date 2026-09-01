@@ -73,16 +73,36 @@ Four screens, all reading the same frozen artifacts:
 
 Three findings, reported exactly as measured, unflattering or not.
 
-**1. This run, the strongest non-graph baseline edges out the shipped graph
-score.** `transaction_level` — a compound rule (refund, failure, high amount,
-or a thin account) with its own validation-swept cutoff — reaches held-out F1
-**0.7727** and FPR **0.0449**. The shipped `ring_score` reaches F1 **0.7500**
-and FPR **0.0787**. `ring_score` still wins on recall (0.7826 vs 0.7391) and
-is the only baseline that reports ring-level recovery (13/20) rather than a
-flat per-component flag, but on the PRD's own headline pair (F1, FPR) the flat
-rule is ahead this run. This reverses the finding earlier phases reported
-under a smaller, single-ring-type benchmark, and it is printed here rather
-than adjusted or dropped — see "Current figures" for the full seven-row table.
+**1. The graph score finds more rings overall and dominates the case it
+exists for; the strongest non-graph baseline's F1/FPR edge comes entirely
+from higher precision, not higher recall.** Per-ring-type recall on the same
+23 held-out positive components, `ring_score` (threshold 0.22) against
+`transaction_level` (a compound rule — refund, failure, high amount, or a
+thin account — at its own validation-swept cutoff):
+
+| ring type | n | `ring_score` recall | `transaction_level` recall |
+|---|---|---|---|
+| device | 4 | 4/4 | 2/4 |
+| hybrid | 4 | 4/4 | 4/4 |
+| instrument | 7 | 5/7 | 5/7 |
+| ip | 4 | **1/4** | 2/4 |
+| refund | 4 | 4/4 | 4/4 |
+| **total** | 23 | **18/23** | 17/23 |
+
+`ring_score` catches more rings in total (18 vs 17) and every `device`-type
+ring — the case the graph exists to catch — while a flat per-transaction
+rule with no shared-attribute concept misses half of them. Read in isolation,
+the bare headline numbers (`ring_score` F1 0.7500/FPR 0.0787 vs
+`transaction_level`'s F1 0.7727/FPR 0.0449) would suggest the graph lost;
+they do not show that the gap is precision, not recall, and would
+misrepresent what the graph actually did. The graph's one real weakness is
+traced, not just observed: `ip`-type rings are the graph's worst-recalled
+type (1/4), because `ip_sharing` — the one signal built to detect shared-IP
+convergence — carries weight 0.00, zeroed under RISK-001 in Tier 0 *before
+any shared-IP ring type existed*, and none of the five pre-declared
+weight-search candidates re-enables it. See `deferred_decisions.md` D5 for
+the full measurement and why it is not fixed here, and "Current figures" for
+the complete seven-row baseline table.
 
 **2. The scorer's largest-weighted signal is now the one whose removal helps
 held-out F1 the most; its smallest-represented group is the one whose removal
@@ -97,7 +117,11 @@ removing `device` (weight 0.3929, the single largest weight in the vector)
 weight was changed on the strength of this reading — re-weighting on a
 held-out number is exactly the selection this benchmark exists to rule out —
 but a scorer whose top weight actively costs held-out performance is a plain
-finding, not a footnote.
+finding, not a footnote. It is also now a filed, named risk: `device_sharing`
+is mis-signed specifically against `family` and `office` hard negatives (both
+deliberately built to converge on shared devices), masked by the panel's
+pooled-all-negatives sign check the same way RISK-001 and RISK-004 were
+masked before — see `bugs.md` RISK-005 and "The scorer" below.
 
 **3. The weight search did not confirm the hand-set incumbent this pass — it
 overturned it, then folded the winner back in.** Against the current
@@ -249,25 +273,36 @@ measured finding, not an oversight:
   is now closed on this evidence.
 
 **Ring-vs-family is not the same comparison as ring-vs-all-negatives, and
-they now disagree for the top-weighted signal.** Measured on train+validation
-(`out/components.csv`, family-only vs the full ring population, all five ring
-types combined): `device_sharing` reads ring 0.1837 against **family
-0.3523** — a **negative** ring-minus-family delta of -0.1686, because most
-ring types (`ip`, `instrument`, `refund`) never touch a shared device at all
-while every family converges on one, and averaging across all five ring types
-dilutes the signal. Against **all** negatives (family + office + hostel +
-retail + background) the delta is still positive (+0.0468, `weighted_contribution`
-+0.0184), which is what the panel's `no_weighted_signal_mis_signed` gate
-checks and why it still passes — but a reader comparing rings specifically
-against the household lookalike should not read `device_sharing`'s large
-weight as "strongly separates rings from families," because on the current
-data it does the opposite. `instrument_pool_concentration` (+0.1150 ring-vs-
-family) and `failure_refund_rate` (+0.2654 ring-vs-family) are unambiguously
-correctly signed on both comparisons; `account_newness` most of all
-(+0.6625 ring-vs-family). This asymmetry — same signal, opposite verdict
-depending on which negative population it is measured against — is exactly
-the trap RISK-002/RISK-003 already named for other signals, now observed on
-the scorer's own largest weight.
+they now disagree for the top-weighted signal — filed as `bugs.md` RISK-005.**
+Per hard-negative cluster type, train+validation, `out/components.csv`
+(`device_sharing`, ring mean 0.1837 against each type):
+
+| cluster type | n | mean | ring-minus-type delta |
+|---|---|---|---|
+| family | 40 | 0.3523 | **-0.1686** (badly mis-signed) |
+| office | 10 | 0.2636 | **-0.0799** (mis-signed) |
+| hostel | 10 | 0.0000 | +0.1837 (fine) |
+| retail | 24 | 0.0000 | +0.1837 (fine) |
+
+`device_sharing` — the scorer's single largest weight (0.3929) — is
+**negative** against exactly the two hard-negative types deliberately built
+to converge on shared devices (family, up to 8 accounts on one device;
+office, a shared device pool), because most ring types (`ip`, `instrument`,
+`refund`) never touch a shared device at all while both those hard-negative
+types do. Against **all** negatives pooled together the delta is positive
+(+0.0468, `weighted_contribution` +0.0184), which is what the panel's
+`no_weighted_signal_mis_signed` gate checks and why it still passes — the
+pooled check dilutes 50 mis-signed components (family + office) against 126
+correctly-signed ones (hostel + retail + background) and cannot see the
+per-type split. `instrument_pool_concentration` (+0.1150 ring-vs-family) and
+`failure_refund_rate` (+0.2654 ring-vs-family) are unambiguously correctly
+signed against every hard-negative type; `account_newness` most of all
+(+0.6625 ring-vs-family). This is structurally the identical blind spot
+RISK-001 (`ip_sharing`) and RISK-004 (`instrument_sharing`) were about — a
+signal mis-signed against a specific hard-negative type, masked by an
+aggregate check — now found on the scorer's own largest weight, filed in
+full as `bugs.md` RISK-005 (open; not fixed here — see the entry for what the
+next weight-search or panel-design phase must decide).
 
 ---
 
@@ -428,8 +463,11 @@ as of Phase 10 — one cost model, not two.
 | `xgboost_scorer` (Tier 2) | tabular, same 8 signals | — | — | **refused** — no feasible candidate, no held-out read | — |
 | `gnn_scorer` (Tier 3) | fully (GraphSAGE) | 0.03 | ≥ | 0.5412 | 0.4382 |
 
-See finding #1 above for `transaction_level` vs `ring_score`. Full field set
-(descriptions, refusal reasons, validation F1) in `out/baselines.json`.
+**Do not read `transaction_level` vs `ring_score` off this table alone** —
+see finding #1 above for the per-ring-type recall breakdown; the bare F1/FPR
+pair here is precision-driven and does not show that the graph recovers more
+rings overall. Full field set (descriptions, refusal reasons, validation F1)
+in `out/baselines.json`.
 
 ### Ablations (leave-one-group-out, each with its own frozen threshold)
 
