@@ -1,27 +1,44 @@
 # Abstention / review-band protocol — frozen before any band is selected
 
-**Status: RUN and CLOSED (re-frozen, Phase 12). Band `t_lo = 0.18`, `t_hi = 0.18`
-selected on validation behind the coverage gate — a degenerate, zero-width
-band, identical to the binary policy on every row — frozen to
-`out/abstention_policy.json`, and the held-out split read **once** through
-`evaluate_frozen_abstention_policy()` — see §8 / §8b. No further read is
-permitted under this record; any future comparison needs its own frozen
-protocol.**
+**Status: WRITTEN, NOT YET RUN (re-freeze pending — Tasks 3–5 benchmark).**
+Tasks 3–5 rebuilt the benchmark (five ring types, four hard-negative cluster
+types, 19,310 transactions) and moved the config fingerprint from
+`c3ee14627c2c2ce2` toward whatever `weight_search_protocol.md`'s own re-freeze
+settles on as the incumbent (that protocol's fold-back rule may change
+`Config()._default_weights()`, which is itself part of the fingerprint). Every
+number this protocol had frozen — band `t_lo = 0.18`, `t_hi = 0.18`, held-out
+expected loss 74,595.13 — describes a run against the old benchmark and no
+longer reproduces, so §8/§8b have been cleared back to a pending placeholder
+and this document is committed in that state, **before**
+`select_abstention_band()` runs against the new benchmark. §8/§8b are
+appended only after `experiments/abstention_policy.json` exists (which itself
+requires `experiments/weight_policy.json` to already be frozen — this band is
+layered on the already-selected `A_baseline` scorer and its binary threshold)
+and the single held-out read has been taken through
+`evaluate_frozen_abstention_policy()`.
 
-Re-run because Phase 12 fixed a real RNG-isolation bug in `_inject_rings`
-(`riskmesh/generate.py`'s module comment; the instrument-mechanism branch let
-the main stream's consumption depend on `is_hybrid`, a data-dependent branch)
-which changes actual generator output without moving the config fingerprint —
-so `weight_search_protocol.md`'s re-run against the corrected benchmark moved
-the binary threshold from 0.14 to 0.18, and everything below is against that
-new benchmark. (Phase 10/11 had already re-run this protocol once before, for
-an unrelated reason — the scorer and its threshold moving from Phase 10's
-generator and D3 cost-model changes.)
+**The mechanism (§2), the one new assumption (§3), and the gate (§4) are
+unchanged from every prior run.** Only the generator producing the rows the
+band is scored against — and possibly the frozen binary threshold it is
+layered on — has changed.
+
+Re-run previously because Phase 12 fixed a real RNG-isolation bug in
+`_inject_rings` (`riskmesh/generate.py`'s module comment; the
+instrument-mechanism branch let the main stream's consumption depend on
+`is_hybrid`, a data-dependent branch) which changed actual generator output
+without moving the config fingerprint. (Phase 10/11 had already re-run this
+protocol once before, for an unrelated reason — the scorer and its threshold
+moving from Phase 10's generator and D3 cost-model changes.) Superseded §8/§8b
+tables for both prior runs are in git history at this section's earlier
+revisions, not reproduced here.
 
 This layers a second decision policy on top of the already-frozen A_baseline
-scorer and its already-frozen binary threshold (0.18, `weight_search_protocol.md`
-§8). Neither the scorer's eight weights nor the binary threshold's own reported
-numbers — F1 0.7778, expected loss 74,595.13 — are reopened, touched, or
+scorer and its already-frozen binary threshold — whatever
+`weight_search_protocol.md` §8 currently reports for the re-frozen benchmark,
+read from `experiments/weight_policy.json` rather than quoted here, since that
+protocol's own re-freeze (and possible fold-back iteration) determines it
+before this document's freeze stage runs. Neither the scorer's eight weights
+nor the binary threshold's own reported numbers are reopened, touched, or
 re-derived by anything in this document. This protocol governs a *different*
 question: given the same scores, where should a three-way allow/review/escalate
 split put its two boundaries, and how is that choice frozen before test data is
@@ -250,124 +267,24 @@ family accounts stop looking like fraud."
    any test row is read.
 6. **Read the held-out split once**, through
    `evaluate_frozen_abstention_policy()`, and report precision/recall/coverage
-   for all three tiers on test. No second read. **Taken — see §8b.**
+   for all three tiers on test. No second read. **Not yet taken — see §8b.**
 
 ---
 
-## 8. Outcome — run on design data only, held-out split untouched
+## 8. Outcome — PENDING
 
-**Historical note, Phase 10/11 (superseded).** That run selected `t_lo =
-0.14`, `t_hi = 0.23` against the pre-Phase-12 benchmark, pulling 5 negatives
-into Review at a 17.5% validation review rate. Full tables for that run are in
-git history (this section, before the Phase 12 edit). Phase 12 fixed the
-`_inject_rings` RNG-isolation bug (`riskmesh/generate.py`), which moved the
-scorer's frozen threshold from 0.14 to 0.18 and changed the benchmark's actual
-score distribution — everything below is a fresh search against that
-corrected benchmark, not a continuation of the numbers above.
+## 8b. The single permitted held-out read — PENDING
 
-Record: `out/abstention_policy.json`. `select_abstention_band()` run against
-real code against the Phase 12 benchmark: 3,559 bands passed the coverage
-gate out of 5,151 tried (1,592 refused), `t_lo = 0.18`, `t_hi = 0.18`, panel
-PASS.
-
-| | value |
-|---|---|
-| selected band | `t_lo = 0.18`, `t_hi = 0.18` (degenerate) |
-| validation expected loss | **4,000.00** (binary A_baseline: 4,000.00 — identical) |
-| validation review rate | **0%** (0 of 31) |
-| design review rate (the gated quantity) | **0%** (0 of 69, `<= 0.25` cap) |
-| validation confusion | Allow 23 (0 missed positives), Review 0, Escalate 8 (8 TP, 0 FP) |
-| bands considered / refused by coverage | 3,559 / 1,592 (of 5,151 total) |
-
-**Where the free search landed relative to the frozen binary threshold:**
-`t_lo` came out exactly at 0.18 — the same number `weight_search_protocol.md`
-froze for the binary policy — without being told to, the same result every
-prior run reported for `t_lo` (always landing on the frozen binary threshold,
-whatever that threshold currently is). §5 explains why: `A_baseline` already
-has zero missed positives at 0.18, so a free search has no incentive to move
-the Allow boundary. This time `t_hi` lands at exactly `t_lo` rather than above
-it — every prior run's `t_hi` cleared the binary threshold by some margin to
-pull in negatives worth waiving; this run has no false positives on
-validation at all for `t_hi` to waive, so the search finds nothing above 0.18
-worth deferring either, and the band collapses to the binary policy exactly.
-This is a result, not a constraint the code enforces; a different generator
-draw could move it again, and the held-out split below shows it would have
-found something to do if validation itself had not been a perfect split.
-
-**Reading this table**: it is the design-side confirmation this protocol
-exists to demonstrate — a coded, gated, structurally-frozen search reproduces
-what the underlying data supports — not a claim about held-out performance.
-
----
-
-## 8b. The single permitted held-out read (taken, once)
-
-Through `evaluate_frozen_abstention_policy()`, with `t_lo`/`t_hi` read back
-**from** `out/abstention_policy.json` rather than recomputed. 31 test
-components: 8 positive, 23 negative, 8 of the negatives carrying a family
-cluster.
-
-| | validation (selection) | **held out** |
-|---|---|---|
-| expected loss | 4,000.00 | **74,595.13** |
-| review rate | 0% (0/31) | **0%** (0/31) |
-| Allow | 23 (0 positives) | **21** (1 positive missed) |
-| Review | 0 | **0** |
-| Escalate | 8 (8 TP, 0 FP) | **10** (7 TP, **3 FP**) |
-
-**Against the binary baseline on the identical test rows** (threshold 0.18,
-`weight_search_protocol.md` §8's frozen result): binary expected loss
-**74,595.13** with tp 7 / fp 3 / fn 1 / tn 20, against the three-way's
-**74,595.13** — a delta of **0.00**, a **0%** change. The two policies are
-bit-for-bit identical on every held-out row, because the frozen band is
-`t_lo = t_hi`, the exact collapse condition §2 defines and `tests/test_riskmesh.py`
-test_20 asserts.
-
-**This is the weakest possible structural result, and it is reported plainly
-rather than dressed up.** Review contributes nothing on held-out this run: it
-does not waive any of the three false positives (all three clear `t_hi` and
-are escalated, same as the binary policy would flag them), and it does not
-rescue the one missed ring (which never reaches `t_lo` at all — it is an
-Allow-tier miss, not a borderline case sitting in a would-be Review band).
-There is no evidence in this run that an abstention band adds anything over
-the binary policy; the honest conclusion is that this particular benchmark
-draw, at this scorer's current weights, does not have the kind of
-close-but-wrong error the review band exists to catch — every prior run's
-errors were near-miss family components sitting just above the binary
-threshold, and this run's held-out errors either sit well inside Escalate
-(the three false positives) or are missed entirely before reaching Allow's
-boundary (the one false negative).
-
-**Tier metrics, stated so the three-way case is not read as a binary one.**
-Escalate-tier precision **0.7000** (7/10) and escalate-tier FPR **0.1304**
-(3/23) — identical to the binary policy's own figures, because the policies
-are identical on these rows. Escalate-tier recall is **0.8750** (7 of 8
-rings); the missed ring is not deferred to review (there is no review band)
-— it is simply missed, `allow_missed_positives = 1`, a genuine detection
-failure at this operating point rather than a near-miss the abstention
-mechanism could have caught.
-
-**The move against validation is not sample variance in the usual sense —
-it is the same missed-ring mechanism `weight_search_protocol.md` §8 reports
-for the binary policy**, inherited here unchanged because the band is
-degenerate: one ring costs `C_fn` = 68,399.84 on its own, dwarfing the
-`C_review`/`C_fp` terms that make up the rest of the table. **Neither the
-validation nor the held-out figure should be quoted as "the" policy's cost**
-— both are honest reads of small, different samples, and this run's gap
-between them is unusually large for exactly the reason
-`weight_search_protocol.md` §8 explains in full.
-
-**D3 is resolved, not a caveat, as of Phase 10.** The original run had to
-report two figures for its improvement because `C_fp` double-charged a review
-at the time. `derive_costs()` now charges the review once, so there is only
-ever one accounting to report — this run's finding is that the two policies
-coincide exactly, not that D3 introduced any new discrepancy to reconcile.
-
-**No further read is permitted under this record.** Same rule as the ablation
-and the weight search: any future comparison needs its own protocol frozen
-before the read.
-
----
+Neither §8 nor §8b has been run. Both are populated, in full, only after
+`python -m riskmesh.freeze abstention` has produced
+`experiments/abstention_policy.json` against the Tasks 3-5 benchmark (layered
+on whatever `experiments/weight_policy.json` currently freezes as the
+A_baseline scorer and its binary threshold) and the single held-out read has
+been taken through `evaluate_frozen_abstention_policy()`. The prior run's
+finding (degenerate band `t_lo = t_hi = 0.18`, bit-for-bit identical to the
+binary policy on every held-out row, held-out expected loss 74,595.13) is
+superseded and lives in git history at this section's prior revision, not
+reproduced here.
 
 ## 9. What would invalidate this protocol
 
@@ -380,8 +297,9 @@ Stated so it is falsifiable, mirroring `weight_search_protocol.md` §7:
   derived from anything other than an explicit, separately-declared model.
 * Any expected-loss number produced for a band that fails either gate.
 * More than one held-out read.
-* The binary-collapse test (t_lo = t_hi = 0.18 reproduces 4,000.00) removed,
-  weakened, or skipped.
+* The binary-collapse test (`t_lo = t_hi` reproduces the binary policy's
+  expected loss exactly, `tests/test_riskmesh.py`) removed, weakened, or
+  skipped.
 
 If any of these happens, the protocol is void and selection is re-run from a
 new frozen record.
