@@ -42,46 +42,57 @@ SIGNALS: tuple[str, ...] = (
 
 
 def _default_weights() -> dict[str, float]:
-    """Tier 0 weights -- Phase 11 re-freeze: D_drop_flagged, not A_baseline.
+    """Tier 0 weights -- Task 6 re-freeze: E_drop_temporal, not A_baseline.
 
     `ip_sharing` carries 0.00. This was set under Tier 0, when the generator
     placed no ring information in the IP dimension at all: max-accounts-on-
     one-non-common-IP was exactly 1.00 for every ring component AND every
     background component, while family clusters averaged 4.94. At its old
     +0.10 it subtracted 0.0378 from a total positive-vs-negative score
-    separation of 0.2009 -- degrading the scorer by ~19%. Task 3 adds the
-    shared-IP ring type this comment was written anticipating, so the signal
-    now has something real to measure (see `riskmesh/generate.py::_pick_ip`);
-    the weight stays 0.00 here regardless -- re-weighing it against the new
-    ring type is Task 6's weight-search job, not this one's. See bugs.md
-    RISK-001.
+    separation of 0.2009 -- degrading the scorer by ~19%. Task 3 added the
+    shared-IP ring type this comment was written anticipating, but Task 6's
+    weight search (below) still finds no reason to weight it above zero. See
+    bugs.md RISK-001.
 
-    `instrument_sharing` and `merchant_concentration` ALSO carry 0.00, as of
-    Phase 11. `weight_search_protocol.md`'s re-run (after Phase 10's hybrid
-    pool-funded ring type and the new `instrument_pool_concentration` signal)
-    found `D_drop_flagged` -- which zeros exactly these two, RISK-004's and
-    RISK-002's flagged signals -- tying `A_baseline` on validation expected
-    loss (8,849.98, identical confusion matrix) and winning the tie-break on
-    `positives_below_max_negative` (0.625 vs 0.5625). Per the protocol's own
+    `instrument_sharing` and `merchant_concentration` carry 0.00, as of Phase
+    11 (`D_drop_flagged`, RISK-004/RISK-002) -- unchanged by Task 6, which
+    reproduces the identical A_baseline/D_drop_flagged tie (pbmn 0.7708,
+    hard-neg 69, expected loss 57,601.30 on validation) that Phase 11 already
+    resolved this way.
+
+    `temporal_burst` ALSO carries 0.00, as of Task 6. `weight_search_protocol.md`'s
+    re-run against the Tasks 3-5 benchmark (five ring types, four hard-negative
+    cluster types, fingerprint `28e054e8fa8436e9`) found `E_drop_temporal` --
+    which zeros exactly this signal -- beating the then-incumbent `A_baseline`
+    outright on validation expected loss (43,331.85 vs 57,601.30, a candidate
+    that clears the gate with pbmn 0.6458 against the 0.45 bound and 52 hard
+    negatives against the 4 minimum) and holding the same winner across the
+    full FN_ABSORBED_FRACTION x FP_FRICTION_RATE sensitivity grid. Four
+    structurally different hard-negative cluster types now exist (family,
+    office, hostel, retail) where Tier 0 had one; `temporal_burst` separates
+    rings from each individually (0.9057 hostel/office/retail, 0.7059 family)
+    but only 0.5783 against all four combined, a genuine mixture effect this
+    signal cannot resolve with a single weight. Per the protocol's own
     "the one subtlety" clause, `A_baseline` IS whatever this function returns,
     so the winner is folded back in here rather than left as a frozen record
     the pipeline does not actually use. Re-running the full search against
-    THIS weight vector as the new `A_baseline` reproduces the same winner
-    (fixed point reached in one extra iteration) -- see
-    `weight_search_protocol.md` Section 8.
+    THIS weight vector as the new `A_baseline` reproduces it as the winner
+    -- fixed point reached in one extra iteration, the same shape Phase 11
+    needed -- see `weight_search_protocol.md` Section 8.
 
-    The remaining five keep their Tier 0 baseline ratios, renormalised to
-    1.00, so zeroing three signals does not silently re-rank the other five.
+    The remaining four keep their Tier 0 baseline ratios, renormalised to
+    1.00, so dropping `temporal_burst` does not silently re-rank the other
+    four.
     """
     active = {
         "device_sharing": 0.22,
-        "temporal_burst": 0.25,
         "instrument_pool_concentration": 0.12,
         "failure_refund_rate": 0.12,
         "account_newness": 0.10,
     }
     total = sum(active.values())
     weights = {name: value / total for name, value in active.items()}
+    weights["temporal_burst"] = 0.0
     weights["ip_sharing"] = 0.0
     weights["instrument_sharing"] = 0.0
     weights["merchant_concentration"] = 0.0
