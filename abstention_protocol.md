@@ -1,21 +1,23 @@
 # Abstention / review-band protocol — frozen before any band is selected
 
-**Status: WRITTEN, NOT YET RUN (re-freeze pending — Tasks 3–5 benchmark).**
+**Status: RUN and CLOSED (Task 6 re-freeze). Band `t_lo = 0.10`, `t_hi = 0.20`
+selected on validation behind the coverage gate — a genuine, non-degenerate
+Review band, the first this project has selected — frozen to
+`experiments/abstention_policy.json`, and the held-out split read **once**
+through `evaluate_frozen_abstention_policy()` — see §8/§8b. This band beats
+the binary policy on the identical held-out rows by 18.1% (75,529.35 vs
+92,263.55), the first time an abstention band has improved on the binary
+policy on test rather than collapsing to it. No further read is permitted
+under this record; any future comparison needs its own frozen protocol.**
 Tasks 3–5 rebuilt the benchmark (five ring types, four hard-negative cluster
 types, 19,310 transactions) and moved the config fingerprint from
-`c3ee14627c2c2ce2` toward whatever `weight_search_protocol.md`'s own re-freeze
-settles on as the incumbent (that protocol's fold-back rule may change
-`Config()._default_weights()`, which is itself part of the fingerprint). Every
-number this protocol had frozen — band `t_lo = 0.18`, `t_hi = 0.18`, held-out
-expected loss 74,595.13 — describes a run against the old benchmark and no
-longer reproduces, so §8/§8b have been cleared back to a pending placeholder
-and this document is committed in that state, **before**
-`select_abstention_band()` runs against the new benchmark. §8/§8b are
-appended only after `experiments/abstention_policy.json` exists (which itself
-requires `experiments/weight_policy.json` to already be frozen — this band is
-layered on the already-selected `A_baseline` scorer and its binary threshold)
-and the single held-out read has been taken through
-`evaluate_frozen_abstention_policy()`.
+`c3ee14627c2c2ce2` to `fdf4fc217347d36b` (the fingerprint
+`weight_search_protocol.md`'s fold-back settled on). Every number this
+protocol had frozen before this run — band `t_lo = 0.18`, `t_hi = 0.18`,
+held-out expected loss 74,595.13, a degenerate band bit-for-bit identical to
+the binary policy — describes a run against the old benchmark and no longer
+reproduces; it is superseded and lives in git history at this section's
+earlier revisions, not reproduced here.
 
 **The mechanism (§2), the one new assumption (§3), and the gate (§4) are
 unchanged from every prior run.** Only the generator producing the rows the
@@ -186,6 +188,14 @@ whatever the incumbent currently does.
 
 ## 5. What was predicted, and what happened
 
+**Historical, Phase 12 (superseded).** This section's prediction and result
+both describe the Phase 12 run against the pre-Task-6 benchmark, kept
+unchanged because it is what motivated §4's coverage-gate discussion and is
+still an accurate record of that run. It is **not** a description of Task 6's
+outcome — see §8/§8b for the current frozen run, which lands differently: a
+genuine non-degenerate band that beats the binary policy on held-out data
+rather than the degenerate collapse described below.
+
 Stated before running anything, so the record cannot be read backwards.
 
 **Prediction (Phase 12 re-run, restated before this run):** the same
@@ -226,19 +236,23 @@ candidates they were built to catch turned out to need them.
 
 Whatever `(t_lo, t_hi)` `select_abstention_band()` returns in §8 is **optimal
 under this protocol's Phase-1 assumptions and the 0.25 review-coverage
-cap, evaluated on 31 validation components** — not a claimed correct fraud
+cap, evaluated on 100 validation components** — not a claimed correct fraud
 threshold, and not evidence that this exact band generalises. In particular:
 
-- It depends on the perfect-analyst-review assumption in §3, which is asserted,
-  not measured, and which cannot even be exercised this run: the selected
-  band routes nothing to Review at all, on either split.
-- It depends on `MAX_REVIEW_RATE = 0.25`, a business choice, not a data fact —
-  though it does not bind this run (the design review rate is 0%, far under
-  the cap).
-- It is fit to validation's specific error pattern, which this run happens to
-  be a perfect one (§5). That is a property of this particular draw, not a
-  guarantee, and is exactly why the held-out read in §7 matters and cannot be
-  skipped or predicted from this table.
+- It depends on the perfect-analyst-review assumption in §3, which is
+  asserted, not measured. Task 6's run is the first to actually exercise
+  it at scale (23 validation components, 32 held-out components routed to
+  Review) — the assumption is doing real work in this record, not sitting
+  idle behind a degenerate band the way it did in every prior run.
+- It depends on `MAX_REVIEW_RATE = 0.25`, a business choice, not a data
+  fact — it does not bind this run (design review rate 24.11%, just under
+  the cap; see §8), but it came closer to binding than any prior run.
+- It is fit to validation's specific error pattern (§8). That is a property
+  of this particular draw, not a guarantee, and is exactly why the held-out
+  read in §8b matters and cannot be skipped or predicted from this table —
+  even though this run's held-out read confirms the band generalises well
+  (§8b), that confirmation is a result, not something this section can
+  promise in advance.
 
 Report the band this way — "optimal under Phase-1 assumptions and the review
 cap" — everywhere it is quoted. Do not report it as "the threshold at which
@@ -271,20 +285,91 @@ family accounts stop looking like fraud."
 
 ---
 
-## 8. Outcome — PENDING
+## 8. Outcome — a genuine, non-degenerate Review band
 
-## 8b. The single permitted held-out read — PENDING
+Record: `experiments/abstention_policy.json`. `select_abstention_band()` run
+against the Tasks 3-5 benchmark, layered on `weight_search_protocol.md`'s
+re-frozen `A_baseline` (fingerprint `fdf4fc217347d36b`, binary threshold
+0.10): 3,435 bands passed the coverage gate out of 5,151 tried (1,716
+refused), `t_lo = 0.10`, `t_hi = 0.20`, panel PASS.
 
-Neither §8 nor §8b has been run. Both are populated, in full, only after
-`python -m riskmesh.freeze abstention` has produced
-`experiments/abstention_policy.json` against the Tasks 3-5 benchmark (layered
-on whatever `experiments/weight_policy.json` currently freezes as the
-A_baseline scorer and its binary threshold) and the single held-out read has
-been taken through `evaluate_frozen_abstention_policy()`. The prior run's
-finding (degenerate band `t_lo = t_hi = 0.18`, bit-for-bit identical to the
-binary policy on every held-out row, held-out expected loss 74,595.13) is
-superseded and lives in git history at this section's prior revision, not
-reproduced here.
+| | value |
+|---|---|
+| selected band | `t_lo = 0.10`, `t_hi = 0.20` (non-degenerate — width 0.10) |
+| validation expected loss | **31,378.85** (binary A_baseline: 43,331.85) |
+| validation review rate | **23%** (23 of 100) |
+| design review rate (the gated quantity) | **24.11%** (of 224, `<= 0.25` cap) |
+| validation confusion | Allow 48 (0 missed positives), Review 23 (3 positive, 20 negative — 14 family), Escalate 29 (20 TP, 9 FP) |
+| bands considered / refused by coverage | 3,435 / 1,716 (of 5,151 total) |
+
+**This is the first run in this project's history where the free search does
+not collapse to the binary threshold.** Every prior run (Phase 10/11's
+`[0.14, 0.23)`, Phase 12's degenerate `[0.18, 0.18)`) either widened `t_hi`
+modestly or found nothing to defer at all. This run finds real work for
+Review to do on validation: `A_baseline`'s binary policy at 0.10 already has
+fp = 29 out of 77 validation negatives (§8 of `weight_search_protocol.md`),
+and 20 of those 29 are cheap enough to waive at `C_review` (500.00) rather
+than eat `C_fp` (597.65) plus a review — a much closer `C_fp`/`C_review`
+relationship than any prior run's 171.7:1-ratio benchmark produced, because
+this run's overall `C_fn`/`C_fp` ratio (69.9:1) is the least lopsided cost
+model this project has derived. `t_lo` still lands exactly on the frozen
+binary threshold (0.10) — `A_baseline` has zero missed positives at 0.10, so
+there is nothing below it worth pulling into Review — but `t_hi` moves to
+0.20, a real 0.10-wide band, not a coincidence of this run's specific split.
+
+## 8b. The single permitted held-out read (taken, once)
+
+Through `evaluate_frozen_abstention_policy()`, with `t_lo`/`t_hi` read back
+**from** `experiments/abstention_policy.json` rather than recomputed. 112 test
+components: 23 positive, 89 negative.
+
+| | validation (selection) | **held out** |
+|---|---|---|
+| expected loss | 31,378.85 | **75,529.35** |
+| review rate | 23% (23/100) | **28.57%** (32/112) |
+| Allow | 48 (0 positives) | **54** (1 positive missed) |
+| Review | 23 (3 TP, 20 negative) | **32** (4 positive, 28 negative — 19 family) |
+| Escalate | 29 (20 TP, 9 FP) | **26** (18 TP, **8 FP**) |
+
+**Against the binary baseline on the identical test rows** (threshold 0.10,
+`weight_search_protocol.md` §8's frozen result): binary expected loss
+**92,263.55** (tp 22, fp 36, fn 1, tn 53), against the three-way's
+**75,529.35** — a delta of **-16,734.20**, an **18.1%** improvement. **This
+is the first held-out result in this project's history where the abstention
+band beats the binary policy rather than tying or losing to it.** Review
+absorbs 28 negatives that the binary policy would have escalated (paying
+`C_fp` + `C_review` each) at the cost of one review each instead, and defers
+4 positives (rather than missing or correctly flagging them outright) —
+exactly the mechanism §5's prediction described, realised for the first time
+on held-out data because this run's `C_fn`/`C_fp` ratio (69.9:1) and
+error profile give Review genuine near-miss cases to catch, unlike every
+prior run's near-perfect or near-degenerate binary confusion matrix.
+
+**Escalate-tier metrics** (the tier handled identically to the old binary
+"flag"): precision **0.6923** (18/26), recall (escalate only) **0.7826**
+(18/23), recall including deferred positives **0.9565** ((18+4)/23), false
+positive rate **0.0899** (8/89) — a large drop from the binary policy's FPR
+on the same rows (36/89 = 0.4045), because Review absorbs most of the
+near-miss negatives that the binary policy escalated outright.
+
+**19 of the 28 held-out Review negatives are family/office/hostel/retail
+components; 9 are background** — the same family-dominant-but-not-exclusive
+shape `weight_search_protocol.md` §8 reports for this run's residual
+false-positive error, now split across Escalate (8 of them) and Review (the
+rest) rather than concentrated entirely in one tier.
+
+**The one missed positive is an Allow-tier miss, not a near-miss Review could
+have caught** — it never reaches `t_lo` = 0.10 at all, the same shape every
+prior run reported for its single missed ring.
+
+**D3 is resolved, not a caveat, as of Phase 10.** `derive_costs()` charges
+the review once; both figures above (92,263.55 binary, 75,529.35 three-way)
+use that single accounting.
+
+**No further read is permitted under this record.** Any future comparison
+needs its own protocol frozen before the read.
+
+---
 
 ## 9. What would invalidate this protocol
 
