@@ -19,6 +19,7 @@ because one wrong big component costs as many false positives as it has members.
 from __future__ import annotations
 
 import json
+import random
 import sys
 from collections import defaultdict
 from dataclasses import dataclass
@@ -312,6 +313,98 @@ def evaluate(cfg: Config, test: list[Candidate], labels: list[Label],
         "ground_truth_rule": GROUND_TRUTH_RULE,
         "split_boundaries": {k: list(v) for k, v in cfg.split_boundaries.items()},
         "seed": cfg.seed,
+        "config_fingerprint": cfg.fingerprint(),
+        "python_version": sys.version.split()[0],
+    }
+
+
+# --------------------------------------------------------------------------
+# bootstrap confidence intervals (PRD "Metric Uncertainty", Should-have)
+# --------------------------------------------------------------------------
+
+N_BOOTSTRAP_RESAMPLES = 5000
+BOOTSTRAP_CI_METRICS = ("precision", "recall", "f1", "false_positive_rate")
+BOOTSTRAP_CONFIDENCE_LEVEL = 0.95
+
+
+def _percentile(values: list[float], p: float) -> float:
+    """Nearest-rank percentile. Stdlib only -- no numpy (G7)."""
+    ordered = sorted(values)
+    idx = min(len(ordered) - 1, max(0, round(p * (len(ordered) - 1))))
+    return ordered[idx]
+
+
+def bootstrap_ci(cfg: Config, test: list[Candidate], threshold: float,
+                 n_resamples: int = N_BOOTSTRAP_RESAMPLES,
+                 confidence: float = BOOTSTRAP_CONFIDENCE_LEVEL) -> dict:
+    """Percentile bootstrap CIs for precision/recall/F1/FPR over the held-out
+    (test) component set, at the already-frozen threshold.
+
+    CONTROLLER RULING, recorded here so a future reader cannot mistake this
+    for a second read informing a selection: computing a confidence interval
+    over the held-out split does NOT violate the freeze discipline. `test` and
+    `threshold` are the exact split and exact operating point `evaluate()`
+    already read exactly once (eval_report.json); resampling that same split
+    afterwards, to describe how much its own point estimate could have varied,
+    is a REPORTING operation, not a new read -- no information flows back into
+    `select_threshold()`, `select_weights()`, `select_abstention_band()`,
+    `select_xgboost_model()`, or `select_gnn_model()`, none of which this
+    function is ever called from. Nothing in this codebase is or may be tuned
+    against a confidence interval.
+
+    Resampled WITH replacement, size n = len(test), from a dedicated RNG
+    stream keyed off `cfg.seed` -- never the global `random` module -- so the
+    interval is exactly reproducible at a given seed and cannot desynchronise
+    any other stream (see the RNG-isolation discipline in generate.py).
+
+    Percentile method, reported honestly per the PRD even when uninformative:
+    "wide or uninformative intervals should be reported honestly" and a point
+    estimate "must not be presented as evidence of robustness on its own." At
+    n=112 test components these intervals are wide -- that is the finding,
+    not a defect of the method, and resample count is never raised to make a
+    wide interval look tighter.
+    """
+    assert all(c.split == "test" for c in test), "bootstrap_ci got non-test candidates"
+    n = len(test)
+    point = score_at(test, threshold)
+    rng = random.Random(f"{cfg.seed}:bootstrap")
+    alpha = 1.0 - confidence
+
+    samples: dict[str, list[float]] = {m: [] for m in BOOTSTRAP_CI_METRICS}
+    for _ in range(n_resamples):
+        resample = [test[rng.randrange(n)] for _ in range(n)]
+        m = score_at(resample, threshold)
+        for name in BOOTSTRAP_CI_METRICS:
+            samples[name].append(float(m[name]))
+
+    metrics = {}
+    for name in BOOTSTRAP_CI_METRICS:
+        lo = _percentile(samples[name], alpha / 2)
+        hi = _percentile(samples[name], 1 - alpha / 2)
+        metrics[name] = {
+            "point_estimate": point[name],
+            "ci_low": round(lo, 4),
+            "ci_high": round(hi, 4),
+            "width": round(hi - lo, 4),
+        }
+
+    return {
+        "measurement": "prd-metric-uncertainty-bootstrap-ci",
+        "method": "percentile bootstrap, resampled with replacement, nearest-rank percentile",
+        "reporting_only_note": (
+            "Computed over the held-out test split at the already-frozen "
+            "operating point. This is a reporting operation, not a second "
+            "read: the split was read exactly once (eval_report.json); "
+            "resampling it here to describe variance feeds no information "
+            "back into any frozen selection, and nothing is ever tuned "
+            "against this interval."
+        ),
+        "n_components": n,
+        "n_resamples": n_resamples,
+        "confidence_level": confidence,
+        "threshold": threshold,
+        "seed": f"{cfg.seed}:bootstrap",
+        "metrics": metrics,
         "config_fingerprint": cfg.fingerprint(),
         "python_version": sys.version.split()[0],
     }

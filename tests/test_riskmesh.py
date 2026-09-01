@@ -437,7 +437,8 @@ def test_18_reproducible_outputs(run_a: dict, run_b: dict) -> None:
     files = ["transactions.csv", "labels.csv", "components.csv",
              "integrity_report.json", "eval_report.json", "threshold.json",
              "graph_edges.json", "weight_policy.json",
-             "abstention_policy.json", "baselines.json", "ablations.json"]
+             "abstention_policy.json", "baselines.json", "ablations.json",
+             "bootstrap_ci.json"]
     for name in files:
         a, b = run_a["dir"] / name, run_b["dir"] / name
         assert a.exists(), f"{name} was never written"
@@ -645,8 +646,12 @@ def test_22_ablation_groups_partition_the_signals(run_a: dict) -> None:
           "predicted ip no-op holds exactly")
 
 
+SWEPT_BASELINES = ("random", "shared_device_only", "shared_ip_only",
+                   "transaction_level", "ring_score")
+
+
 def test_23_baselines_cover_the_five_the_prd_names(run_a: dict) -> None:
-    """All five PRD row-63 baselines present, and none fitted on test.
+    """All five value-swept PRD row-63 baselines present, and none fitted on test.
 
     The cutoff-fitting guard is asserted by calling `_freeze_cutoff` with test
     rows and requiring it to raise. A protocol that is merely followed by
@@ -658,11 +663,11 @@ def test_23_baselines_cover_the_five_the_prd_names(run_a: dict) -> None:
 
     base = json.loads((run_a["dir"] / "baselines.json").read_text(encoding="utf-8"))
     names = [b["baseline"] for b in base["baselines"]]
-    required = ["random", "shared_device_only", "shared_ip_only",
-                "transaction_level", "ring_score"]
-    assert names == required, f"expected {required}, got {names}"
+    assert names[:5] == list(SWEPT_BASELINES), f"expected {SWEPT_BASELINES}, got {names[:5]}"
 
     for b in base["baselines"]:
+        if b["baseline"] not in SWEPT_BASELINES:
+            continue
         assert b["validation_components"] > 0
         assert b["held_out"]["tp"] + b["held_out"]["fp"] + b["held_out"]["tn"] \
             + b["held_out"]["fn"] > 0, f"{b['baseline']} read no held-out rows"
@@ -678,8 +683,8 @@ def test_23_baselines_cover_the_five_the_prd_names(run_a: dict) -> None:
             "_freeze_cutoff accepted test candidates -- a baseline could be "
             "fitted on held-out data without anything complaining"
         )
-    check(f"23 all five PRD baselines present and read once; _freeze_cutoff "
-          f"refuses test rows")
+    check(f"23 all five value-swept PRD baselines present and read once; "
+          f"_freeze_cutoff refuses test rows")
 
 
 def test_24_shipped_scorer_is_not_re_swept_in_the_baseline_table(run_a: dict) -> None:
@@ -705,6 +710,113 @@ def test_24_shipped_scorer_is_not_re_swept_in_the_baseline_table(run_a: dict) ->
     )
     check("24 baseline table reports the shipped scorer at its own frozen "
           f"threshold ({ring['cutoff']}, F1 {ring['held_out']['f1']:.4f})")
+
+
+def test_25_baseline_table_has_seven_rows_tier2_refused_tier3_present(run_a: dict) -> None:
+    """PRD baselines 6 and 7 (Task 7a): both tiers are complete, so both rows
+    must be present -- Tier 2 (no feasible candidate) as an explicit refusal
+    with no fabricated metric (G5), Tier 3 (a winner) with its real held-out
+    read, sourced from experiments/xgboost_policy.json and
+    experiments/graphsage_policy.json verbatim, never refit or re-scored.
+    """
+    import json
+
+    base = json.loads((run_a["dir"] / "baselines.json").read_text(encoding="utf-8"))
+    names = [b["baseline"] for b in base["baselines"]]
+    assert names == list(SWEPT_BASELINES) + ["xgboost_scorer", "gnn_scorer"], names
+
+    xg = json.loads(Path("experiments/xgboost_policy.json").read_text(encoding="utf-8"))
+    gs = json.loads(Path("experiments/graphsage_policy.json").read_text(encoding="utf-8"))
+
+    tier2 = next(b for b in base["baselines"] if b["baseline"] == "xgboost_scorer")
+    assert xg["winner"] is None, "xgboost_policy.json now has a winner -- update the fixture"
+    assert tier2["feasible"] is False
+    assert tier2["held_out"] is None, "no feasible candidate means no held-out read"
+    assert "refused" in tier2["status"] and "no held-out read" in tier2["status"]
+    assert tier2["candidates_tried"] == len(xg["candidates"]) == 4
+    assert set(tier2["refusal_reasons"]) == set(xg["infeasible"])
+
+    tier3 = next(b for b in base["baselines"] if b["baseline"] == "gnn_scorer")
+    assert tier3["feasible"] is True
+    assert tier3["winner"] == gs["winner"] == "G2_two_layer"
+    assert tier3["held_out"]["f1"] == gs["held_out"]["f1"]
+    assert tier3["held_out"]["expected_loss"] == gs["held_out"]["expected_loss"]
+    assert tier3["tier1_reference"]["f1"] == \
+        next(b for b in base["baselines"] if b["baseline"] == "ring_score")["held_out"]["f1"]
+
+    check(f"25 baseline table carries all seven PRD baselines; Tier 2 refused "
+          f"explicitly ({tier2['candidates_tried']} candidates, no held-out read); "
+          f"Tier 3 winner {tier3['winner']} held-out F1 {tier3['held_out']['f1']} "
+          f"vs Tier 1 F1 {tier3['tier1_reference']['f1']}")
+
+
+def test_26_threshold_sweep_has_six_columns_on_validation_only(run_a: dict) -> None:
+    """PRD False-Positive Cost Model -> Threshold Analysis (Task 7b): a real
+    sweep across the threshold grid, all six named columns on every row,
+    computed on validation only (G2), with the shipped operating point marked.
+    """
+    import json
+    import sys as _sys
+
+    _sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from riskmesh.api.artifacts import Artifacts
+    from riskmesh.api import payloads
+
+    a = Artifacts(run_a["dir"])
+    sweep = payloads.threshold_analysis(a)["sweep"]
+    assert sweep["computed_on"] == "validation"
+    assert sweep["n_components"] == len(a.in_split("validation"))
+    required_cols = {"threshold", "precision", "recall", "false_positive_count",
+                      "false_positive_rate", "false_negative_count",
+                      "false_negative_rate", "manual_reviews",
+                      "manual_review_rate", "expected_loss", "selected"}
+    assert len(sweep["grid"]) == 101, len(sweep["grid"])
+    for row in sweep["grid"]:
+        assert required_cols <= set(row), required_cols - set(row)
+
+    selected_rows = [r for r in sweep["grid"] if r["selected"]]
+    assert len(selected_rows) == 1, selected_rows
+    threshold_json = json.loads((run_a["dir"] / "threshold.json").read_text(encoding="utf-8"))
+    assert selected_rows[0]["threshold"] == threshold_json["threshold"]
+
+    # Ladder unchanged -- still four rows, still the only field the UI reads.
+    ladder_names = [r["policy"] for r in payloads.threshold_analysis(a)["ladder"]]
+    assert ladder_names == ["flag_nothing", "flag_everything", "binary", "three_way"]
+
+    check(f"26 threshold sweep: {len(sweep['grid'])} rows on validation only, "
+          f"all six PRD columns present, operating point {selected_rows[0]['threshold']} "
+          f"marked; 4-row ladder unchanged")
+
+
+def test_27_bootstrap_ci_reproducible_and_reported_honestly(run_a: dict, run_b: dict) -> None:
+    """PRD Metric Uncertainty (Task 7c): bootstrap CIs for precision, recall,
+    F1, false-positive rate, reproducible under a seed derived from cfg.seed,
+    reported as percentile intervals even when wide (n=112 test components).
+    """
+    import json
+
+    ci_a = json.loads((run_a["dir"] / "bootstrap_ci.json").read_text(encoding="utf-8"))
+    ci_b = json.loads((run_b["dir"] / "bootstrap_ci.json").read_text(encoding="utf-8"))
+    assert ci_a == ci_b, "bootstrap CI is not reproducible at a fixed seed"
+
+    required = {"precision", "recall", "f1", "false_positive_rate"}
+    assert set(ci_a["metrics"]) == required, ci_a["metrics"]
+    for name, m in ci_a["metrics"].items():
+        assert m["ci_low"] <= m["point_estimate"] <= m["ci_high"], (name, m)
+        assert m["width"] == round(m["ci_high"] - m["ci_low"], 4)
+    assert ci_a["n_components"] == 112, ci_a["n_components"]
+    # Honesty check, not a tightness requirement: the PRD explicitly allows a
+    # wide interval to be the finding at this sample size -- this asserts the
+    # interval is reported (non-degenerate point-mass), not that it is narrow.
+    assert ci_a["metrics"]["f1"]["width"] > 0.0, (
+        "a zero-width interval at n=112 would suggest resampling never varied "
+        "the sample -- almost certainly a bug, not a genuinely tight estimate"
+    )
+
+    check(f"27 bootstrap CI byte-identical across two runs at the same seed "
+          f"({ci_a['n_resamples']} resamples); F1 {ci_a['metrics']['f1']['point_estimate']} "
+          f"CI [{ci_a['metrics']['f1']['ci_low']}, {ci_a['metrics']['f1']['ci_high']}] "
+          f"width {ci_a['metrics']['f1']['width']} reported as-is")
 
 
 # --------------------------------------------------------------------------
@@ -765,7 +877,12 @@ def main() -> int:
         test_23_baselines_cover_the_five_the_prd_names(run_a)
         test_24_shipped_scorer_is_not_re_swept_in_the_baseline_table(run_a)
 
-        print(f"\n{len(PASSED)}/30 checks passed")
+        print("\nTask 7: XGBoost/GraphSAGE baseline rows, threshold sweep, bootstrap CI")
+        test_25_baseline_table_has_seven_rows_tier2_refused_tier3_present(run_a)
+        test_26_threshold_sweep_has_six_columns_on_validation_only(run_a)
+        test_27_bootstrap_ci_reproducible_and_reported_honestly(run_a, run_b)
+
+        print(f"\n{len(PASSED)}/33 checks passed")
         return 0
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

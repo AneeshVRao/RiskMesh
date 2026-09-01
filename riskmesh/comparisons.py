@@ -19,8 +19,10 @@ Nothing here re-selects a weight, threshold or band from a held-out read.
 
 from __future__ import annotations
 
+import json
 import random
 import sys
+from pathlib import Path
 
 from .config import SIGNALS, Config
 from .costmodel import _renormalised, rescore
@@ -37,6 +39,13 @@ from .generate import Label, Txn
 from .graph import Graph
 
 DESIGN_SPLITS = ("train", "validation")
+
+# Where the Tier 2/3 protocol freezes live. PRD baselines 6 and 7 ("XGBoost
+# scorer, if Tier 2 is completed" / "GNN scorer, if Tier 3 is completed") are
+# sourced verbatim from these -- never refit, never re-scored. They were
+# produced by their own freeze stages (`riskmesh/freeze.py xgboost|graphsage`),
+# not by this module.
+EXPERIMENTS_DIR = Path(__file__).resolve().parent.parent / "experiments"
 
 # Naive per-transaction rule for the transaction-level baseline. Raw fields on
 # the transaction itself; no shared-attribute counts, nothing from the graph.
@@ -205,9 +214,108 @@ def age_cut_sensitivity(txns: list[Txn], graph: Graph, design_ids: set[str],
     return out
 
 
+def _read_frozen(name: str) -> dict:
+    """Read a frozen protocol record from experiments/ verbatim.
+
+    Not a rescore, not a refit: these files were produced by their own freeze
+    stage and are read here exactly as they sit on disk.
+    """
+    return json.loads((EXPERIMENTS_DIR / name).read_text(encoding="utf-8"))
+
+
+def _tier2_xgboost_row() -> dict:
+    """PRD baseline 6: 'XGBoost scorer, if Tier 2 is completed'.
+
+    Tier 2 has NO feasible candidate: all four configurations
+    (xgboost_protocol.md) were refused by the panel or difficulty gate before
+    any held-out read was permitted. G5 requires this row render as an
+    explicit refusal -- not be silently dropped, and not be given a fabricated
+    metric to fill the gap left by a read that never happened.
+    """
+    xg = _read_frozen("xgboost_policy.json")
+    assert xg["winner"] is None, (
+        "xgboost_policy.json now records a winner -- this row was written "
+        "for the no-feasible-candidate case and must be updated to report "
+        "it, not silently reused"
+    )
+    return {
+        "baseline": "xgboost_scorer",
+        "tier": 2,
+        "protocol": "xgboost_protocol.md",
+        "source": "experiments/xgboost_policy.json",
+        "uses_graph": "no (tabular signals only)",
+        "description": "XGBoost over the same eight signals, gated by the "
+                       "identical non-triviality panel and difficulty bar the "
+                       "weight search was held to.",
+        "feasible": False,
+        "status": "refused -- no feasible candidate, no held-out read taken",
+        "candidates_tried": len(xg["candidates"]),
+        "infeasible": xg["infeasible"],
+        "refusal_reasons": {
+            c["policy"]: {"refused_by": c["refused_by"], "reason": c["reason"]}
+            for c in xg["candidates"]
+        },
+        "held_out": None,
+        "held_out_hard_negatives_only": None,
+    }
+
+
+def _tier3_graphsage_row(tier1_f1: float, tier1_expected_loss: float) -> dict:
+    """PRD baseline 7: 'GNN scorer, if Tier 3 is completed'.
+
+    graphsage_protocol.md's winner (G2_two_layer) is fed here verbatim from
+    its own frozen `held_out` block. Tier 1's own held-out F1 and expected loss
+    are attached alongside it, unedited, so a reader can compare the two
+    columns directly -- this function does not judge which is better.
+    """
+    gs = _read_frozen("graphsage_policy.json")
+    assert gs["winner"] is not None, (
+        "graphsage_policy.json now has no winner -- this row assumes a "
+        "feasible Tier 3 candidate exists and must be updated if that changes"
+    )
+    ho = gs["held_out"]
+    return {
+        "baseline": "gnn_scorer",
+        "tier": 3,
+        "protocol": "graphsage_protocol.md",
+        "source": "experiments/graphsage_policy.json",
+        "uses_graph": "fully (GraphSAGE message passing over the component graph)",
+        "description": "Hand-rolled GraphSAGE over structural node features "
+                       "(node type + degree) -- deliberately not the linear "
+                       "scorer's 8 signals.",
+        "feasible": True,
+        "winner": gs["winner"],
+        "winner_hyperparameters": gs["winner_hyperparameters"],
+        "threshold": gs["winner_threshold"],
+        "held_out": {
+            "precision": ho["precision"], "recall": ho["recall"], "f1": ho["f1"],
+            "false_positive_rate": ho["false_positive_rate"],
+            "tp": ho["tp"], "fp": ho["fp"], "tn": ho["tn"], "fn": ho["fn"],
+            "expected_loss": ho["expected_loss"],
+            "review_rate": ho["review_rate"],
+            "rings_recovered": ho["rings_recovered"],
+            "rings_in_test": ho["rings_in_test"],
+        },
+        # Not computed here: the freeze protocol never split the GraphSAGE
+        # held-out read into a hard-negatives-only view the way the five
+        # PRD-row-63 baselines above do, and recomputing it would mean
+        # re-scoring GraphSAGE's held-out predictions -- exactly the refit
+        # this row exists to avoid.
+        "held_out_hard_negatives_only": None,
+        "tier1_reference": {
+            "f1": tier1_f1,
+            "expected_loss": tier1_expected_loss,
+            "note": "Tier 1's own held-out reading, unedited, for direct "
+                    "comparison against the two rows above -- not an "
+                    "assessment of which tier wins.",
+        },
+    }
+
+
 def baseline_report(cfg: Config, txns: list[Txn], graph: Graph,
                     cands: list[Candidate]) -> dict:
-    """The five baselines PRD row 63 requires, each frozen then read once."""
+    """The seven PRD row-63 baselines, each frozen then read once (or, for
+    Tier 2, explicitly refused with no read at all -- see G5)."""
     validation = [c for c in cands if c.split == "validation"]
     test = [c for c in cands if c.split == "test"]
     design_ids = {c.component_id for c in cands if c.split in DESIGN_SPLITS}
@@ -278,6 +386,16 @@ def baseline_report(cfg: Config, txns: list[Txn], graph: Graph,
         "held_out_hard_negatives_only": _read_once(
             _hard_negative_view(test), scores, shipped_threshold, ">="),
     })
+
+    # PRD baselines 6 and 7 -- "if Tier 2/3 is completed", and both tiers are.
+    # Sourced verbatim from their own frozen records, never refit or
+    # re-scored here. Tier 1's own held-out reading (this same ring_score row,
+    # plus weight_policy.json's expected loss) rides along on the Tier 3 row
+    # so the two can be read side by side without opening a second file.
+    tier1_f1 = rows[-1]["held_out"]["f1"]
+    tier1_expected_loss = _read_frozen("weight_policy.json")["held_out"]["expected_loss"]
+    rows.append(_tier2_xgboost_row())
+    rows.append(_tier3_graphsage_row(tier1_f1, tier1_expected_loss))
 
     return {
         "measurement": "prd-row-63-baseline-sanity-checks",

@@ -20,7 +20,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from riskmesh.abstention import three_way_stats  # noqa: E402
 from riskmesh.api import audit, bands, payloads  # noqa: E402
-from riskmesh.api.artifacts import Artifacts, ArtifactsNotFrozen  # noqa: E402
+from riskmesh.api.artifacts import (  # noqa: E402
+    Artifacts,
+    ArtifactsNotFrozen,
+    _FINGERPRINTED,
+)
 
 PASS = 0
 
@@ -43,8 +47,8 @@ def test_01_artifacts_load_and_agree(a: Artifacts) -> None:
     # instead of a literal).
     assert a.fingerprint == Config().fingerprint(), (a.fingerprint, Config().fingerprint())
     assert len(a.components) == 336, len(a.components)
-    check(f"01 artifacts load; all 9 fingerprinted files agree with the "
-          f"current config ({a.fingerprint})")
+    check(f"01 artifacts load; all {len(_FINGERPRINTED)} fingerprinted files "
+          f"agree with the current config ({a.fingerprint})")
 
 
 def test_02_mixed_vintage_refuses() -> None:
@@ -299,6 +303,42 @@ def test_09_rings_listing(a: Artifacts) -> None:
           f"{esc['count']} escalate, {rev['count']} review")
 
 
+def test_10_task7_additions_served_verbatim(a: Artifacts) -> None:
+    """Task 7: the API layer serves the seven-row baseline table (with the
+    Tier 2 refusal row intact), the six-column threshold sweep, and the
+    bootstrap CI -- reshaped, not recomputed or dropped.
+    """
+    b = payloads.benchmark(a)
+    base_names = [row["baseline"] for row in b["baselines"]["baselines"]]
+    assert base_names == ["random", "shared_device_only", "shared_ip_only",
+                          "transaction_level", "ring_score",
+                          "xgboost_scorer", "gnn_scorer"], base_names
+    tier2 = next(r for r in b["baselines"]["baselines"] if r["baseline"] == "xgboost_scorer")
+    assert tier2["feasible"] is False and tier2["held_out"] is None
+    assert "refused" in tier2["status"]
+
+    ci = b["bootstrap_ci"]
+    assert ci == a.json["bootstrap_ci.json"], "benchmark() must serve bootstrap_ci verbatim"
+    assert set(ci["metrics"]) == {"precision", "recall", "f1", "false_positive_rate"}
+
+    t = payloads.threshold_analysis(a)
+    sweep = t["sweep"]
+    assert sweep["computed_on"] == "validation"
+    assert len(sweep["grid"]) == 101
+    six_cols = {"precision", "recall", "false_positive_count", "false_positive_rate",
+                "false_negative_count", "false_negative_rate", "manual_reviews",
+                "expected_loss"}
+    assert all(six_cols <= set(row) for row in sweep["grid"])
+    assert sum(1 for row in sweep["grid"] if row["selected"]) == 1
+    # Ladder untouched by the sweep's addition.
+    assert [r["policy"] for r in t["ladder"]] == \
+        ["flag_nothing", "flag_everything", "binary", "three_way"]
+
+    check(f"10 benchmark()/threshold-analysis serve the seven-row baseline "
+          f"table (Tier 2 refused, Tier 3 present), the {len(sweep['grid'])}-row "
+          f"threshold sweep with all six columns, and bootstrap_ci verbatim")
+
+
 def main() -> None:
     print("\nriskmesh API -- data layer\n")
     a = Artifacts()
@@ -311,6 +351,7 @@ def main() -> None:
     test_07_evidence_matches_the_investigator_mockup(a)
     test_08_audit_round_trip(a)
     test_09_rings_listing(a)
+    test_10_task7_additions_served_verbatim(a)
     print(f"\n{PASS}/{PASS} checks passed\n")
 
 
