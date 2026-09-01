@@ -518,6 +518,18 @@ def _inject_rings(
             # of which ring type this index turned out to be.
             for acct in members:
                 acct.merchants = [merch_rng.choice(pool) for _ in acct.merchants]
+            # Weak partial instrument overlap -- same 2-3-sharer mechanism the
+            # device type's own non-pool-funded branch uses below, reusing the
+            # `sharers`/`shared_pi` draws that already happen unconditionally
+            # for every ring (see the isolation note above), so this needs no
+            # new randomness. Without ANY structural edge, a refund ring has
+            # zero shared device/ip/instrument accounts and graph.py forms no
+            # component at all -- the ring reduces to singletons and is never
+            # scored (review finding, Task 3 fix-up). "Weak-to-absent"
+            # infrastructure sharing means weak, not literally none: enough of
+            # an edge to exist as a candidate component, not enough to be easy.
+            for acct in sharers:
+                acct.instruments.append(shared_pi)
 
         elif ring_type == "hybrid":
             instr_rng = random.Random(cfg.seed * _INSTRUMENT_POOL_PRIME + r)

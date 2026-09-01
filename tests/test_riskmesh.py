@@ -16,7 +16,7 @@ import hashlib
 import shutil
 import sys
 import tempfile
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -138,6 +138,34 @@ def test_03b_five_ring_types_present_and_split_isolated(labels) -> None:
         )
     check(f"03b all five ring types present {sorted(types_seen)}; "
           f"each of {len(ring_type)} rings is one type inside exactly one split")
+
+
+def test_03c_every_ring_type_yields_a_positive_candidate(cands, labels) -> None:
+    """Task 3 review fix: label presence (03b) is not enough on its own.
+
+    A ring type with no structural edge at all reduces to singleton accounts
+    -- graph.py forms no component from merchant-only sharing -- and never
+    becomes a scoreable candidate. It would then sit in labels.csv and
+    nowhere else: present in ground truth, absent from every metric the
+    panel and the scorer actually compute. This is exactly what happened to
+    the first cut of the refund-abuse type (no device/ip/instrument edge at
+    all): 0 of its rings survived as positive candidates in the design
+    split. Asserted per type, not in aggregate, so one invisible type cannot
+    hide behind the other four's counts.
+    """
+    from riskmesh.generate import RING_TYPES
+
+    type_by_ring = {lb.ring_id: lb.ring_type for lb in labels if lb.ring_id}
+    design = [c for c in cands if c.split in ("train", "validation")]
+    pos_types = Counter(type_by_ring[c.ring_id] for c in design if c.is_positive)
+    missing = [t for t in RING_TYPES if pos_types.get(t, 0) < 1]
+    assert not missing, (
+        f"ring type(s) {missing} contribute zero positive candidates to the "
+        f"design split (counts: {dict(sorted(pos_types.items()))}) -- "
+        "structurally undetectable"
+    )
+    check("03c every ring type yields >=1 positive design candidate: "
+          f"{dict(sorted(pos_types.items()))}")
 
 
 def test_04_split_assignment_agrees(splits) -> None:
@@ -434,14 +462,15 @@ def test_20_abstention_binary_collapse(cfg, cands) -> None:
     is a permanent test, not a design-doc claim, because a future edit to
     either formula that breaks the equivalence would silently make the two
     cost models inconsistent with each other. The frozen number itself --
-    257,592.45 at threshold 0.18 (re-derived in Task 3, after the population
-    raise and four new ring types: exposure figures scale with the larger
-    population, so this number moved from the pre-Task-3 4,000.00 -- see
+    203,290.09 at threshold 0.18 (re-derived in Task 3: first for the
+    population raise and four new ring types, 4,000.00 -> 257,592.45; then
+    again for the review fix that gave refund-abuse rings a structural edge
+    so they survive as candidates, 257,592.45 -> 203,290.09 -- see
     task-3-report.md) -- is asserted directly, not just the equality of the
     two formulas, so a regression in the pipeline upstream of the formulas is
     caught too. The number itself is not otherwise load-bearing; it is a
     regression anchor, and it is expected to move again whenever Config's
-    population or cost inputs change.
+    population, ring mix, or cost inputs change.
     """
     from riskmesh.abstention import three_way_stats
     from riskmesh.costmodel import derive_costs, expected_loss
@@ -459,12 +488,12 @@ def test_20_abstention_binary_collapse(cfg, cands) -> None:
         f"binary costmodel.expected_loss() gives {binary['expected_loss']} -- "
         "the collapse abstention_protocol.md relies on is broken"
     )
-    assert three_way["expected_loss"] == 257592.45, (
-        f"got {three_way['expected_loss']}, expected the frozen 257,592.45 -- "
+    assert three_way["expected_loss"] == 203290.09, (
+        f"got {three_way['expected_loss']}, expected the frozen 203,290.09 -- "
         "either the formula or something upstream of it has changed"
     )
     check("20 abstention three_way_stats(t_lo=t_hi=0.18) reproduces the frozen "
-          "binary expected loss 257,592.45 exactly")
+          "binary expected loss 203,290.09 exactly")
 
 
 def test_21_ablation_full_row_reproduces_the_shipped_eval(run_a: dict) -> None:
@@ -624,6 +653,7 @@ def main() -> int:
         test_02_no_label_leakage(cfg, run_a)
         test_03_split_isolation(cands)
         test_03b_five_ring_types_present_and_split_isolated(labels)
+        test_03c_every_ring_type_yields_a_positive_candidate(cands, labels)
         test_04_split_assignment_agrees(splits)
         test_05_hygiene(cfg, txns, graph)
         test_06_hard_negatives_are_hard(txns, labels)
@@ -648,7 +678,7 @@ def main() -> int:
         test_23_baselines_cover_the_five_the_prd_names(run_a)
         test_24_shipped_scorer_is_not_re_swept_in_the_baseline_table(run_a)
 
-        print(f"\n{len(PASSED)}/27 checks passed")
+        print(f"\n{len(PASSED)}/28 checks passed")
         return 0
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
