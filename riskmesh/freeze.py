@@ -223,9 +223,9 @@ def _per_action_scores(test: list[Candidate], t_lo: float, t_hi: float) -> dict[
 
 def _sample_variance_note(t_lo: float, t_hi: float, val_tp: int, val_fp: int,
                           val_fn: int, val_tn: int, threshold: float,
-                          n_test: int | None = None, review_rate: float | None = None,
-                          loss_delta_vs_binary: float | None = None,
-                          improvement_pct: float | None = None) -> str:
+                          n_test: int, review_rate: float,
+                          loss_delta_vs_binary: float,
+                          improvement_pct: float) -> str:
     if t_lo != t_hi:
         return (
             f"The band search this run selected a non-degenerate Review band "
