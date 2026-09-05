@@ -221,6 +221,15 @@ export interface BaselineRow {
   held_out_hard_negatives_only: { f1: number } | null;
 }
 
+export interface PerRingTypeRecallRow {
+  ring_type: string;
+  n: number;
+  ring_score_recall: number | null;
+  ring_score_caught: number;
+  transaction_level_recall: number | null;
+  transaction_level_caught: number;
+}
+
 export interface AblationRow {
   group: string;
   weight_removed: number;
@@ -277,6 +286,7 @@ export interface BenchmarkResponse {
   };
   single_signal_max_f1: Record<string, number>;
   baselines: { baselines: BaselineRow[] };
+  per_ring_type_recall: PerRingTypeRecallRow[];
   ablations: { configurations: AblationRow[] };
   bootstrap_ci: Record<string, unknown>;
   weight_search: { gates: Record<string, unknown>; candidates: WeightCandidate[] };

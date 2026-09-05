@@ -360,6 +360,13 @@ def benchmark(arts: Artifacts) -> dict:
         # read as written, and a payload builder that reshaped them would be a
         # place for the uncomfortable rows to quietly go missing.
         "baselines": arts.json["baselines.json"],
+        # Recall by injected ring type for the two rows shown side by side on
+        # the Benchmark tab (ring_score, transaction_level) -- the aggregate
+        # F1/recall above hides that transaction_level's edge is precision,
+        # not recall, and that it has no signature at all for device-sharing
+        # rings (deferred_decisions.md D5). Sourced from the same frozen
+        # baselines.json, not recomputed.
+        "per_ring_type_recall": arts.json["baselines.json"]["per_ring_type_recall"],
         "ablations": arts.json["ablations.json"],
         # PRD "Metric Uncertainty" (Should-have). Reporting only -- see
         # evaluate.bootstrap_ci()'s docstring: resampling the already-read

@@ -2,7 +2,7 @@ import { getBenchmark } from "../api/client";
 import { useFetch } from "../hooks/useFetch";
 import { fmt } from "../format";
 import { Loading, ErrorState, EmptyState } from "../components/AsyncState";
-import type { BaselineRow } from "../api/types";
+import type { BaselineRow, PerRingTypeRecallRow } from "../api/types";
 
 // Functional reference view (PRD: do not over-invest here). Reads /benchmark
 // once and renders it verbatim -- integrity panel, all seven baseline rows,
@@ -148,6 +148,43 @@ export function Benchmark() {
           <tbody>
             {sortedBaselines.map((r) => (
               <BaselineTableRow key={r.baseline} row={r} shippedF1={shippedF1} />
+            ))}
+          </tbody>
+        </table>
+      </section>
+
+      {/* Per-ring-type recall: ring_score vs transaction_level */}
+      <section className="border border-line bg-bg">
+        <h2 className="border-b border-line bg-ink px-2.5 py-1 text-[11px] font-semibold text-white">
+          Recall by ring type -- ring_score vs. transaction_level
+        </h2>
+        <p className="px-2.5 pt-2 text-[11px] leading-relaxed text-ink-2">
+          transaction_level's higher held-out F1 above is a precision edge, not a recall edge: ring_score finds more
+          rings overall and has no gap at all on device-sharing rings, which transaction_level has no per-transaction
+          signature for.
+        </p>
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="bg-fill text-right text-[10px] uppercase tracking-wide text-ink-3">
+              <th className="border-b border-line px-2 py-1 text-left">Ring type</th>
+              <th className="border-b border-line px-2 py-1">n</th>
+              <th className="border-b border-line px-2 py-1">ring_score recall</th>
+              <th className="border-b border-line px-2 py-1">transaction_level recall</th>
+            </tr>
+          </thead>
+          <tbody>
+            {b.per_ring_type_recall.map((r: PerRingTypeRecallRow) => (
+              <tr key={r.ring_type} className="border-b border-line-2">
+                <td className="px-2 py-1">{r.ring_type}</td>
+                <td className="num px-2 py-1 text-right">{r.n}</td>
+                <td className="num px-2 py-1 text-right">
+                  {r.ring_score_caught}/{r.n} ({r.ring_score_recall == null ? "—" : fmt.pct1(r.ring_score_recall)})
+                </td>
+                <td className="num px-2 py-1 text-right">
+                  {r.transaction_level_caught}/{r.n} (
+                  {r.transaction_level_recall == null ? "—" : fmt.pct1(r.transaction_level_recall)})
+                </td>
+              </tr>
             ))}
           </tbody>
         </table>

@@ -215,7 +215,7 @@ def main(cfg: Config | None = None, out: Path = OUT) -> dict:
     # none of them may influence the shipped scorer. See implementation_plan.md,
     # "PRD rows 63 and 70", written before any of this ran.
     (out / "baselines.json").write_text(
-        json.dumps(baseline_report(cfg, txns, graph, candidates), indent=2) + "\n",
+        json.dumps(baseline_report(cfg, txns, graph, candidates, labels), indent=2) + "\n",
         encoding="utf-8",
     )
     (out / "ablations.json").write_text(

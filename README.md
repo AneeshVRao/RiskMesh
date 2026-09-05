@@ -18,9 +18,15 @@ printed on the Benchmark tab rather than left out.
 # 1. the benchmark — generate, graph, score, split, evaluate
 python -m riskmesh                  # writes 14 files to out/
 
-# 2. the console
-python -m uvicorn riskmesh.api.main:app --port 8000     # API
-python -m http.server 8080 -d mockups                   # UI
+# 2. the API (either console talks to this)
+python -m uvicorn riskmesh.api.main:app --port 8000
+
+# 3a. the React console (frontend/, the PRD-named client)
+cd frontend && npm install && npm run build && npm run preview
+#    or `npm run dev` for a hot-reload dev server — see frontend/README.md
+
+# 3b. or the reference client (mockups/, dependency-free fallback)
+python -m http.server 8080 -d mockups
 #    then open http://127.0.0.1:8080/index.html
 ```
 
@@ -622,9 +628,14 @@ riskmesh/gnn.py          hand-rolled GraphSAGE candidates, the same gates reused
 riskmesh/freeze.py       the one entry point that regenerates all four frozen records
 riskmesh/__main__.py     the one command
 riskmesh/api/            FastAPI: artifacts, bands, payloads, audit, routes
+frontend/                React console (Vite + React 19 + TypeScript +
+                          Tailwind v4), the PRD-named client for the four
+                          Primary Screens — see frontend/README.md
 mockups/                 index.html + four screens (b-mosaic, investigator,
-                          threshold-cost, benchmark) + api.js, the live client,
-                          + five Playwright verify-*.mjs checks
+                          threshold-cost, benchmark) + api.js, a
+                          dependency-free reference client kept as a
+                          lightweight fallback (no 1:1 parity with frontend/
+                          required), + five Playwright verify-*.mjs checks
 design-api/              earlier canvas-tool design draft for the console API
                           surface; superseded by mockups/, kept for provenance
 tests/                   33 pipeline checks + 10 API checks + 4 XGBoost checks

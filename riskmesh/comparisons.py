@@ -348,8 +348,46 @@ def _tier3_graphsage_row() -> dict:
     }
 
 
+def _per_ring_type_recall(
+    test: list[Candidate], labels: list[Label],
+    scored_baselines: dict[str, tuple[dict[str, float], float, str]],
+) -> list[dict]:
+    """Recall per injected ring type, for the baselines named in `scored_baselines`.
+
+    Answers the question the bare aggregate F1/recall on the Benchmark tab
+    cannot: `ring_score` and `transaction_level` are close on aggregate recall
+    but not uniformly so -- `ring_score` sweeps every device-sharing ring
+    `transaction_level` misses, because device sharing has no per-transaction
+    signature. `deferred_decisions.md` D5 first measured this by hand; this is
+    the same computation (test split, each baseline's own frozen cutoff/
+    direction, grouped by the majority ring's `ring_type`), made reusable so
+    the API and the README stop needing to agree on a hand-copied table.
+
+    `scored_baselines` maps a baseline name to (component_id -> value, cutoff,
+    direction) -- exactly the three things `_read_once()` already takes.
+    """
+    ring_type_by_ring_id = {lb.ring_id: lb.ring_type for lb in labels if lb.ring_id}
+    positives = [c for c in test if c.is_positive]
+    ring_types = sorted({ring_type_by_ring_id.get(c.ring_id, "") for c in positives})
+
+    rows = []
+    for rt in ring_types:
+        members = [c for c in positives if ring_type_by_ring_id.get(c.ring_id) == rt]
+        row: dict = {"ring_type": rt, "n": len(members)}
+        for name, (values, cutoff, direction) in scored_baselines.items():
+            caught = sum(
+                1 for c in members
+                if (values[c.component_id] >= cutoff if direction == ">="
+                    else values[c.component_id] <= cutoff)
+            )
+            row[f"{name}_recall"] = round(caught / len(members), 4) if members else None
+            row[f"{name}_caught"] = caught
+        rows.append(row)
+    return rows
+
+
 def baseline_report(cfg: Config, txns: list[Txn], graph: Graph,
-                    cands: list[Candidate]) -> dict:
+                    cands: list[Candidate], labels: list[Label]) -> dict:
     """The seven PRD row-63 baselines, each frozen then read once (or, for
     Tier 2, explicitly refused with no read at all -- see G5)."""
     validation = [c for c in cands if c.split == "validation"]
@@ -380,9 +418,11 @@ def baseline_report(cfg: Config, txns: list[Txn], graph: Graph,
     ]
 
     rows = []
+    cutoffs_by_name: dict[str, tuple[dict[str, float], float, str]] = {}
     for name, graph_use, blurb, values in specs:
         frozen = _freeze_cutoff(validation, values)
         cut, direction = float(frozen["cutoff"]), str(frozen["direction"])
+        cutoffs_by_name[name] = (values, cut, direction)
         rows.append({
             "baseline": name,
             "uses_graph": graph_use,
@@ -432,6 +472,17 @@ def baseline_report(cfg: Config, txns: list[Txn], graph: Graph,
     rows.append(_tier2_xgboost_row())
     rows.append(_tier3_graphsage_row())
 
+    # Aggregate recall hides that ring_score and transaction_level do not win
+    # or lose uniformly across ring types (deferred_decisions.md D5) -- e.g.
+    # device-sharing rings, which transaction_level has no signature for at
+    # all. Computed only for the two rows a reader is actually shown side by
+    # side on the Benchmark tab; each baseline keeps its own frozen
+    # cutoff/direction from above, nothing is re-swept.
+    per_ring_type_recall = _per_ring_type_recall(test, labels, {
+        "ring_score": (scores, shipped_threshold, ">="),
+        "transaction_level": cutoffs_by_name["transaction_level"],
+    })
+
     return {
         "measurement": "prd-row-63-baseline-sanity-checks",
         "protocol": (
@@ -440,6 +491,7 @@ def baseline_report(cfg: Config, txns: list[Txn], graph: Graph,
             "Directions are swept because RISK-001 showed a one-directional "
             "sweep reports an inverted signal as useless."
         ),
+        "per_ring_type_recall": per_ring_type_recall,
         "transaction_level_amount_cutoff": amount_cutoff,
         "transaction_level_amount_cutoff_fitted_on": "train+validation",
         "transaction_level_age_cut_days": TXN_LEVEL_YOUNG_ACCOUNT_DAYS,
