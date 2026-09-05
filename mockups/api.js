@@ -644,17 +644,30 @@ async function initBenchmark() {
   if (bb && b.baselines) {
     const rows = b.baselines.baselines;
     const ship = rows.find((r) => r.baseline === "ring_score").held_out.f1;
-    bb.innerHTML = [...rows].sort((x, y) => y.held_out.f1 - x.held_out.f1).map((r) => {
+    // Tier 2 (xgboost_scorer) can have held_out: null -- refused by the
+    // panel/difficulty gate before any held-out read was permitted (G5: the
+    // row still renders, it just has no metric). Sort those last rather than
+    // dereferencing a null.
+    bb.innerHTML = [...rows].sort((x, y) =>
+      (y.held_out ? y.held_out.f1 : -1) - (x.held_out ? x.held_out.f1 : -1)
+    ).map((r) => {
       const h = r.held_out, hard = r.held_out_hard_negatives_only;
       // A challenger at or above the shipped scorer is marked, not buried.
-      const beat = r.baseline !== "ring_score" && h.f1 >= ship ? " bad" : "";
+      const beat = h && r.baseline !== "ring_score" && h.f1 >= ship ? " bad" : "";
+      // Operating point: the five value-swept baselines + ring_score carry
+      // cutoff/direction; the GraphSAGE row carries threshold instead (its
+      // own protocol's vocabulary -- always ">=", the only direction a
+      // frozen probability threshold is applied in this codebase); a
+      // refused row (no candidate ever got a threshold) has neither.
+      const op = r.cutoff != null ? `${r.direction === ">=" ? "≥" : "≤"} ${esc(r.cutoff)}`
+        : r.threshold != null ? `≥ ${esc(r.threshold)}` : "—";
       return `<tr><td><span class="nm">${esc(r.baseline)}</span>
-        <div class="why">${esc(r.description)}</div></td>
+        <div class="why">${esc(r.description)}${h ? "" : ` — ${esc(r.status)}`}</div></td>
         <td class="r">${esc(r.uses_graph)}</td>
-        <td class="r">${r.direction === ">=" ? "≥" : "≤"} ${esc(r.cutoff)}</td>
-        <td class="r${beat}">${F.f4(h.f1)}</td>
-        <td class="r">${F.f4(h.false_positive_rate)}</td>
-        <td class="r${hard.f1 >= 1 ? " bad" : ""}">${F.f4(hard.f1)}</td></tr>`;
+        <td class="r">${op}</td>
+        <td class="r${beat}">${h ? F.f4(h.f1) : '<span class="pill p-ref">Refused</span>'}</td>
+        <td class="r">${h ? F.f4(h.false_positive_rate) : "—"}</td>
+        <td class="r${hard && hard.f1 >= 1 ? " bad" : ""}">${hard ? F.f4(hard.f1) : "—"}</td></tr>`;
     }).join("");
   }
 

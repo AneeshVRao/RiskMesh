@@ -19,13 +19,16 @@ Nothing here re-selects a weight, threshold or band from a held-out read.
 
 from __future__ import annotations
 
+import json
 import random
 import sys
+from pathlib import Path
 
 from .config import SIGNALS, Config
 from .costmodel import _renormalised, rescore
 from .evaluate import (
     Candidate,
+    TestSplitViolation,
     best_f1_with_direction,
     confusion,
     prf,
@@ -37,6 +40,13 @@ from .generate import Label, Txn
 from .graph import Graph
 
 DESIGN_SPLITS = ("train", "validation")
+
+# Where the Tier 2/3 protocol freezes live. PRD baselines 6 and 7 ("XGBoost
+# scorer, if Tier 2 is completed" / "GNN scorer, if Tier 3 is completed") are
+# sourced verbatim from these -- never refit, never re-scored. They were
+# produced by their own freeze stages (`riskmesh/freeze.py xgboost|graphsage`),
+# not by this module.
+EXPERIMENTS_DIR = Path(__file__).resolve().parent.parent / "experiments"
 
 # Naive per-transaction rule for the transaction-level baseline. Raw fields on
 # the transaction itself; no shared-attribute counts, nothing from the graph.
@@ -118,16 +128,36 @@ def _freeze_cutoff(validation: list[Candidate],
 
 
 def _read_once(test: list[Candidate], values: dict[str, float],
-               cutoff: float, direction: str) -> dict[str, float | int]:
-    """Apply a frozen cutoff to the held-out split. Selects nothing."""
-    assert all(c.split == "test" for c in test), "_read_once got non-test candidates"
+               cutoff: float, direction: str) -> dict[str, float | int | str]:
+    """Apply a frozen cutoff to the held-out split. Selects nothing.
+
+    Carries its own `cutoff`/`direction` in the returned dict -- a metric with
+    no operating point attached is not interpretable on its own, and that gap
+    is exactly what let an F1 measured at one operating point get paired with
+    an expected loss measured at another (coordinator correction, Task 7).
+
+    Named `cutoff`, not `threshold`, to match every row this feeds (the five
+    value-swept baselines and `ring_score`) -- all five already report their
+    operating point under a row-level `cutoff` field, a naming choice that
+    predates this fix. The Tier 3 (GraphSAGE) row uses `threshold` instead,
+    at both row level and inside its own `held_out`, because it is built
+    entirely from graphsage_protocol.md's own vocabulary
+    (`winner_threshold`), not from this function. Two names for what is, in
+    both cases, "the value a score is compared against to decide flag/no-flag"
+    -- kept as two names rather than unified, so this table's five long-
+    standing rows are not renamed as a side effect of this fix, and each row
+    is at least internally consistent between its row-level field and its
+    nested one.
+    """
+    if not all(c.split == "test" for c in test):
+        raise TestSplitViolation("_read_once got non-test candidates")
     flags = [
         (values[c.component_id] >= cutoff if direction == ">="
          else values[c.component_id] <= cutoff, c.is_positive)
         for c in test
     ]
     counts = confusion(flags)
-    return {**counts, **prf(counts)}
+    return {**counts, **prf(counts), "cutoff": cutoff, "direction": direction}
 
 
 # --------------------------------------------------------------------------
@@ -205,9 +235,163 @@ def age_cut_sensitivity(txns: list[Txn], graph: Graph, design_ids: set[str],
     return out
 
 
+def _read_frozen(name: str) -> dict:
+    """Read a frozen protocol record from experiments/ verbatim.
+
+    Not a rescore, not a refit: these files were produced by their own freeze
+    stage and are read here exactly as they sit on disk.
+    """
+    return json.loads((EXPERIMENTS_DIR / name).read_text(encoding="utf-8"))
+
+
+def _tier2_xgboost_row() -> dict:
+    """PRD baseline 6: 'XGBoost scorer, if Tier 2 is completed'.
+
+    Tier 2 has NO feasible candidate: all four configurations
+    (xgboost_protocol.md) were refused by the panel or difficulty gate before
+    any held-out read was permitted. G5 requires this row render as an
+    explicit refusal -- not be silently dropped, and not be given a fabricated
+    metric to fill the gap left by a read that never happened.
+    """
+    xg = _read_frozen("xgboost_policy.json")
+    assert xg["winner"] is None, (
+        "xgboost_policy.json now records a winner -- this row was written "
+        "for the no-feasible-candidate case and must be updated to report "
+        "it, not silently reused"
+    )
+    return {
+        "baseline": "xgboost_scorer",
+        "tier": 2,
+        "protocol": "xgboost_protocol.md",
+        "source": "experiments/xgboost_policy.json",
+        "uses_graph": "no (tabular signals only)",
+        "description": "XGBoost over the same eight signals, gated by the "
+                       "identical non-triviality panel and difficulty bar the "
+                       "weight search was held to.",
+        "feasible": False,
+        "status": "refused -- no feasible candidate, no held-out read taken",
+        "candidates_tried": len(xg["candidates"]),
+        "infeasible": xg["infeasible"],
+        "refusal_reasons": {
+            c["policy"]: {"refused_by": c["refused_by"], "reason": c["reason"]}
+            for c in xg["candidates"]
+        },
+        "held_out": None,
+        "held_out_hard_negatives_only": None,
+    }
+
+
+def _tier3_graphsage_row() -> dict:
+    """PRD baseline 7: 'GNN scorer, if Tier 3 is completed'.
+
+    graphsage_protocol.md's winner (G2_two_layer) is fed here verbatim from
+    its own frozen `held_out` block. Tier 1's own held-out F1 and expected
+    loss are attached alongside it under `tier1_reference`, unedited, so a
+    reader can compare the two columns directly -- this function does not
+    judge which is better.
+
+    `tier1_reference` is `weight_policy.json`'s OWN held_out block (the
+    weight search's single permitted read, at ITS cost-selected threshold
+    0.10) -- not `baselines.json`'s `ring_score` row, which measures the
+    shipped scorer's best F1 at a DIFFERENT, independently validation-swept
+    cutoff (0.22). Coordinator correction, Task 7: an earlier version of this
+    function paired ring_score's F1 (0.75, cutoff 0.22) with
+    weight_policy.json's expected loss (92,263.55, threshold 0.10) -- two
+    different operating points presented as one model's numbers. Every value
+    below carries the threshold it was measured at, specifically so that
+    mistake cannot happen silently again.
+    """
+    gs = _read_frozen("graphsage_policy.json")
+    assert gs["winner"] is not None, (
+        "graphsage_policy.json now has no winner -- this row assumes a "
+        "feasible Tier 3 candidate exists and must be updated if that changes"
+    )
+    ho = gs["held_out"]
+    wp_ho = _read_frozen("weight_policy.json")["held_out"]
+    return {
+        "baseline": "gnn_scorer",
+        "tier": 3,
+        "protocol": "graphsage_protocol.md",
+        "source": "experiments/graphsage_policy.json",
+        "uses_graph": "fully (GraphSAGE message passing over the component graph)",
+        "description": "Hand-rolled GraphSAGE over structural node features "
+                       "(node type + degree) -- deliberately not the linear "
+                       "scorer's 8 signals.",
+        "feasible": True,
+        "winner": gs["winner"],
+        "winner_hyperparameters": gs["winner_hyperparameters"],
+        "threshold": gs["winner_threshold"],
+        "held_out": {
+            "threshold": gs["winner_threshold"],
+            "precision": ho["precision"], "recall": ho["recall"], "f1": ho["f1"],
+            "false_positive_rate": ho["false_positive_rate"],
+            "tp": ho["tp"], "fp": ho["fp"], "tn": ho["tn"], "fn": ho["fn"],
+            "expected_loss": ho["expected_loss"],
+            "review_rate": ho["review_rate"],
+            "rings_recovered": ho["rings_recovered"],
+            "rings_in_test": ho["rings_in_test"],
+        },
+        # Not computed here: the freeze protocol never split the GraphSAGE
+        # held-out read into a hard-negatives-only view the way the five
+        # PRD-row-63 baselines above do, and recomputing it would mean
+        # re-scoring GraphSAGE's held-out predictions -- exactly the refit
+        # this row exists to avoid.
+        "held_out_hard_negatives_only": None,
+        "tier1_reference": {
+            "source": "experiments/weight_policy.json held_out (cost-selected "
+                      "operating point, NOT baselines.json's ring_score row)",
+            "threshold": wp_ho["threshold"],
+            "f1": wp_ho["f1"],
+            "expected_loss": wp_ho["expected_loss"],
+            "note": "Tier 1's own held-out reading, at its own cost-selected "
+                    "threshold, unedited, for direct comparison against the "
+                    "row above -- not an assessment of which tier wins.",
+        },
+    }
+
+
+def _per_ring_type_recall(
+    test: list[Candidate], labels: list[Label],
+    scored_baselines: dict[str, tuple[dict[str, float], float, str]],
+) -> list[dict]:
+    """Recall per injected ring type, for the baselines named in `scored_baselines`.
+
+    Answers the question the bare aggregate F1/recall on the Benchmark tab
+    cannot: `ring_score` and `transaction_level` are close on aggregate recall
+    but not uniformly so -- `ring_score` sweeps every device-sharing ring
+    `transaction_level` misses, because device sharing has no per-transaction
+    signature. `deferred_decisions.md` D5 first measured this by hand; this is
+    the same computation (test split, each baseline's own frozen cutoff/
+    direction, grouped by the majority ring's `ring_type`), made reusable so
+    the API and the README stop needing to agree on a hand-copied table.
+
+    `scored_baselines` maps a baseline name to (component_id -> value, cutoff,
+    direction) -- exactly the three things `_read_once()` already takes.
+    """
+    ring_type_by_ring_id = {lb.ring_id: lb.ring_type for lb in labels if lb.ring_id}
+    positives = [c for c in test if c.is_positive]
+    ring_types = sorted({ring_type_by_ring_id.get(c.ring_id, "") for c in positives})
+
+    rows = []
+    for rt in ring_types:
+        members = [c for c in positives if ring_type_by_ring_id.get(c.ring_id) == rt]
+        row: dict = {"ring_type": rt, "n": len(members)}
+        for name, (values, cutoff, direction) in scored_baselines.items():
+            caught = sum(
+                1 for c in members
+                if (values[c.component_id] >= cutoff if direction == ">="
+                    else values[c.component_id] <= cutoff)
+            )
+            row[f"{name}_recall"] = round(caught / len(members), 4) if members else None
+            row[f"{name}_caught"] = caught
+        rows.append(row)
+    return rows
+
+
 def baseline_report(cfg: Config, txns: list[Txn], graph: Graph,
-                    cands: list[Candidate]) -> dict:
-    """The five baselines PRD row 63 requires, each frozen then read once."""
+                    cands: list[Candidate], labels: list[Label]) -> dict:
+    """The seven PRD row-63 baselines, each frozen then read once (or, for
+    Tier 2, explicitly refused with no read at all -- see G5)."""
     validation = [c for c in cands if c.split == "validation"]
     test = [c for c in cands if c.split == "test"]
     design_ids = {c.component_id for c in cands if c.split in DESIGN_SPLITS}
@@ -236,9 +420,11 @@ def baseline_report(cfg: Config, txns: list[Txn], graph: Graph,
     ]
 
     rows = []
+    cutoffs_by_name: dict[str, tuple[dict[str, float], float, str]] = {}
     for name, graph_use, blurb, values in specs:
         frozen = _freeze_cutoff(validation, values)
         cut, direction = float(frozen["cutoff"]), str(frozen["direction"])
+        cutoffs_by_name[name] = (values, cut, direction)
         rows.append({
             "baseline": name,
             "uses_graph": graph_use,
@@ -279,6 +465,26 @@ def baseline_report(cfg: Config, txns: list[Txn], graph: Graph,
             _hard_negative_view(test), scores, shipped_threshold, ">="),
     })
 
+    # PRD baselines 6 and 7 -- "if Tier 2/3 is completed", and both tiers are.
+    # Sourced verbatim from their own frozen records, never refit or
+    # re-scored here. Tier 3's row carries its own Tier 1 comparison
+    # (weight_policy.json's held_out, at ITS cost-selected threshold) rather
+    # than borrowing this file's ring_score row above -- see
+    # _tier3_graphsage_row()'s docstring for why those two must not be mixed.
+    rows.append(_tier2_xgboost_row())
+    rows.append(_tier3_graphsage_row())
+
+    # Aggregate recall hides that ring_score and transaction_level do not win
+    # or lose uniformly across ring types (deferred_decisions.md D5) -- e.g.
+    # device-sharing rings, which transaction_level has no signature for at
+    # all. Computed only for the two rows a reader is actually shown side by
+    # side on the Benchmark tab; each baseline keeps its own frozen
+    # cutoff/direction from above, nothing is re-swept.
+    per_ring_type_recall = _per_ring_type_recall(test, labels, {
+        "ring_score": (scores, shipped_threshold, ">="),
+        "transaction_level": cutoffs_by_name["transaction_level"],
+    })
+
     return {
         "measurement": "prd-row-63-baseline-sanity-checks",
         "protocol": (
@@ -287,6 +493,7 @@ def baseline_report(cfg: Config, txns: list[Txn], graph: Graph,
             "Directions are swept because RISK-001 showed a one-directional "
             "sweep reports an inverted signal as useless."
         ),
+        "per_ring_type_recall": per_ring_type_recall,
         "transaction_level_amount_cutoff": amount_cutoff,
         "transaction_level_amount_cutoff_fitted_on": "train+validation",
         "transaction_level_age_cut_days": TXN_LEVEL_YOUNG_ACCOUNT_DAYS,

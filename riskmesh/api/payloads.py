@@ -60,7 +60,7 @@ def rings(arts: Artifacts, split: str = DEFAULT_SPLIT,
             "size": c["size"],
             "n_txns": c["n_txns"],
             "exposure": c["exposure"],
-            "label": c["ring_id"] or ("family" if c["has_family"] else None),
+            "label": c["ring_id"] or (c["cluster_type"] or None),
             "is_positive": c["is_positive"],
             "has_family": c["has_family"],
         })
@@ -107,7 +107,7 @@ def _facts(comp: dict) -> dict:
     burst_of = int(m[1]) if len(m) > 1 else comp["size"]
     return {
         "component_id": comp["component_id"],
-        "label": comp["ring_id"] or ("family" if comp["has_family"] else None),
+        "label": comp["ring_id"] or (comp["cluster_type"] or None),
         "score": comp["score"],
         "accounts": comp["size"],
         "median_account_age_days": int(sig["account_newness"]["raw"]),
@@ -220,6 +220,68 @@ def metrics(arts: Artifacts) -> dict:
     }
 
 
+SWEEP_GRID = tuple(i / 100.0 for i in range(101))
+
+
+def _sweep_row(rows: list[dict], t: float, costs: dict) -> dict:
+    """Confusion counts and the six PRD-named columns at one threshold `t`,
+    over already-frozen component scores -- no rescoring, just bucketing the
+    scores already on disk (components.csv) at a different cutoff."""
+    tp = sum(1 for c in rows if c["score"] >= t and c["is_positive"])
+    fp = sum(1 for c in rows if c["score"] >= t and not c["is_positive"])
+    tn = sum(1 for c in rows if c["score"] < t and not c["is_positive"])
+    fn = sum(1 for c in rows if c["score"] < t and c["is_positive"])
+    n = len(rows)
+    precision = tp / (tp + fp) if tp + fp else 0.0
+    recall = tp / (tp + fn) if tp + fn else 0.0
+    reviews = tp + fp
+    review_cost = reviews * costs["manual_review"]
+    loss = fn * costs["false_negative"] + fp * costs["false_positive"] + review_cost
+    return {
+        "threshold": round(t, 2),
+        "precision": round(precision, 4),
+        "recall": round(recall, 4),
+        "false_positive_count": fp,
+        "false_positive_rate": round(fp / (fp + tn), 4) if (fp + tn) else 0.0,
+        "false_negative_count": fn,
+        "false_negative_rate": round(fn / (fn + tp), 4) if (fn + tp) else 0.0,
+        "manual_reviews": reviews,
+        "manual_review_rate": round(reviews / n, 4) if n else 0.0,
+        "expected_loss": round(loss, 2),
+    }
+
+
+def _threshold_sweep(arts: Artifacts) -> dict:
+    """PRD False-Positive Cost Model -> Threshold Analysis: 'multiple operating
+    thresholds', each with precision, recall, FP count/rate, FN count/rate,
+    manual reviews, and expected loss.
+
+    Distinct from `ladder` below: the ladder compares POLICIES (flag nothing /
+    flag everything / binary / three-way); this sweeps one threshold grid so a
+    reader can see how the six named columns move as the cutoff moves. Both
+    answer different questions and both are kept.
+
+    Computed on VALIDATION only (G2) -- the test split is never read here, or
+    anywhere else in this sweep. `selected` marks the threshold the pipeline
+    actually froze (out/threshold.json), so the operating point the system
+    ships is visible inside the sweep, not just alongside it.
+    """
+    validation = arts.in_split("validation")
+    selected = arts.json["threshold.json"]["threshold"]
+    costs = arts.costs
+    grid = [
+        {**_sweep_row(validation, t, costs),
+         "selected": round(t, 2) == round(selected, 2)}
+        for t in SWEEP_GRID
+    ]
+    return {
+        "computed_on": "validation",
+        "n_components": len(validation),
+        "selected_threshold": selected,
+        "grid": grid,
+    }
+
+
 # --- GET /threshold-analysis ---------------------------------------------
 def threshold_analysis(arts: Artifacts) -> dict:
     ab = arts.json["abstention_policy.json"]
@@ -247,6 +309,7 @@ def threshold_analysis(arts: Artifacts) -> dict:
             {"policy": "three_way", "expected_loss": ho["expected_loss"],
              "detail": f"band {res['t_lo']} / {res['t_hi']}"},
         ],
+        "sweep": _threshold_sweep(arts),
         "comparison": {
             "binary": ho["binary_baseline_same_rows"],
             "three_way": {"expected_loss": ho["expected_loss"],
@@ -297,7 +360,18 @@ def benchmark(arts: Artifacts) -> dict:
         # read as written, and a payload builder that reshaped them would be a
         # place for the uncomfortable rows to quietly go missing.
         "baselines": arts.json["baselines.json"],
+        # Recall by injected ring type for the two rows shown side by side on
+        # the Benchmark tab (ring_score, transaction_level) -- the aggregate
+        # F1/recall above hides that transaction_level's edge is precision,
+        # not recall, and that it has no signature at all for device-sharing
+        # rings (deferred_decisions.md D5). Sourced from the same frozen
+        # baselines.json, not recomputed.
+        "per_ring_type_recall": arts.json["baselines.json"]["per_ring_type_recall"],
         "ablations": arts.json["ablations.json"],
+        # PRD "Metric Uncertainty" (Should-have). Reporting only -- see
+        # evaluate.bootstrap_ci()'s docstring: resampling the already-read
+        # test split at its already-frozen threshold selects nothing.
+        "bootstrap_ci": arts.json["bootstrap_ci.json"],
         "weight_search": {
             "gates": wp["gates"],
             "candidates": [

@@ -37,32 +37,55 @@ leakage.
 
 ## What is actually built (frozen, real numbers)
 
-- **Benchmark:** 6,052 transactions, 799 accounts, 24 injected rings (70%
-  hybrid pool-funded, Phase 10), 24 legitimate family hard-negative clusters,
-  100 candidate components. Seed 20260824, config fingerprint
-  `c3ee14627c2c2ce2` (unchanged by Phase 12's generator fix, which touches
-  code, not config fields).
-- **Split:** chronological + ring-level. Test = 31 components (8 positive,
-  23 negative, 8 of the negatives carrying a family cluster).
-- **Scorer:** `A_baseline`, eight signals, weights frozen (re-frozen Phase 11,
-  reconfirmed outright by Phase 12's re-run after the generator fix —
-  `D_drop_flagged` ties it exactly but is a no-op against the current
-  weights, so the incumbent wins the tie-break without any fold-back). Each
-  signal emits `raw`, `normalized`, `weight`, `contribution` and a
-  human-readable `detail` string (e.g. "9 accounts share device d_ring02",
-  "median account age 10 days"). The evidence view is a render of this
-  structure, not a reconstruction.
-- **Binary held-out result:** precision 0.7000, recall 0.8750, F1 0.7778,
-  FPR 0.1304, ring recovery 7/8, expected loss 74,595.13 at threshold 0.18
-  (one missed ring dominates this figure at a 171.7:1 `C_fn`/`C_fp` ratio).
-- **Three-way abstention policy (current):** the free search selects a
-  **degenerate band**, Allow < 0.18, Escalate >= 0.18 (Review is empty:
-  `t_lo = t_hi = 0.18`) — `A_baseline` reaches a perfect validation confusion
-  matrix at that threshold, leaving nothing for Review to rescue or waive.
-  Held out: expected loss **74,595.13**, bit-for-bit identical to the binary
-  policy on the same rows, a 0% change rather than a reduction.
-- **Costs, dataset-derived:** review 500.00, false negative 68,399.84, false
-  positive 398.43 (INR, friction only — `deferred_decisions.md` D3 resolved).
+**Two thresholds exist on this benchmark, selected by two different
+objectives, and neither substitutes for the other — see README "Two Tier 1
+operating points" before quoting either number in isolation.**
+
+- **Benchmark:** 19,310 transactions, 2,338 accounts, 3,088 devices, 2,429
+  IPs, 2,192 instruments, 40 merchants. 60 injected rings (12 each of 5
+  mechanisms — device, ip, instrument, refund, hybrid), 105 legitimate
+  hard-negative clusters (60 family, 15 office, 15 hostel, 15 retail), 336
+  candidate components. Seed 20260824, config fingerprint
+  `fdf4fc217347d36b`.
+- **Split:** chronological + ring-level. Test = 112 components (23 positive,
+  89 negative, 43 of the negatives carrying a hard-negative cluster).
+- **Scorer:** `A_baseline`, eight signals, weights re-frozen by Task 6's
+  weight-search re-run (`E_drop_temporal` beat the prior incumbent outright
+  on validation expected loss and was folded back in). Current weights:
+  `device_sharing` 0.3929, `instrument_pool_concentration` 0.2143,
+  `failure_refund_rate` 0.2143, `account_newness` 0.1786, and four signals
+  (`temporal_burst`, `ip_sharing`, `instrument_sharing`,
+  `merchant_concentration`) at 0.0000. Each signal emits `raw`, `normalized`,
+  `weight`, `contribution` and a human-readable `detail` string. The
+  evidence view is a render of this structure, not a reconstruction.
+- **Read A — `out/threshold.json`, F1-selected on validation. What the API
+  serves.** Threshold 0.22. Held out: precision 0.7200, recall 0.7826, F1
+  0.7500, FPR 0.0787, ring recovery 13/20, on 112 test components.
+- **Read B — `weight_policy.json` `held_out`, cost-selected on validation via
+  the weight search's own expected-loss objective.** Threshold 0.10. Held
+  out (same 112 components): precision 0.3793, recall 0.9565, F1 0.5432, FPR
+  0.4045, ring recovery 16/20, **expected loss 92,263.55**. **A Must-have PRD
+  compliance gap:** the PRD requires the *shipped* threshold to be
+  loss-selected; Read A, not Read B, is what ships. Disclosed in
+  `deferred_decisions.md` D4, not fixed.
+- **Three-way abstention policy (current, layered on Read B's threshold):**
+  the free search selects a **non-degenerate band** for the first time —
+  Allow < 0.10, Review [0.10, 0.20), Escalate >= 0.20. Held out: three-way
+  expected loss **75,529.35** against the binary policy's 92,263.55 on the
+  same rows — an **18.1% improvement**, the first held-out run where Review
+  beats rather than ties the binary policy.
+- **Costs, dataset-derived:** review 500.00, false negative 41,748.15, false
+  positive 597.65 (INR, friction only — `deferred_decisions.md` D3 resolved),
+  `C_fn`/`C_fp` ratio 69.9:1 — the least lopsided this project has derived.
+- **Tier 2 (XGBoost):** no feasible candidate. All four configurations
+  over-separate the current, larger training split (124 components);
+  `positives_below_max_negative` 0.0435-0.2174, all below the 0.45 floor.
+  No held-out read taken.
+- **Tier 3 (GraphSAGE, stretch):** `G2_two_layer` feasible, threshold 0.03.
+  Held out: F1 0.5412, expected loss **54,308.35** — at each model's own
+  cost-selected operating point (Read B for Tier 1), F1s are effectively
+  tied (0.002 apart) and GraphSAGE's expected loss is ~41% lower, which
+  matters because expected loss is the PRD's stated primary decision metric.
 
 ## What this product must prove on screen
 
@@ -72,8 +95,10 @@ leakage.
 2. Escalations are clean — nothing legitimate gets auto-escalated.
 3. Every score decomposes into named evidence with real values. Nothing is a
    black box.
-4. False positives cost money, and the operating point was chosen against that
-   cost.
+4. False positives cost money, and a cost-selected operating point exists and
+   is frozen — though the threshold the console currently serves is
+   F1-selected, not the cost-selected one; see "What is actually built"
+   above and `deferred_decisions.md` D4.
 
 ## Hard constraints
 

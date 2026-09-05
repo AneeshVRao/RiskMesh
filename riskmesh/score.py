@@ -27,10 +27,12 @@ is exactly Tier 0's ring definition, arrived at through the *absence* of a
 family marker rather than through any risk concept.
 
 Redefined here as max distinct accounts on one non-common IP, symmetric with
-its siblings. Its weight is 0.00 in Tier 0: the ring injector assigns no shared
-IP, so this measures 1.00 for every ring and every background component and
-separates nothing. It is kept computed as investigator evidence and because it
-becomes genuinely discriminative once a shared-IP ring type exists.
+its siblings. Its weight was 0.00 under Tier 0, when the ring injector assigned
+no shared IP at all and this measured 1.00 for every ring and every background
+component, separating nothing. Task 3 adds a shared-IP ring type
+(`generate.py::_pick_ip`), so this signal now has something real to
+discriminate; the weight stays 0.00 regardless -- re-weighing it is Task 6's
+weight-search job, not this module's.
 
 **Do not normalise a signal by its own component's size.** A ratio of the form
 `part / component_size` saturates at 1.0 on size-2 components, which are 31 of
@@ -127,12 +129,28 @@ def _burst(comp: Component, window: int) -> tuple[int, int]:
     coincidence -- background components drop from 0.017 to 0.003 -- so what
     survives is accounts actually converging on one place at one time.
 
-    Note what this does NOT fix. Ring bursts and family co-bursts are emitted by
-    the same `_add_burst` in generate.py, at the same 30-minute window and the
-    same single merchant, with families at *higher* participation (0.9 vs 0.75).
-    So ring-vs-family separation moves from -0.008 to +0.000: the feature now
-    measures the right thing, and there is nothing in the data left for it to
-    find. Closing that gap needs the generator to differentiate the two bursts.
+    Note what this fixed under Tier 0 and what has changed since. Under Tier 0
+    (one ring type, one hard-negative type), ring bursts and family co-bursts
+    were emitted by the same `_add_burst` in generate.py at the same 30-minute
+    window and the same single merchant, with families at *higher*
+    participation (0.9 vs 0.75) -- so ring-vs-family separation measured
+    +0.000, and there was nothing in the data for this feature to find.
+
+    Tasks 3-4 added four more ring types and three more hard-negative cluster
+    types, and every ring type bursts through this same code path
+    (`_inject_rings`'s unconditional `bursts = rng.random() >= p_ring_no_burst`
+    draw). Measured on the current benchmark (train+validation,
+    `out/components.csv`): this signal now discriminates ring vs each
+    individual hard-negative type well (single-signal F1 0.71-0.91 depending
+    on type -- office and hostel highest, family lowest) but only weakly
+    against all four types combined, because the types differ in whether and
+    how they collide with it. This mixture effect -- not a residual +0.000 --
+    is why `weight_search_protocol.md`'s current re-freeze zeroed this
+    signal's weight (`E_drop_temporal`, `deferred_decisions.md` D1, now
+    closed): a single weight cannot resolve a signal that behaves differently
+    against four structurally different negative populations. See README
+    "The scorer" for the reading against all-negatives combined and
+    `config.py`'s `_default_weights()` docstring for the exact figures.
     """
     buckets: dict[str, list[tuple[int, str]]] = defaultdict(list)
     for t in comp.txns:

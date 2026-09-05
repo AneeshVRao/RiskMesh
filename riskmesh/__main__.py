@@ -21,6 +21,7 @@ from pathlib import Path
 from .comparisons import ablation_report, baseline_report
 from .config import SIGNALS, Config
 from .evaluate import (
+    bootstrap_ci,
     build_candidates,
     evaluate,
     freeze_threshold,
@@ -71,12 +72,21 @@ def _write_labels(path: Path, labels: list[Label]) -> None:
         w.writerows(labels)
 
 
-def _write_components(path: Path, scores: list[ComponentScore], splits, cands) -> None:
+def _write_components(path: Path, scores: list[ComponentScore], splits, cands,
+                      labels: list[Label]) -> None:
     """Both raw and normalised values per signal, so the evidence a UI or an
-    explanation layer needs is already in the file."""
+    explanation layer needs is already in the file.
+
+    `cluster_type` is looked up from `labels` (via `cluster_id`, not carried
+    on `Candidate` itself -- same as `ring_type` never was) so the payload
+    layer can tell an office/hostel/retail/family cluster apart instead of
+    reading only the boolean `has_family` (review fix: `api/payloads.py` was
+    hardcoding every `has_family` component as `"family"`).
+    """
     by_id = {c.component_id: c for c in cands}
+    cluster_type_by_id = {lb.cluster_id: lb.cluster_type for lb in labels if lb.cluster_id}
     cols = ["component_id", "split", "size", "n_txns", "exposure", "score",
-            "is_positive", "ring_id", "has_family"]
+            "is_positive", "ring_id", "has_family", "cluster_id", "cluster_type"]
     for name in SIGNALS:
         cols += [f"{name}_raw", f"{name}_norm", f"{name}_detail"]
 
@@ -87,7 +97,8 @@ def _write_components(path: Path, scores: list[ComponentScore], splits, cands) -
             c = by_id[s.component_id]
             row = [s.component_id, splits.by_component[s.component_id].split,
                    s.size, s.n_txns, s.exposure, s.score,
-                   int(c.is_positive), c.ring_id, int(c.has_family)]
+                   int(c.is_positive), c.ring_id, int(c.has_family), c.cluster_id,
+                   cluster_type_by_id.get(c.cluster_id, "")]
             for name in SIGNALS:
                 sig = s.signals[name]
                 row += [sig.raw, sig.normalized, sig.detail]
@@ -165,7 +176,7 @@ def main(cfg: Config | None = None, out: Path = OUT) -> dict:
 
     _write_transactions(out / "transactions.csv", txns)
     _write_labels(out / "labels.csv", labels)
-    _write_components(out / "components.csv", scores, splits, candidates)
+    _write_components(out / "components.csv", scores, splits, candidates, labels)
     _write_graph_edges(out / "graph_edges.json", graph)
     for name in FROZEN_RECORDS:
         _copy_frozen_record(EXPERIMENTS / name, out / name)
@@ -188,13 +199,23 @@ def main(cfg: Config | None = None, out: Path = OUT) -> dict:
         json.dumps(result, indent=2) + "\n", encoding="utf-8"
     )
 
+    # --- bootstrap CIs: reporting only, over the split already read above --
+    # PRD "Metric Uncertainty" (Should-have). Resamples the SAME test split at
+    # the SAME frozen threshold `evaluate()` just read once; see
+    # evaluate.bootstrap_ci()'s docstring for the controller ruling on why
+    # this is not a second read.
+    (out / "bootstrap_ci.json").write_text(
+        json.dumps(bootstrap_ci(cfg, test, frozen), indent=2) + "\n",
+        encoding="utf-8",
+    )
+
     # --- row 63 baselines and row 70 ablation ------------------------------
     # After the headline read, never before it: these are twelve further frozen
     # configurations, each selecting on validation and reading test once, and
     # none of them may influence the shipped scorer. See implementation_plan.md,
     # "PRD rows 63 and 70", written before any of this ran.
     (out / "baselines.json").write_text(
-        json.dumps(baseline_report(cfg, txns, graph, candidates), indent=2) + "\n",
+        json.dumps(baseline_report(cfg, txns, graph, candidates, labels), indent=2) + "\n",
         encoding="utf-8",
     )
     (out / "ablations.json").write_text(
@@ -213,7 +234,7 @@ def main(cfg: Config | None = None, out: Path = OUT) -> dict:
     print(f"  account-level    P {s['precision']:.3f}  R {s['recall']:.3f}  "
           f"F1 {s['f1']:.3f}  FPR {s['false_positive_rate']:.3f}   "
           f"[{s['scored_accounts']} accounts]")
-    print(f"\nwrote 13 files to {out}")
+    print(f"\nwrote 14 files to {out}")
 
     return {"integrity": report, "eval": result, "threshold": frozen}
 

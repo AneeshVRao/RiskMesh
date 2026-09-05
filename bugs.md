@@ -4,13 +4,25 @@ One entry per bug, newest at the top. Fill in **every** field before touching
 code — the point of this file is to reason about a fix rather than guess at one.
 Delete an entry once its fix is verified by the matching `testing.md` row.
 
-Open bugs: 1 deferred (RISK-002). 4 closed (RISK-001, RISK-003, RISK-004, B1).
+Open bugs: 1 open (RISK-005). 5 closed/resolved (RISK-001, RISK-002,
+RISK-003, RISK-004, B1). RISK-002 moved from "OPEN, deferred" to "RESOLVED BY
+WEIGHT" during Task 8's documentation sweep, once its weight was confirmed at
+0.00 since Phase 11 — see its entry below; the underlying feature-level
+mis-sign was never fixed and the entry says so. RISK-005 is new: found during
+the same sweep, `device_sharing` (the scorer's largest weight, 0.3929) is
+mis-signed against `family` and `office` hard negatives specifically, masked
+by the panel's pooled-negatives sign check — the same class of blind spot
+RISK-001 and RISK-004 were, now on the top-weighted signal.
 Standing lessons: L1 (size-based normalisation), L2 (held-out F1 as an objective).
 
 Knowingly-deferred *decisions* (as opposed to bugs) live in
-`deferred_decisions.md`. D1 there records that `temporal_burst` is still carried
-at weight 0.2778 even though the ablation showed it costs ~0.05 of achievable
-ceiling F1 — a deliberate deferral the cost-model stage owns, not an oversight.
+`deferred_decisions.md`. D1 there recorded that `temporal_burst` was carried
+at a large weight despite an open redundancy question; Task 6's re-freeze
+answered it (weight now 0.0000) and D1 is closed. D4 and D5 are new,
+currently open entries: D4 is the shipped `out/threshold.json` being
+F1-selected rather than loss-selected, contrary to a PRD Must-have; D5 is
+that no weight-search candidate re-enables `ip_sharing` now that a real
+shared-IP ring type exists, leaving it the scorer's weakest ring-type recall.
 
 ---
 
@@ -29,6 +41,97 @@ ceiling F1 — a deliberate deferral the cost-model stage owns, not an oversight
 ---
 
 <!-- Add entries below this line. -->
+
+### RISK-005 — device_sharing, the scorer's largest weight, is mis-signed against two of four hard-negative types
+
+- **Status: OPEN.** Found during Task 8's documentation sweep, confirmed and
+  extended by the coordinator's own investigation before this entry was
+  written. Not fixed here — `riskmesh/integrity.py`'s `signal_sign_check`
+  panel check is left exactly as it is; this is a named, deferred gap, not a
+  silent code change. Reported as FLAG-level risk in kind, though the panel's
+  aggregate check does not currently surface it at all (see below).
+- **Symptom:** on normalised values (train+validation, current benchmark,
+  computed per hard-negative cluster type from `out/components.csv` — not
+  from the panel's own pooled-negatives view, which cannot see this):
+
+  | cluster type | n | ring = 0.1837 vs type = | delta |
+  |---|---|---|---|
+  | family | 40 | 0.3523 | **-0.1686** (badly mis-signed) |
+  | office | 10 | 0.2636 | **-0.0799** (mis-signed) |
+  | hostel | 10 | 0.0000 | +0.1837 (fine) |
+  | retail | 24 | 0.0000 | +0.1837 (fine) |
+
+  `device_sharing` carries weight **0.3929** — the single largest weight in
+  the entire 8-signal vector — and it actively favours `family` and `office`
+  clusters over rings. Both cluster types converge on shared devices by
+  design: `config.py`'s own family-cluster documentation states households
+  run up to 8 accounts on one device specifically to keep "the device-only
+  baseline honest," and `office` clusters share a device pool by the same
+  logic (workplace convergence). The signal is doing exactly what those two
+  hard-negative types were built to test it against, and losing.
+- **Expected:** a weighted signal should be higher on positives than on the
+  specific hard negatives it is meant to be hard against, not merely higher
+  than the *average* of all four hard-negative types combined.
+- **Error:** no exception. `non_triviality.signal_sign_check` in
+  `out/integrity_report.json` reads `device_sharing` as correctly signed
+  (ring-vs-all-negatives delta +0.0468, `weighted_contribution` +0.0184,
+  status "ok") because it pools all 176 train+validation negatives together
+  — 40 family + 10 office (mis-signed, 50 components) are diluted against 10
+  hostel + 24 retail + 92 background (correctly signed, 126 components). The
+  aggregate check cannot see a signal that is right on balance but wrong
+  against two specific, structurally-designed hard negatives.
+- **Files involved:** `riskmesh/score.py` (signal definition, unchanged —
+  the feature computes exactly what it claims to), `riskmesh/config.py`
+  (weight 0.3929, `_default_weights()`), `riskmesh/integrity.py`
+  (`signal_sign_check`, the masking mechanism — **not modified**, see Status).
+- **Reproduce:** `python -m riskmesh`, seed 20260824; group
+  `out/components.csv`'s train+validation rows by `cluster_type` and compare
+  each type's `device_sharing_norm` mean against the ring population's.
+- **Suspected cause:** structurally identical to RISK-001 (`ip_sharing`,
+  masked by pooling against a majority-background negative set before any
+  IP-sharing hard negative existed) and RISK-004 (`instrument_sharing`,
+  masked the same way before a second instrument mechanism existed). Here,
+  the mask is `signal_sign_check`'s own pooling of four structurally
+  different hard-negative types into one "all negatives" mean — a design
+  that was adequate when only one hard-negative type (family) existed and
+  became a blind spot the moment Task 4 added three more with different
+  device-sharing behaviour. This is not a new class of defect; it is the
+  same class discovered a third time, on the highest-weighted signal, only
+  because a benchmark with four distinct cluster types now exists to reveal
+  it.
+- **Fix:** deferred, deliberately. Two directions were considered (per the
+  coordinator's review) and neither is implemented here: (1) re-run the
+  weight search with a candidate that reduces or re-derives
+  `device_sharing`'s weight in light of this finding, or (2) change
+  `signal_sign_check` itself to report per-hard-negative-type deltas instead
+  of (or alongside) the pooled figure, which would have caught this and
+  RISK-001/RISK-004 in the same pass they were actually found. **Neither was
+  done in this documentation sweep** — (1) is a new selection protocol run
+  (Global Constraint G4: frozen before any candidate is scored, not
+  something a documentation task may trigger), and (2) is a code change to
+  `riskmesh/integrity.py`, explicitly out of scope and explicitly not
+  authorised by the coordinator's ruling, so that the panel's blind spot
+  stays visible and named rather than quietly patched.
+- **What the cost-model / weight-optimisation stage must actually decide.**
+  Not "should `device_sharing` be zero-weighted" — RISK-001 and RISK-004 both
+  show that blindly zeroing a signal with a real structural role can break
+  the benchmark's own difficulty gates. The real question, in the same shape
+  D2 and D5 pose: given an explicit cost, is 0.3929 still the right weight
+  for a signal that is mis-signed against 50 of 176 train+validation
+  negatives, and if the panel's aggregate check should be widened to a
+  per-cluster-type view to catch this class of defect going forward, that is
+  its own scoped change to `riskmesh/integrity.py` — not bundled into a
+  weight re-run.
+- **Do not** read `device_sharing`'s weight of 0.3929 as evidence that
+  anyone has judged it correct against `family` and `office` specifically.
+  It is the incumbent's current weight, carried forward because no
+  per-cluster-type-aware selection has ever been run against it.
+
+Related: `deferred_decisions.md` D2 (the identical pattern on
+`instrument_sharing`, cross-referenced from there); RISK-001, RISK-004 (the
+same masking mechanism, found twice before); README "The scorer" (the
+ring-vs-family finding this entry formalises); `out/integrity_report.json`
+-> `non_triviality.signal_sign_check`.
 
 ### L2 — held-out F1 is not a safe objective for weight selection on this benchmark
 
@@ -569,13 +672,22 @@ would be worse. This is the one point in the RISK-004 sequence where the
 pre-declared plan met evidence it did not anticipate, and the evidence wins.
 
 - **Status: CLOSED — rejected as a production scoring signal for the current
-  benchmark and ring type.** `instrument_sharing` stays computed and stays at
-  weight 0.1444, because removing it measurably breaks the benchmark (above), but
-  it is not a signal this build relies on to make a call. Three pre-registered
-  attempts -- generator-side scaling (E4), feature renormalisation (E5),
-  funding-pool mechanism (E6) -- were run and rejected, and the zero-weight
-  fallback was run and rejected too. No further variants. Tracked as **D2** in
-  `deferred_decisions.md` for the weight/cost stage.
+  benchmark and ring type.** `instrument_sharing` stays computed, but no longer
+  stays at weight 0.1444 — Phase 11's weight search zeroed it (see the forward
+  note below, and `deferred_decisions.md` D2, RESOLVED), and Task 6's re-freeze
+  against the current five-ring-type benchmark reproduces the same zero weight.
+  The "removing it measurably breaks the benchmark" measurement immediately
+  above this line describes the *zero-weight-plus-renormalise-the-rest*
+  fallback tried and rejected earlier in this entry (which redistributed its
+  weight onto `account_newness` and broke the panel) — that is a different
+  operation from what actually shipped: Phase 11 zeroed `instrument_sharing`
+  *together with* adding `instrument_pool_concentration` as a companion
+  signal, which does not break the panel (D2's Resolution has the numbers).
+  Three pre-registered attempts -- generator-side scaling (E4), feature
+  renormalisation (E5), funding-pool mechanism (E6) -- were run and rejected as
+  fixes to `instrument_sharing` itself; that is what stays rejected. No
+  further variants. Tracked as **D2** in `deferred_decisions.md` for the
+  weight/cost stage, RESOLVED there.
 
   **Scope of this closure, stated explicitly so it is not over-read.** What was
   rejected is instrument sharing *as a discriminative signal against this
@@ -648,42 +760,58 @@ pre-declared plan met evidence it did not anticipate, and the evidence wins.
   and worked, not a reopening. See `deferred_decisions.md` D2, closed in the
   same phase for the weight-side half of this story.
 
-### RISK-002 — merchant_concentration is mis-signed
+### RISK-002 — merchant_concentration is mis-signed — RESOLVED BY WEIGHT
 
-- **Status:** OPEN, deferred. Surfaced by the sign check added while closing
-  RISK-001. Reported as FLAG, not FAIL — see below.
-- **Symptom:** on normalised values (the numbers that enter the score),
-  `merchant_concentration` means 0.2483 on positives against **all negatives**
-  (family + background) 0.2998, delta -0.0515. At weight
-  0.0889 it contributes -0.0046 — the wrong direction. This is the
-  ring-vs-all-negatives comparison that `signal_sign_check` and the panel's
-  `no_weighted_signal_mis_signed` gate both use.
+- **Status: RESOLVED BY WEIGHT, not by fixing the feature.** Weight has been
+  **0.00** since Phase 11's `D_drop_flagged` fold-back (the same weight
+  search that zeroed `instrument_sharing`, `deferred_decisions.md` D2), and
+  Task 6's re-freeze against the current five-ring-type, four-hard-negative-
+  type benchmark reproduces the same zero weight for
+  `merchant_concentration` (`experiments/weight_policy.json`,
+  `A_baseline`/`D_drop_flagged`/`E_drop_temporal` all agree). It no longer
+  contributes to the score in any direction, correct or otherwise. This entry
+  used to read "OPEN, deferred" quoting weight 0.0889 and delta -0.0515 —
+  both stale since Phase 11; resolved against the current numbers below,
+  per Task 8's brief.
+- **Symptom, as originally found and still true of the feature itself,
+  updated to current data:** on normalised values (train+validation, current
+  benchmark, `out/integrity_report.json` -> `non_triviality.signal_sign_check`),
+  `merchant_concentration` means **0.2725** on positives against **all
+  negatives** (family + office + hostel + retail + background) **0.3141**,
+  delta **-0.0416**. At weight 0.00 the `weighted_contribution` is 0.00 —
+  the sign no longer matters to the score, but the underlying feature is
+  still mis-signed exactly as originally found. This is the ring-vs-all-
+  negatives comparison `signal_sign_check` and the panel's
+  `no_weighted_signal_mis_signed` gate both use (and why that gate's FLAG
+  list is empty: it only inspects weight > 0 signals).
 
-  **Not the same number as the ring-vs-family delta.** Ring-minus-**family
-  only** is +0.0103 (ring 0.2483, family 0.2380 — see `audit.md`'s per-signal
-  table), the opposite sign. Both are correct measurements of different
-  comparisons: RISK-002's mis-sign is driven by background (mean 2.17
-  accounts, so a small component's top merchant naturally holds a large share
-  of few transactions), not by family. This is exactly the trap RISK-003
-  fell into — an all-negatives mean can hide or invert what the hard-negative
-  comparison shows — so any report of this signal should say which
-  denominator it used.
-- **Expected:** a weighted signal should be higher on positives.
+  **Not the same number as the ring-vs-family delta**, still — this is the
+  same trap RISK-003 named and D1's closure re-confirmed on a different
+  signal (`device_sharing`). Ring-minus-**family only**, current data
+  (`out/components.csv`): ring 0.2725, family 0.2258, delta **+0.0467** —
+  the opposite sign from the all-negatives comparison, driven by
+  background's small mean component size (a small component's top merchant
+  naturally holds a large share of few transactions) rather than by family.
+- **Expected:** a weighted signal should be higher on positives. Moot now
+  that the weight is 0.00.
 - **Error:** no exception. `non_triviality.signal_sign_check` in
-  `out/integrity_report.json`, and the `no_weighted_signal_mis_signed` FLAG row.
-- **Files involved:** `riskmesh/score.py` (signal 7), `riskmesh/config.py` (weight).
+  `out/integrity_report.json`, and the `no_weighted_signal_mis_signed` FLAG row
+  (empty on the current run, since it only lists weight > 0 signals).
+- **Files involved:** `riskmesh/score.py` (signal), `riskmesh/config.py` (weight,
+  now 0.00 via `_default_weights()`'s fold-back, not a dedicated fix).
 - **Reproduce:** `python -m riskmesh`, seed 20260824.
-- **Suspected cause:** ring members inherit the ordinary sticky-merchant
-  behaviour from `_new_account`; the ring injector adds a burst at one
-  merchant but does not otherwise concentrate spend. Background components
-  are small (mean 2.17 accounts), so their top merchant naturally carries a
-  larger share of few transactions. Same shape of defect as RISK-001 but an
-  order of magnitude weaker.
-- **Fix:** deferred. The magnitude is small (-0.0046 of a +0.2653 total
-  separation, ~1.7%) and resolving it means deciding whether ring cash-out
-  concentration should be injected at all — a generator scope question for
-  Tier 1, not a weight tweak. Not touched while closing RISK-001, to keep
-  that change's before/after comparison attributable to one cause.
+- **Suspected cause (unchanged, the feature itself was never touched):** ring
+  members inherit the ordinary sticky-merchant behaviour from `_new_account`;
+  the ring injector adds a burst at one merchant but does not otherwise
+  concentrate spend. Small background components' top merchant naturally
+  carries a larger share of few transactions. Same shape of defect as
+  RISK-001, an order of magnitude weaker.
+- **Fix:** none applied to the feature. The weight search's cost-driven
+  selection zeroed it as a side effect of a different objective (the same
+  mechanism D2 describes for `instrument_sharing`), which resolves the
+  scoring harm without resolving whether ring cash-out concentration should
+  be injected at all — that generator-scope question remains genuinely open
+  but is no longer urgent while the weight is 0.00.
 
 ### RISK-001 — ip_concentration is scored with the wrong sign — CLOSED
 

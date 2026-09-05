@@ -1,9 +1,23 @@
 """Expected-loss weight selection, with the non-triviality panel as a hard gate.
 
-The protocol is described in `weight_search_protocol.md`, and every gate in this
-module was defined before any candidate was selected -- the two difficulty gates
-were added before `select_weights()` was implemented at all, so the rules could
-not be adjusted once the numbers were visible.
+The protocol is described in `weight_search_protocol.md`. In `96ae30f`
+("Freeze the weight-search protocol before running any candidate"),
+`select_weights()` was a stub that raised
+`NotImplementedError("Not run. The protocol is frozen in
+weight_search_protocol.md and awaiting confirmation before any candidate is
+scored.")` -- the search was structurally prevented from running before the
+freeze was confirmed, and that stub is the evidence it worked. The panel gate
+was already present in that commit; the two difficulty gates below --
+`MIN_HARD_NEGATIVES_IN_RANGE` and `MIN_POSITIVES_BELOW_MAX_NEGATIVE` -- were
+not. Both difficulty gates and `select_weights()`'s real body arrived together
+in `9cafa71` ("Tighten the weight gate, run the search"), the same commit that
+ran the search over the five declared candidates, so no ordering between the
+gates and the implementation is provable from history in either direction. The
+gates tightened the bar rather than relaxed it, and every candidate was
+evaluated under them; there is no evidence they were fitted to results. But an
+earlier version of this docstring claimed the gates preceded the
+implementation, and that specific claim is not supported by the history --
+this paragraph replaces it.
 
 The gate is the point of this module. bugs.md L2 records that held-out F1 rose
 from 0.8000 to 0.8889 twice, by two unrelated mechanisms, and that the
@@ -22,9 +36,9 @@ difficulty bounds sit on top of it.
 
 Two further guarantees, both structural rather than remembered:
 
-* `select_weights()` takes design candidates and asserts it received nothing
-  else, exactly as `select_threshold()` does; the threshold sweep inside it uses
-  validation rows only.
+* `select_weights()` takes design candidates and raises if it received anything
+  else, the same discipline `select_threshold()` enforces; the threshold sweep
+  inside it uses validation rows only.
 * `evaluate_frozen_policy()` refuses to touch the test split until the winning
   policy has been written to disk.
 """
@@ -77,6 +91,15 @@ class PolicyNotFrozen(AssertionError):
     """Raised when the held-out split is read before a policy is on disk."""
 
 
+class DesignSplitViolation(AssertionError):
+    """Raised when a design-only selection function receives a test row.
+
+    Subclasses AssertionError so it is still caught by callers (and tests) that
+    check for the bare assert this replaced; the guard now also fires under
+    `python -O`, which strips `assert` statements.
+    """
+
+
 # --------------------------------------------------------------------------
 # feasibility constraints
 # --------------------------------------------------------------------------
@@ -122,12 +145,21 @@ FP_FRICTION_RATE = 0.02
 FN_ABSORBED_FRACTION = 1.00
 
 
-def derive_costs(design: list[Candidate]) -> dict[str, Any]:
+def derive_costs(design: list[Candidate],
+                 fn_absorbed_fraction: float = FN_ABSORBED_FRACTION,
+                 fp_friction_rate: float = FP_FRICTION_RATE) -> dict[str, Any]:
     """Cost inputs traceable to the dataset's own exposure figures.
 
     Computed on design-split candidates only. Medians, not means: component
     exposure is long-tailed and a mean would let one large ring set the price of
     every decision.
+
+    `fn_absorbed_fraction` / `fp_friction_rate` default to this module's own
+    declared constants -- the protocol's actual, frozen cost model. They are
+    parameters (not a change to that model) so a sensitivity sweep can call
+    this same function once per grid cell instead of re-deriving the
+    arithmetic elsewhere; see `riskmesh/freeze.py::_weight_sensitivity()`,
+    which is the only caller that overrides them.
     """
     pos = [c.exposure for c in design if c.is_positive]
     neg = [c.exposure for c in design if not c.is_positive]
@@ -137,8 +169,8 @@ def derive_costs(design: list[Candidate]) -> dict[str, Any]:
     review = ANALYST_COST_PER_HOUR * ANALYST_MINUTES_PER_COMPONENT / 60.0
     median_ring = statistics.median(pos)
     median_neg = statistics.median(neg)
-    fn = median_ring * FN_ABSORBED_FRACTION
-    fp = median_neg * FP_FRICTION_RATE
+    fn = median_ring * fn_absorbed_fraction
+    fp = median_neg * fp_friction_rate
     return {
         "manual_review": round(review, 2),
         "false_negative": round(fn, 2),
@@ -152,10 +184,10 @@ def derive_costs(design: list[Candidate]) -> dict[str, Any]:
             "false_negative": (
                 f"median ring-component exposure INR {median_ring:,.2f} on "
                 f"train+validation, times FN_ABSORBED_FRACTION "
-                f"{FN_ABSORBED_FRACTION:.2f}"
+                f"{fn_absorbed_fraction:.2f}"
             ),
             "false_positive": (
-                f"FP_FRICTION_RATE {FP_FRICTION_RATE:.2f} of median "
+                f"FP_FRICTION_RATE {fp_friction_rate:.2f} of median "
                 f"negative-component exposure INR {median_neg:,.2f} -- no "
                 "separate review cost: the generic (tp+fp)*C_review term "
                 "already prices one review per flagged component (see "
@@ -279,7 +311,10 @@ def policy_b_equal(cfg: Config, design: list[Candidate]) -> dict[str, float]:
 
 
 def policy_c_separation(cfg: Config, design: list[Candidate]) -> dict[str, float]:
-    """Weight proportional to each signal's ring-minus-family separation.
+    """Weight proportional to each signal's ring-minus-hard-negative-cluster
+    separation (Task 4: `has_family` covers office/hostel/retail alongside
+    family now, not family alone -- "family" here is a holdover name for
+    what the comparison group actually is; the computation is unchanged).
 
     Uses the diagnostic that drove every RISK fix in this build. Signals with a
     non-positive delta get zero.
@@ -362,10 +397,11 @@ def select_weights(cfg: Config, design: list[Candidate],
     Feasibility is checked before expected loss, not alongside it: an infeasible
     candidate never receives a number to be compared against.
     """
-    assert all(c.split in DESIGN_SPLITS for c in design), (
-        "select_weights received non-design candidates -- "
-        "this would be weight fitting on held-out data"
-    )
+    if not all(c.split in DESIGN_SPLITS for c in design):
+        raise DesignSplitViolation(
+            "select_weights received non-design candidates -- "
+            "this would be weight fitting on held-out data"
+        )
 
     results: list[dict[str, Any]] = []
     for name, policy in CANDIDATES.items():
@@ -417,14 +453,23 @@ def select_weights(cfg: Config, design: list[Candidate],
             "positives_below_max_negative":
                 f">= {MIN_POSITIVES_BELOW_MAX_NEGATIVE}",
             "declared": (
-                "All three gates were defined BEFORE any candidate was selected, "
-                "and the two difficulty gates were added before select_weights() "
-                "was implemented at all. The reason is bugs.md L2: held-out F1 "
-                "rose 0.8000 -> 0.8889 twice, by unrelated mechanisms, while the "
-                "non-triviality panel went PASS -> FAIL both times. A higher "
-                "score on this benchmark can mean a better scorer or an easier "
-                "benchmark and the metric cannot distinguish them, so difficulty "
-                "is constrained structurally rather than reported after the fact."
+                "Commit 96ae30f froze the protocol with select_weights() as a "
+                "stub raising NotImplementedError -- the search was "
+                "structurally prevented from running before the freeze was "
+                "confirmed. The panel gate was already present there; the two "
+                "difficulty gates were not. Both difficulty gates and "
+                "select_weights()'s real body arrived together in commit "
+                "9cafa71, the same commit that ran the search over the five "
+                "declared candidates, so no ordering between the gates and the "
+                "implementation is provable from history. They tightened the "
+                "bar rather than relaxed it, and every candidate was evaluated "
+                "under them; there is no evidence they were fitted to results. "
+                "The reason is bugs.md L2: held-out F1 rose 0.8000 -> 0.8889 "
+                "twice, by unrelated mechanisms, while the non-triviality "
+                "panel went PASS -> FAIL both times. A higher score on this "
+                "benchmark can mean a better scorer or an easier benchmark and "
+                "the metric cannot distinguish them, so difficulty is "
+                "constrained structurally rather than reported after the fact."
             ),
             "enforcement": (
                 "gated_expected_loss() raises PanelGateFailure or "

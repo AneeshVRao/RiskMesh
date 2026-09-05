@@ -28,6 +28,9 @@ _FINGERPRINTED = {
     "weight_policy.json": ("config_fingerprint",),
     "baselines.json": ("config_fingerprint",),
     "ablations.json": ("config_fingerprint",),
+    "xgboost_policy.json": ("config_fingerprint",),
+    "graphsage_policy.json": ("config_fingerprint",),
+    "bootstrap_ci.json": ("config_fingerprint",),
 }
 _PLAIN = ("graph_edges.json",)
 
@@ -104,6 +107,7 @@ class Artifacts:
                     "is_positive": bool(int(r["is_positive"])),
                     "ring_id": r["ring_id"] or None,
                     "has_family": bool(int(r["has_family"])),
+                    "cluster_type": r.get("cluster_type", ""),
                     "signals": {},
                 }
                 for name in SIGNAL_ORDER:

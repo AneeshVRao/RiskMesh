@@ -1,11 +1,16 @@
 # XGBoost-search protocol — frozen before any candidate is scored
 
-**Status: WRITTEN, NOT YET RUN.** This document is committed before
-`select_xgboost_model()` is run against real data, and before any candidate's
-score is looked at — exactly the discipline `weight_search_protocol.md`
-followed. §8 (results) is appended only after the freeze in
-`experiments/xgboost_policy.json` exists and the single held-out read has been
-taken through `evaluate_frozen_ml_policy()`.
+**Status: RUN and CLOSED (Task 6 re-freeze). Outcome in §8 — no candidate
+feasible, held-out split not read, same top-line verdict as the pre-Task-6
+run but for a materially different reason: this time all four candidates
+split real structure (no degenerate constant predictors), and all four are
+refused for genuine over-separation, not under-fitting.** This document was
+committed (see git history at this section's prior revision) before
+`select_xgboost_model()` ran against the Tasks 3–5 benchmark (five ring
+types, four hard-negative cluster types, 19,310 transactions, config
+fingerprint `28e054e8fa8436e9`, folded by `weight_search_protocol.md`'s own
+re-freeze to `fdf4fc217347d36b` before this stage ran). The four candidates
+(§2), the three gates (§3), and the fitting discipline (§4) are unchanged.
 
 Code: `riskmesh/ml.py`. Evidence for why the gate exists: `bugs.md` L2, and
 `implementation_plan.md`'s "Why abstention comes before XGBoost", which names
@@ -234,76 +239,61 @@ a new frozen record.
 
 ---
 
-## 8. Outcome — no candidate feasible, no held-out read taken
+## 8. Outcome — PENDING
+
+Not yet run. This section is populated, in full, only after
+`python -m riskmesh.freeze xgboost` has produced
+## 8. Outcome — no candidate feasible, no held-out read taken (same verdict, different mechanism)
 
 Record: `experiments/xgboost_policy.json` (byte-copied to
 `out/xgboost_policy.json`). Installed `xgboost.__version__` **3.4.1**. Costs
-re-derived on the current benchmark (identical derivation to
+re-derived on the Tasks 3-5 benchmark (identical derivation to
 `weight_search_protocol.md` §4/§8, same `derive_costs()` call, same design
-split): `C_review` 500.00, `C_fn` 68,399.84, `C_fp` 398.43, ratio 171.7:1.
-Config fingerprint `c3ee14627c2c2ce2`, seed 20260824.
+split): `C_review` 500.00, `C_fn` 41,748.15, `C_fp` 597.65, ratio **69.9:1**
+(down from 171.7:1). Config fingerprint `fdf4fc217347d36b` (post-fold-back),
+seed 20260824. Design: 224 components (124 train, 100 validation), 48
+positive / 176 negative.
 
 **All four candidates were refused. None reached the threshold sweep or an
-expected-loss figure.**
+expected-loss figure — but for a different reason than the pre-Task-6 run.**
 
 | policy | panel | pbmn | hard-neg | distinct predictions | feasible | reason |
 |---|---|---|---|---|---|---|
-| **X1_shallow** | FAIL | 0.0000 | 8 | **1** | no | degenerate constant predictor |
-| **X2_moderate** | FAIL | 0.0000 | 8 | **1** | no | degenerate constant predictor |
-| **X3_stumps** | FAIL | 0.0000 | 8 | **1** | no | degenerate constant predictor |
-| **X4_unregularised** | FAIL | 0.1250 | 1 | 23 | no | genuine over-separation |
+| **X1_shallow** | PASS | 0.2174 | 11 | 19 | no | over-separation (pbmn < 0.45) |
+| **X2_moderate** | FAIL | 0.1304 | 4 | 53 | no | over-separation (panel FAIL) |
+| **X3_stumps** | FAIL | 0.1304 | 7 | 19 | no | over-separation (panel FAIL) |
+| **X4_unregularised** | FAIL | 0.0435 | 1 | 71 | no | over-separation, as predicted in §2 |
 
-**Two distinct failure mechanisms produced the same refusal, and they are not
-the same finding.**
+**This is the opposite failure mode from the pre-Task-6 run, and the brief's
+own prediction landed on the correct side of the risk this time.** The old
+benchmark's train split had ~30 rows; `min_child_weight` (5, 3, 3 for
+X1-X3) meant no split anywhere could clear the bound, so all three
+degenerated to a single constant prediction (`n_unique_validation_predictions
+== 1` for every one of them). The Tasks 3-5 benchmark's train split has 124
+components (25 positive, 99 negative) — over four times larger — and none of
+the four candidates degenerates: every one produces double digits of
+distinct validation predictions (19, 53, 19, 71). **The larger training set
+does exactly what more data is supposed to do for a gradient-boosted model:
+it lets every candidate actually split, including the two (`X1`, `X3`) that
+were heavily regularised specifically for a ~30-row training set.** But
+splitting is not the same as splitting safely: all four candidates,
+including the most conservative one (`X1_shallow`, `min_child_weight=5`,
+`reg_lambda=2.0`), drive `positives_below_max_negative` below the 0.45 bound
+on out-of-sample validation predictions. `X1` clears the base panel
+(`positives_below_max_negative >= 0.20`) but fails the tightened difficulty
+gate (0.2174 < 0.45); `X2`, `X3`, and `X4` fail the base panel outright. This
+is exactly the mechanism `xgboost_protocol.md` §3 named before this run:
+"a gradient-boosted model has far more capacity than a 7-8-term linear score
+to find a way to make the benchmark look easier" — realised this time by
+every candidate, not only the deliberately overfit one.
 
-**X1, X2 and X3 never split at all.** Inspecting each fit's booster
-(`get_booster().trees_to_dataframe()`) shows every one of their boosted trees
-is a single unsplit leaf -- `min_child_weight` (5, 3, and 3 respectively),
-combined with `subsample` and this benchmark's ~30-row training split (8
-positive, 30 negative on train, further subsampled), means no candidate split
-anywhere ever leaves both children with enough weight to clear the bound. The
-model degenerates to one constant prediction for every validation component
-(`n_unique_validation_predictions == 1`, confirmed directly against the
-fitted boosters, not inferred from the gate output). Re-fitting each with
-`min_child_weight` removed (all other hyperparameters unchanged) confirms
-this is exactly the mechanism: splits appear immediately once the bound is
-relaxed.
-
-A constant score fails `positives_below_max_negative` for a reason unrelated
-to the one that check exists to catch: with every prediction tied, **zero**
-positive scores are *strictly less than* the (also tied) top negative score,
-so the computed fraction reads 0.0000 -- identical to what genuine
-over-separation would produce, for the opposite underlying reason (no
-discrimination at all, rather than too much of it). This is not a flaw in the
-gate found after the fact and patched around; it is reported here exactly as
-observed, because the gate's job is to refuse a candidate that cannot be
-trusted to report an honest expected loss, and a constant classifier
-qualifies on that description regardless of why it is constant. The
-`n_unique_validation_predictions` diagnostic is recorded in the frozen JSON
-precisely so this distinction is visible without re-deriving it from the
-booster later.
-
-**This is a sharper version of the L2 risk than anticipated, in the opposite
-direction from the one `xgboost_protocol.md` §2/§3 named going in.** The
-protocol worried about a model with excess capacity finding an easy
-separation; what three of four candidates actually demonstrate is that
-heavy regularisation, calibrated for "a ~30-row training set" in the abstract,
-can be strict enough for *this* concrete 38-row split that the model never
-fits any structure at all. Both directions -- too much separation and too
-little discrimination -- land on the identical numeric gate value here, which
-is itself worth recording: `positives_below_max_negative` cannot, by
-construction, distinguish "benchmark made trivially easy" from "model learned
-nothing," and a future reader of this number alone should not assume the
-former without checking `n_unique_validation_predictions` alongside it.
-
-**X4_unregularised behaved exactly as predicted in §2.** It does split (171
-non-leaf nodes across its 300 trees) and reaches 23 distinct predictions on
-validation, but drives `positives_below_max_negative` to 0.1250 -- below even
-the base non-triviality panel's own 0.20 bound, not only the tightened 0.45
-difficulty gate -- and `hard_negatives_inside_positive_range` to 1. This is
-the genuine over-separation mechanism the deliberately-overfit candidate was
-included to demonstrate, and the gate refuses it exactly as expected: **the
-gate fires against XGBoost, not only against hand-picked weight vectors.**
+**`X4_unregularised` behaved as predicted in §2**, and so, this run, did the
+other three: even `X1_shallow`'s conservative hyperparameters (calibrated
+for a training set roughly a quarter this size) had enough capacity, given
+124 real training rows to fit real splits against, to separate the 8-signal
+feature space further than the 0.45 bound tolerates. **The gate fires against
+all four XGBoost candidates, not only the hand-picked worst one** — the
+strongest demonstration yet that this gate is not a formality.
 
 **Winner: none. No candidate is feasible.** Per §6, stated before this run:
 *"If no candidate is feasible ... that is the finding, reported as such --
@@ -317,28 +307,31 @@ adjusted after this result was seen.
 raised `MLPolicyNotFrozen`, by design (§4 of `riskmesh/ml.py`'s docstring for
 that function): the record exists but names no winner, so there is no
 hyperparameter configuration to refit on train+validation and no model the
-protocol permits scoring the test split with. **The test split was not read.**
-This is the correct behaviour, not a gap: reading held-out data against an
-ungated model would produce a number with no protocol backing it, exactly the
-failure mode `PolicyNotFrozen` / `MLPolicyNotFrozen` exist to prevent
-structurally rather than by convention.
+protocol permits scoring the test split with. **The test split was not
+read.** This is the correct behaviour, not a gap: reading held-out data
+against an ungated model would produce a number with no protocol backing it,
+exactly the failure mode `PolicyNotFrozen` / `MLPolicyNotFrozen` exist to
+prevent structurally rather than by convention.
 
 ### Verdict against the Tier 1 baseline
 
 **XGBoost does not beat Tier 1 in this experiment, because no XGBoost
-candidate reached a held-out reading at all.** Tier 1's frozen numbers stand
-unchanged: F1 **0.7778**, expected loss **74,595.13**, at threshold 0.18, on
-31 test components (`weight_search_protocol.md` §8). There is no XGBoost F1
-or expected loss to compare against them -- not "an unfavourable one," none.
-This is reported as the finding it is: over four pre-declared, small,
-regularised-for-a-small-dataset hyperparameter configurations, the
-non-triviality/difficulty gates -- reused completely unchanged from the
-linear weight search -- refused every one, three for producing no usable
-discrimination at all and one for producing too much. The honest conclusion
-is that this candidate list, on this benchmark's ~69 design components (16
-positive), does not clear the bar this project already holds the linear
-scorer to, and no attempt was made to lower that bar to manufacture a result.
+candidate reached a held-out reading at all.** Tier 1's frozen numbers, read
+fresh from `out/eval_report.json` after `rm -rf out && python -m riskmesh`:
+F1 **0.75** at threshold 0.22 on 112 test components; `weight_search_protocol.md`
+§8's held-out expected loss (the linear scorer's own frozen operating point)
+is **92,263.55** at threshold 0.10. There is no XGBoost F1 or expected loss
+to compare against either -- not "an unfavourable one," none. This is
+reported as the finding it is: over four pre-declared hyperparameter
+configurations spanning heavy regularisation (`X1`) to none at all (`X4`),
+the non-triviality/difficulty gates -- reused completely unchanged from the
+linear weight search -- refused every one, all four this time for producing
+too much separation on out-of-sample validation predictions rather than too
+little. The larger training set genuinely changed the failure mode (real
+splits instead of constant predictions) without changing the top-line
+verdict, and no attempt was made to lower the bar to manufacture a result.
 
 **No further read is permitted under this record.** Any future XGBoost
 comparison -- a different feature set, a different candidate list, k-fold
-resampling of the tiny training set -- needs its own frozen protocol.
+resampling of the training set -- needs its own frozen protocol.
+

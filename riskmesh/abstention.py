@@ -3,13 +3,18 @@
 Protocol: `abstention_protocol.md`, frozen before this module was pointed at
 selection. Frozen record: `out/abstention_policy.json`.
 
-This module does not touch the scorer or the binary threshold (0.23) that
-`weight_search_protocol.md` already froze. Those numbers -- F1 0.8000, expected
-loss 9,392.92 -- stay exactly as reported. What this module adds is a second,
-independent decision layer: given the same scores, split the flagged region
-into a Review band (deferred to a human, no automatic action) and an Escalate
-region (same handling the binary policy already gave everything above 0.23),
-plus an Allow region below the review band.
+This module does not touch the scorer or the binary threshold (0.10) that
+`weight_search_protocol.md` already froze as ITS OWN cost-selected operating
+point (`select_weights()`'s expected-loss search on validation -- not the same
+threshold, and not the same selection metric, as the F1-selected
+`out/threshold.json` the API serves; see README "Two Tier 1 operating points"
+before quoting either number next to the other). Those numbers -- held-out F1
+0.5432, expected loss 92,263.55 -- stay exactly as reported in
+`experiments/weight_policy.json`'s `held_out` block. What this module adds is
+a second, independent decision layer: given the same scores, split the
+flagged region into a Review band (deferred to a human, no automatic action)
+and an Escalate region (same handling the binary policy already gave
+everything above 0.10), plus an Allow region below the review band.
 
     score < t_lo           -> Allow      (no review, no action)
     t_lo <= score < t_hi    -> Review     (one manual review; fp/fn cost waived)
@@ -36,7 +41,13 @@ from pathlib import Path
 from typing import Any
 
 from .config import Config
-from .costmodel import DESIGN_SPLIT, DESIGN_SPLITS, PanelGateFailure, panel_verdict
+from .costmodel import (
+    DESIGN_SPLIT,
+    DESIGN_SPLITS,
+    DesignSplitViolation,
+    PanelGateFailure,
+    panel_verdict,
+)
 from .evaluate import Candidate
 
 GRID = [i / 100.0 for i in range(101)]
@@ -146,10 +157,11 @@ def select_abstention_band(cfg: Config, design: list[Candidate],
       4. minimise expected loss, per candidate band, on validation only
     Freezing and the held-out read are separate steps, outside this function.
     """
-    assert all(c.split in DESIGN_SPLITS for c in design), (
-        "select_abstention_band received non-design candidates -- "
-        "this would be band selection on held-out data"
-    )
+    if not all(c.split in DESIGN_SPLITS for c in design):
+        raise DesignSplitViolation(
+            "select_abstention_band received non-design candidates -- "
+            "this would be band selection on held-out data"
+        )
     v = panel_verdict(cfg, design)
     if v["verdict"] != "PASS":
         raise PanelGateFailure(

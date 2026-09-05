@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+/* Single locked light theme -- this mirrors mockups/mosaic.css's palette so
+   the React console and the reference client agree on what "RiskMesh" looks
+   like. One accent (red) used consistently for the escalate/primary action;
+   amber and slate cover review/allow without ever being the only signal
+   (every status also carries text + an icon). */
+@theme {
+  --font-sans: "Barlow Semi Condensed", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Consolas, monospace;
+
+  --color-bg: #ffffff;
+  --color-fill: #f4f5f7;
+  --color-fill-2: #eceef1;
+  --color-line: #c9ced6;
+  --color-line-2: #e3e6ea;
+  --color-ink: #111418;
+  --color-ink-2: #474e57;
+  --color-ink-3: #767d87;
+
+  --color-red: #d81f26;
+  --color-red-dark: #b5171d;
+  --color-amber: #8f5400;
+  --color-quiet: #5c6670;
+  --color-good: #046b4a;
+}
+
+body {
+  background: var(--color-fill);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+::selection {
+  background: #ffd9da;
+  color: var(--color-ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-red);
+  outline-offset: 1px;
+}
+
+/* Loading skeleton shimmer -- the only motion beyond hover/focus transitions
+   (MOTION_INTENSITY 3: functional only, no scroll choreography). */
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+.skeleton {
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}

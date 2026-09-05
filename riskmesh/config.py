@@ -21,14 +21,22 @@ from dataclasses import asdict, dataclass, field
 
 # The eight deterministic signals, in report order.
 #
-# `temporal_burst` carries the largest weight because coordination in time was
-# expected to separate a ring from a family sharing one device. Measurement says
-# otherwise: ring 0.344 vs family 0.352 normalised, so it separates rings from
-# background and NOT from the hard negatives. The weight is unchanged pending
-# RISK-003; the justification is corrected here rather than left standing as a
-# claim the data contradicts. The signals that do discriminate ring from family
-# are account_newness (+0.882), failure_refund_rate (+0.139), device_sharing
-# (+0.114).
+# `temporal_burst` carries ZERO weight as of Task 6's re-freeze (see
+# `_default_weights()` below and `deferred_decisions.md` D1, now closed): it
+# separates rings from each of the four hard-negative cluster types
+# individually but not well enough against all four combined for a single
+# weight to earn its keep -- `E_drop_temporal` beat the prior incumbent
+# outright on validation expected loss and was folded back in. The signals
+# that DO discriminate ring from family on the current benchmark (train+
+# validation, ring vs family-only, normalised means from `out/components.csv`)
+# are account_newness (+0.6625), failure_refund_rate (+0.2654),
+# instrument_pool_concentration (+0.1150). `device_sharing`, despite carrying
+# the largest weight (0.3929), is ring-vs-family NEGATIVE (-0.1686) on the
+# current five-ring-type data -- it is only positive against ALL negatives
+# (+0.0468), because most ring types besides `device`/`hybrid` never touch a
+# shared device at all while every family does. See README "The scorer" for
+# the full reading; this is exactly the ring-vs-family-vs-ring-vs-all-negatives
+# trap RISK-002/RISK-003 already named, now observed on the top weight.
 SIGNALS: tuple[str, ...] = (
     "device_sharing",
     "temporal_burst",
@@ -42,44 +50,57 @@ SIGNALS: tuple[str, ...] = (
 
 
 def _default_weights() -> dict[str, float]:
-    """Tier 0 weights -- Phase 11 re-freeze: D_drop_flagged, not A_baseline.
+    """Tier 0 weights -- Task 6 re-freeze: E_drop_temporal, not A_baseline.
 
-    `ip_sharing` carries 0.00 because the Tier 0 generator places no ring
-    information in the IP dimension at all: max-accounts-on-one-non-common-IP is
-    exactly 1.00 for every ring component AND every background component, while
-    family clusters average 4.94. The signal cannot separate positives from the
-    bulk of negatives here, and at its old +0.10 it subtracted 0.0378 from a
-    total positive-vs-negative score separation of 0.2009 -- degrading the
-    scorer by ~19%. It stays computed, as investigator evidence and because it
-    is the right definition once Tier 1 adds a shared-IP ring type; it simply
-    contributes nothing until it has something to say. See bugs.md RISK-001.
+    `ip_sharing` carries 0.00. This was set under Tier 0, when the generator
+    placed no ring information in the IP dimension at all: max-accounts-on-
+    one-non-common-IP was exactly 1.00 for every ring component AND every
+    background component, while family clusters averaged 4.94. At its old
+    +0.10 it subtracted 0.0378 from a total positive-vs-negative score
+    separation of 0.2009 -- degrading the scorer by ~19%. Task 3 added the
+    shared-IP ring type this comment was written anticipating, but Task 6's
+    weight search (below) still finds no reason to weight it above zero. See
+    bugs.md RISK-001.
 
-    `instrument_sharing` and `merchant_concentration` ALSO carry 0.00, as of
-    Phase 11. `weight_search_protocol.md`'s re-run (after Phase 10's hybrid
-    pool-funded ring type and the new `instrument_pool_concentration` signal)
-    found `D_drop_flagged` -- which zeros exactly these two, RISK-004's and
-    RISK-002's flagged signals -- tying `A_baseline` on validation expected
-    loss (8,849.98, identical confusion matrix) and winning the tie-break on
-    `positives_below_max_negative` (0.625 vs 0.5625). Per the protocol's own
+    `instrument_sharing` and `merchant_concentration` carry 0.00, as of Phase
+    11 (`D_drop_flagged`, RISK-004/RISK-002) -- unchanged by Task 6, which
+    reproduces the identical A_baseline/D_drop_flagged tie (pbmn 0.7708,
+    hard-neg 69, expected loss 57,601.30 on validation) that Phase 11 already
+    resolved this way.
+
+    `temporal_burst` ALSO carries 0.00, as of Task 6. `weight_search_protocol.md`'s
+    re-run against the Tasks 3-5 benchmark (five ring types, four hard-negative
+    cluster types, fingerprint `28e054e8fa8436e9`) found `E_drop_temporal` --
+    which zeros exactly this signal -- beating the then-incumbent `A_baseline`
+    outright on validation expected loss (43,331.85 vs 57,601.30, a candidate
+    that clears the gate with pbmn 0.6458 against the 0.45 bound and 52 hard
+    negatives against the 4 minimum) and holding the same winner across the
+    full FN_ABSORBED_FRACTION x FP_FRICTION_RATE sensitivity grid. Four
+    structurally different hard-negative cluster types now exist (family,
+    office, hostel, retail) where Tier 0 had one; `temporal_burst` separates
+    rings from each individually (0.9057 hostel/office/retail, 0.7059 family)
+    but only 0.5783 against all four combined, a genuine mixture effect this
+    signal cannot resolve with a single weight. Per the protocol's own
     "the one subtlety" clause, `A_baseline` IS whatever this function returns,
     so the winner is folded back in here rather than left as a frozen record
     the pipeline does not actually use. Re-running the full search against
-    THIS weight vector as the new `A_baseline` reproduces the same winner
-    (fixed point reached in one extra iteration) -- see
-    `weight_search_protocol.md` Section 8.
+    THIS weight vector as the new `A_baseline` reproduces it as the winner
+    -- fixed point reached in one extra iteration, the same shape Phase 11
+    needed -- see `weight_search_protocol.md` Section 8.
 
-    The remaining five keep their Tier 0 baseline ratios, renormalised to
-    1.00, so zeroing three signals does not silently re-rank the other five.
+    The remaining four keep their Tier 0 baseline ratios, renormalised to
+    1.00, so dropping `temporal_burst` does not silently re-rank the other
+    four.
     """
     active = {
         "device_sharing": 0.22,
-        "temporal_burst": 0.25,
         "instrument_pool_concentration": 0.12,
         "failure_refund_rate": 0.12,
         "account_newness": 0.10,
     }
     total = sum(active.values())
     weights = {name: value / total for name, value in active.items()}
+    weights["temporal_burst"] = 0.0
     weights["ip_sharing"] = 0.0
     weights["instrument_sharing"] = 0.0
     weights["merchant_concentration"] = 0.0
@@ -94,10 +115,13 @@ class Config:
     seed: int = 20260824
 
     # --- population ------------------------------------------------------
-    n_accounts: int = 520  # background population; ring/family accounts are extra
+    # Task 3 (controller ruling): raised ~2.5x alongside the four new ring
+    # types, so the design-split positive count has finer pbmn granularity to
+    # tune with -- see task-3-report.md for the measured before/after.
+    n_accounts: int = 1300  # background population; ring/family accounts are extra
     n_merchants: int = 40
     n_nat_ips: int = 20
-    target_txns: int = 5000
+    target_txns: int = 19300
     # NAT reuse is emergent from p_nat_ip rather than a fixed per-IP account
     # count. What has to hold is that every NAT IP lands far above max_ip_degree
     # so hygiene actually caps it -- that is the property the tests check.
@@ -112,8 +136,9 @@ class Config:
 
     # Unlabelled background sharing. Without this, "two accounts share a device"
     # separates the classes perfectly and the whole benchmark is worthless.
-    n_noise_shared_devices: int = 70
-    n_noise_shared_instruments: int = 20
+    # Scaled with n_accounts so the noise-to-population ratio holds.
+    n_noise_shared_devices: int = 175
+    n_noise_shared_instruments: int = 50
 
     # --- normal behaviour mix (must each sum to 1.0 where they partition) --
     p_home_device: float = 0.90
@@ -129,8 +154,17 @@ class Config:
     val_days: int = 6
     test_days: int = 6
 
-    # --- ring injector (shared device only, Tier 0) ----------------------
-    n_rings: int = 24  # 8 per split: 4 was too coarse to report metrics on
+    # --- ring injector: five mechanisms (Tier 0 device + Tier 1's four) ---
+    # Each mechanism gets its own count so the type MIX can be tuned
+    # independently of the total. 12 each x 5 types = 60 total, up from Tier
+    # 0's 24 (all device) -- scaled with the population raise so train+val has
+    # enough design positives for pbmn to move in fine steps. See `n_rings`
+    # below for the total, and task-3-report.md for why 12 each.
+    n_rings_device: int = 12
+    n_rings_ip: int = 12
+    n_rings_instrument: int = 12
+    n_rings_refund: int = 12
+    n_rings_hybrid: int = 12
     ring_size_min: int = 4
     ring_size_max: int = 9
     # How many of a ring's members share one instrument, as a fraction of ring
@@ -181,10 +215,35 @@ class Config:
     ring_refund_rate_min: float = 0.01      # per-ring refund rate is a range,
     ring_refund_rate_max: float = 0.25      # not one give-away constant
 
+    # --- shared-IP ring (Task 3) -------------------------------------------
+    # Mirrors ring_shared_device_share: not 1.0, so a shared-IP ring's members
+    # keep some of their own traffic too.
+    ring_shared_ip_share: float = 0.65
+
+    # --- shared-instrument ring / hybrid multi-attribute ring (Task 3) ------
+    # Pool size for the instrument-only and hybrid ring types. Kept separate
+    # from ring_instrument_pool_size (the device type's own pool-funding
+    # knob, Phase 10) so tuning one never moves the other.
+    ring_type_instrument_pool_size: int = 4
+    # Fraction of a non-device ring type's members drawn from the wider
+    # (older, compromised-looking) signup range instead of the thin-history
+    # default -- same purpose as the device type's is_hybrid_funded age mix:
+    # stop account_newness from perfectly separating "is a ring" now that four
+    # more mechanisms exist.
+    ring_type_old_signup_fraction: float = 0.3
+
+    # --- refund-abuse ring (Task 3) ------------------------------------------
+    # Behaviourally defined: no device/IP/instrument convergence at all --
+    # elevated refund rate and merchant concentration are the whole signal.
+    refund_ring_rate_min: float = 0.35
+    refund_ring_rate_max: float = 0.60
+    refund_ring_failure_rate: float = 0.25
+    refund_ring_merchant_pool_size: int = 2
+
     # --- family hard negative --------------------------------------------
     # Same structural attributes as a ring (shared device + shared IP, sometimes
     # a shared instrument); different behaviour. That is what makes it hard.
-    n_families: int = 24
+    n_families: int = 60  # scaled with n_accounts/n_rings, Task 3
     family_size_min: int = 2
     family_size_max: int = 8  # large households share a device as widely as a
                               # ring does -- this is what stops the device-only
@@ -221,10 +280,78 @@ class Config:
     family_signup_min_days: int = 15
     family_signup_max_days: int = 540
 
+    # --- hard-negative clusters: office / hostel / retail-chain (Task 4) ----
+    # Three more legitimate lookalike types, alongside (not replacing) the
+    # family mechanism above. Each shares >=1 structural attribute type with a
+    # ring mechanism -- office shares device+ip, hostel shares ip (the hard
+    # negative for the shared-IP ring specifically), retail shares a weak
+    # instrument overlap (the same structural-edge fix the refund-abuse ring
+    # needed: a component with zero shared attribute is not a candidate, it is
+    # singletons). None of the three carry ring-like abuse behaviour (elevated
+    # refund/failure rate) -- that is what keeps them legitimate lookalikes
+    # rather than more rings.
+    n_clusters_office: int = 15
+    n_clusters_hostel: int = 15
+    n_clusters_retail: int = 15
+    # Shared across all three -- same discipline as ring_size_min/max being
+    # one width for all five ring types (G3): if office/hostel/retail each had
+    # their own size range, changing the count MIX among them would perturb
+    # the shared rng's word consumption. "Many accounts" per the brief --
+    # bigger than a family (2-8) but kept under max_ip_degree/max_device_degree
+    # (12) so office's and hostel's shared IP is never capped away as common
+    # infrastructure.
+    cluster_size_min: int = 6
+    cluster_size_max: int = 10
+
+    # office / shared corporate network: shared IP + a small device pool, long
+    # tenure, diverse merchants (left untouched -- _new_account's own
+    # preference list is already diverse).
+    office_shared_ip_share: float = 0.85  # not 1.0 -- some traffic off-network
+    office_device_pool_size: int = 4
+    office_signup_min_days: int = 200
+    office_signup_max_days: int = 900
+
+    # hostel / shared Wi-Fi: shared IP, INDIVIDUALLY-OWNED devices (no device
+    # convergence at all), young-ish accounts -- the deliberate collision with
+    # account_newness, and the hard negative for the shared-IP ring
+    # specifically.
+    hostel_shared_ip_share: float = 0.75
+    hostel_signup_min_days: int = 1
+    hostel_signup_max_days: int = 45
+
+    # retail-chain / customer convergence: genuinely unrelated customers, so
+    # no device/IP convergence -- a weak 2-account instrument overlap gives
+    # graph.py an edge to form a component from at all (same fix the
+    # refund-abuse ring needed). Ordinary tenure (background-like, not young)
+    # -- retail's collision is temporal_burst/merchant_concentration, not
+    # account_newness. A small shared merchant pool plus a coordinated burst
+    # is the hard negative for the refund-abuse ring specifically.
+    retail_signup_min_days: int = 15
+    retail_signup_max_days: int = 540
+    retail_merchant_pool_size: int = 2
+    # Review fix (task-4-report.md Important #1): EVERY member draws an
+    # instrument from this small shared pool (same length-preserving
+    # `instr_rng.choice(pool)` pattern the instrument/hybrid ring types use),
+    # not just 2 sampled sharers -- a fixed 2-sharer overlap left most of a
+    # 6-10 member cluster as unconnected singletons, invisible to graph.py.
+    # Kept small ("many-to-few") so individual sharing stays weak.
+    retail_instrument_pool_size: int = 3
+    # Drawn for every new-type cluster regardless of type (G3) -- only retail
+    # acts on it, same discipline as p_ring_instrument_funded being drawn for
+    # every ring even though only the device type uses it.
+    p_retail_burst: float = 0.75
+    retail_burst_participation: float = 0.8
+
     # --- graph hygiene ---------------------------------------------------
     # Caps sit well above realistic ring size (<= ring_size_max) so a real ring
     # is never capped away. Every capped node is listed in the integrity report.
-    max_ip_degree: int = 8
+    # max_ip_degree raised 8 -> 12 in Task 3: the shared-IP and hybrid ring
+    # types converge up to ring_size_max (9) accounts on one IP, and 8 would
+    # have capped (dropped as common infrastructure) every such ring at size 9
+    # -- exactly the ring the mechanism exists to create. NAT IPs still clear
+    # the common-infra floor (max_ip_degree * nat_common_infra_margin) with a
+    # huge margin at this population size -- see task-3-report.md.
+    max_ip_degree: int = 12
     max_device_degree: int = 12
     # RISK-004 option 1, experiment E5. False keeps the original definition of
     # instrument_sharing -- max accounts on one instrument, normalised by the
@@ -304,8 +431,18 @@ class Config:
             raise ValueError("train+val+test days must equal days")
         if self.ring_size_max > self.max_device_degree:
             raise ValueError("device cap would clip a legitimate ring")
+        if self.ring_size_max > self.max_ip_degree:
+            raise ValueError("ip cap would clip a legitimate shared-IP/hybrid ring")
+        if self.cluster_size_max > self.max_ip_degree:
+            raise ValueError("ip cap would clip a legitimate office/hostel cluster")
 
     # --- derived ---------------------------------------------------------
+    @property
+    def n_rings(self) -> int:
+        """Total rings across all five mechanisms."""
+        return (self.n_rings_device + self.n_rings_ip + self.n_rings_instrument
+                + self.n_rings_refund + self.n_rings_hybrid)
+
     @property
     def split_boundaries(self) -> dict[str, tuple[int, int]]:
         """Day ranges per split, half-open, chronologically ordered."""

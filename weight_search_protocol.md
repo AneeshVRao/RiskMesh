@@ -1,31 +1,29 @@
 # Weight-search protocol — frozen before any candidate is scored
 
-**Status: RUN and CLOSED (re-frozen, Phase 12). Outcome in §8 — `A_baseline`
-won in one pass, no fold-back needed.** Phase 12 fixed a real RNG-isolation
-bug in `_inject_rings` (the instrument-mechanism branch let the main stream's
-consumption depend on `is_hybrid`, a data-dependent branch — see
-`riskmesh/generate.py` and `riskmesh/experiment.py`'s module docstring), which
-changes actual generator output without moving the config fingerprint (the
-fingerprint hashes config fields, not generator code — a known limitation).
-Every number this protocol had frozen was therefore describing a run that no
-longer reproduces, so it was re-run from scratch against the corrected
-benchmark, unchanged rules, same five candidates. `D_drop_flagged` still ties
-`A_baseline` exactly on validation expected loss AND on
-`positives_below_max_negative` this time (it is a literal no-op:
-`instrument_sharing`/`merchant_concentration` are already zero in the current
-`A_baseline`, from Phase 11's fold-back — see `config.py`'s
-`_default_weights()`) — so the tie-break falls all the way to "prefer the
-incumbent" (§5 rule 3) and `A_baseline` wins on the first pass, without the
-fold-back rule (§5 rule 4) ever triggering. This is the opposite of Phase 11,
-where `D_drop_flagged` had a *sharper* `positives_below_max_negative` and won
-the tie-break instead, forcing a fold-back and a second pass. The held-out
-split **has been read, once**, through `evaluate_frozen_policy()` — see §8's
-"Step 6" table (F1 0.7778, expected loss 74,595.13 at threshold 0.18 — a
-single missed ring on 31 test components, against a perfect validation
-confusion matrix; see §8 for why that gap is large and expected, not a red
-flag). Per §5 rule 7 (no second read) and §7 (what would invalidate this
-protocol), no second read is permitted under this record; any future
-comparison needs its own frozen protocol.
+**Status: RUN and CLOSED (Task 6 re-freeze). Outcome in §8 — `E_drop_temporal`
+beat the pre-Task-6 incumbent outright on pass 1; per §5 rule 4 its weight
+vector was folded into `Config()._default_weights()` and the search re-run,
+reaching a fixed point (`A_baseline`, now identical to `E_drop_temporal`) in
+exactly one extra iteration.** Tasks 3–5 rebuilt the benchmark itself (five
+ring types instead of one, four hard-negative cluster types instead of one,
+population raised to 19,310 transactions) and moved the config fingerprint
+from `c3ee14627c2c2ce2` to `28e054e8fa8436e9` (pass 1) and then to
+`fdf4fc217347d36b` once the fold-back changed `Config()._default_weights()`
+itself (pass 2, the frozen record). Every number this protocol had frozen
+under the old fingerprint (Phase 12's re-run — `A_baseline` won in one pass,
+held-out F1 0.7778, expected loss 74,595.13) described a run that no longer
+reproduces; it is superseded and lives in git history at this section's prior
+revisions, not reproduced here. The held-out split **has been read, once**,
+through `evaluate_frozen_policy()` — see §8's "Step 6" table (F1 0.5432,
+expected loss 92,263.55 at threshold 0.10, on 112 test components). Per §5
+rule 7 (no second read) and §7, no second read is permitted under this
+record; any future comparison needs its own frozen protocol.
+
+**The five candidates (§2), the three gates (§3), the objective (§4), and the
+fold-back procedure (§5) are unchanged from every prior run.** This re-freeze
+did not add, remove, or redefine a candidate to chase a result (G5) — the
+result is that a different candidate won and stayed folded in as the new
+incumbent, reported exactly as it occurred.
 
 This is the last thing frozen before Tier 1's weight and cost work. It follows
 the same discipline as every experiment in this build: the rules are written
@@ -303,125 +301,127 @@ new frozen record.
 
 ---
 
-## 8. Outcome — run on validation only, held-out untouched
+## 8. Outcome — Task 6 re-run, `E_drop_temporal` won, fold-back needed one iteration
 
-**Historical note, Phase 10/11 (superseded).** Phase 11 needed two passes:
-`D_drop_flagged` won its first pass with a sharper `positives_below_max_negative`
-than the then-incumbent `A_baseline`, so its weight vector was folded into
-`Config()._default_weights()` per §5 rule 4 and the search re-run once more,
-converging on the fixed point (that folded-in vector, relabelled `A_baseline`)
-in exactly one extra iteration. Full tables for that run are in git history
-(this section, before the Phase 12 edit) rather than reproduced here — the
-weights it froze are already living on as the current `Config()._default_weights()`,
-which is what Phase 12 re-runs against below.
+Record: `experiments/weight_policy.json`. Costs re-derived on the Tasks 3-5
+benchmark (`derive_costs`, train+validation): `C_review` 500.00, `C_fn`
+41,748.15 (median ring exposure, down from 68,399.84 -- the retail structural
+fix and the four new ring types changed the exposure distribution), `C_fp`
+597.65 (median negative exposure 29,882.72 x 0.02), ratio **69.9:1** (down
+from 171.7:1 -- a materially less lopsided cost model than any prior run).
 
-Record: `out/weight_policy.json`. Costs re-derived on the Phase 12 benchmark
-(after the ring-injector RNG-isolation fix — see the module docstring in
-`riskmesh/generate.py`): `C_review` 500.00, `C_fn` 68,399.84 (median ring
-exposure), `C_fp` 398.43 (friction only, D3 fixed — no embedded review term),
-ratio 171.7:1.
-
-**One pass, against the current incumbent (fingerprint `c3ee14627c2c2ce2`,
-unchanged by the generator fix — see the "Consequence" note in `task_today.md`
-about the fingerprint hashing config fields, not generator code):**
+### Pass 1 — against the pre-Task-6 incumbent (fingerprint `28e054e8fa8436e9`)
 
 | policy | panel | pbmn | hard-neg | feasible | threshold | expected loss |
 |---|---|---|---|---|---|---|
-| **A_baseline** | PASS | 0.5000 | 6 | **yes** | 0.18 | **4,000.00** |
-| B_equal | PASS | 0.3125 | 8 | **no** | — | — |
-| C_separation_proportional | PASS | 0.3750 | 6 | **no** | — | — |
-| D_drop_flagged | PASS | 0.5000 | 6 | yes | 0.18 | 4,000.00 |
-| E_drop_temporal | PASS | 0.4375 | 11 | **no** | — | — |
+| A_baseline (old) | PASS | 0.7708 | 69 | yes | 0.06 | 57,601.30 |
+| B_equal | PASS | 0.2292 | 50 | **no** (pbmn < 0.45) | — | — |
+| C_separation_proportional | PASS | 0.3333 | 42 | **no** (pbmn < 0.45) | — | — |
+| D_drop_flagged | PASS | 0.7708 | 69 | yes | 0.06 | 57,601.30 |
+| **E_drop_temporal** | PASS | 0.6458 | 52 | **yes** | 0.10 | **43,331.85** |
 
-**Three of five are refused this time, not one or two** — B_equal and
-E_drop_temporal on the difficulty gate as before, and now
-C_separation_proportional too (pbmn 0.3750 < 0.45; it cleared the gate in the
-Phase 10/11 run). This is the corrected generator producing a different
-difficulty profile, not a gate regression: the gate's bounds themselves did
-not move (§3, §7).
+`E_drop_temporal` beats the old incumbent outright (43,331.85 < 57,601.30) --
+not a tie this time, a clean win. `A_baseline` and `D_drop_flagged` are
+identical because `D` only zeros `instrument_sharing`/`merchant_concentration`,
+already 0.00 in the old incumbent. This is exactly the mechanism the task
+brief flagged before this run: `temporal_burst` separates rings from each of
+the four hard-negative cluster types individually (0.9057 hostel/office/retail,
+0.7059 family) but only 0.5783 against all four combined -- a mixture effect
+that only exists now that four structurally different hard-negative types do.
 
-**A and D tie exactly at 4,000.00 (identical confusion: tp 8, fp 0, fn 0,
-tn 23) and the tie resolves to A** on the incumbent tie-break (§5 rule 3):
-`D_drop_flagged` zeros `instrument_sharing`/`merchant_concentration`, but the
-current `A_baseline` already carries those two at weight 0.00 from Phase 11's
-fold-back, so D is a literal no-op against it — there is no sharper
-`positives_below_max_negative` for D to win on this time (both read 0.5000),
-unlike Phase 11 where D's pbmn genuinely beat A's. **The fold-back rule (§5
-rule 4) is not invoked**: the winner is already `A_baseline`, so there is
-nothing to fold in and no second pass to run.
+**Per §5 rule 4, the fold-back rule fires.** `E_drop_temporal`'s weight vector
+(`device_sharing` 0.3929, `instrument_pool_concentration` 0.2143,
+`failure_refund_rate` 0.2143, `account_newness` 0.1786, all others 0.00) is
+folded into `Config()._default_weights()` (`riskmesh/config.py`) as the new
+`A_baseline`, and the full search (steps 1-3) is re-run from generation
+against it.
 
-**Against the trivial policy.** Flag-everything costs 24,663.89 on validation
-at a 100% review rate; the winner costs 4,000.00 at a 25.81% review rate
-(tp 8 + fp 0, of 31 validation components), an **83.8%** improvement.
+### Pass 2 — against the folded-in incumbent (fingerprint `fdf4fc217347d36b`)
+
+| policy | panel | pbmn | hard-neg | feasible | threshold | expected loss |
+|---|---|---|---|---|---|---|
+| **A_baseline (folded)** | PASS | 0.6458 | 52 | **yes** | 0.10 | **43,331.85** |
+| B_equal | PASS | 0.2708 | 42 | **no** (pbmn < 0.45) | — | — |
+| C_separation_proportional | PASS | 0.3333 | 42 | **no** (pbmn < 0.45) | — | — |
+| D_drop_flagged | PASS | 0.6458 | 52 | yes | 0.10 | 43,331.85 |
+| E_drop_temporal | PASS | 0.6458 | 52 | yes | 0.10 | 43,331.85 |
+
+**Fixed point reached in exactly one extra iteration** (the cap in §5 rule 4
+is 2; this took 1). `A_baseline`, `D_drop_flagged`, and `E_drop_temporal` are
+now bit-for-bit identical vectors (`D` and `E`'s zeroed signals were already
+zero in the folded-in incumbent), so all three tie exactly on validation
+expected loss, and the tie-break (§5 rule 3: pbmn, then prefer the incumbent)
+resolves to `A_baseline` -- confirmed by re-running step 3 against it, not
+assumed from the vectors looking identical. **`temporal_burst` now carries
+weight 0.00 in `Config()._default_weights()`**, alongside `ip_sharing`,
+`instrument_sharing`, and `merchant_concentration` from Phase 11 -- four of
+the original eight signals are now zeroed.
+
+**Against the trivial policy (validation, 100 components).** Flag-everything
+costs 96,019.05 at a 100% review rate; the winner costs 43,331.85 at a 52%
+review rate (tp 23, fp 29, fn 0, tn 48), a **54.9%** improvement.
 
 ### Sensitivity (required by §4)
 
 | | FP 0.01 | FP 0.02 | FP 0.05 |
 |---|---|---|---|
-| **FN 0.50** | A — 4,000.00 | A — 4,000.00 | A — 4,000.00 |
-| **FN 0.75** | A — 4,000.00 | A — 4,000.00 | A — 4,000.00 |
-| **FN 1.00** | A — 4,000.00 | A — 4,000.00 | A — 4,000.00 |
+| **FN 0.50** | A — 34,666.07 | A — 43,331.85 | A — 59,792.03 |
+| **FN 0.75** | A — 34,666.07 | A — 43,331.85 | A — 69,330.06 |
+| **FN 1.00** | A — 34,666.07 | A — 43,331.85 | A — 69,330.06 |
 
-The winner is stable across the whole grid — `A_baseline` in every cell, tying
-`D_drop_flagged` exactly in every cell (D is a no-op on the current weights,
-same reason as above).
+`A_baseline` (the folded-in `E_drop_temporal` vector) wins every one of the
+nine cells, tying `D_drop_flagged` exactly in each (both are now the same
+vector as the incumbent). The threshold sits at 0.10 in eight of the nine
+cells and moves to 0.16 in exactly one (`FN_ABSORBED_FRACTION` 0.50,
+`FP_FRICTION_RATE` 0.05 -- the cheapest false-negative, priciest
+false-positive corner of the grid), but the **winner is stable across the
+whole grid** -- unlike the risk the brief flagged, this run's selection does
+not flip under plausible alternative cost assumptions.
 
-**Neither `FN_ABSORBED_FRACTION` nor `FP_FRICTION_RATE` has any effect at
-all this run** — a stronger version of the Phase 10/11 finding (which was
-insensitive to `FN_ABSORBED_FRACTION` alone). The winner's loss-minimising
-operating point on validation is a **perfect classification** (tp 8, fp 0,
-fn 0, tn 23): both `C_fn` and `C_fp` are multiplied by zero and neither ever
-enters the total. Only the `(tp+fp) * C_review` review term is doing any work
-at this operating point — 8 reviews × 500.00 = 4,000.00, exactly, in every
-cell of the grid.
+### Step 6 — the single held-out read (taken, once)
 
-### Step 6 — the single held-out read (done, once)
-
-Taken through `evaluate_frozen_policy()` after the policy was frozen.
-`A_baseline` at the frozen threshold 0.18, on 31 test components:
+Taken through `evaluate_frozen_policy()` after the fixed-point policy was
+frozen. `A_baseline` (folded `E_drop_temporal`) at threshold 0.10, on 112
+test components:
 
 | | validation (selection) | held out |
 |---|---|---|
-| precision | — | **0.7000** |
-| recall | — | **0.8750** |
-| F1 | — | **0.7778** |
-| FPR | — | **0.1304** |
-| ring recovery | — | **7/8 (87.5%)** |
-| confusion | tp 8, fp 0, fn 0, tn 23 | tp 7, **fp 3**, **fn 1**, tn 20 |
-| expected loss | 4,000.00 | **74,595.13** |
-| review rate | 0.2581 | 0.3226 |
+| precision | — | **0.3793** |
+| recall | — | **0.9565** |
+| F1 | — | **0.5432** |
+| FPR | — | **0.4045** |
+| ring recovery | — | **16/20 (80.0%)** |
+| confusion | tp 23, fp 29, fn 0, tn 48 | tp 22, **fp 36**, **fn 1**, tn 53 |
+| expected loss | 43,331.85 | **92,263.55** |
+| review rate | 0.52 | 0.5179 |
 
-Account level: precision 0.7143, recall 0.9259, F1 0.8065, FPR 0.2740.
+Account level: precision 0.3737, recall 0.9730, F1 0.5400, FPR 0.5839.
 
-**The held-out expected loss is nearly 19x the validation figure this run —
-the largest validation-to-test gap this project has reported, and it is
-reported plainly rather than explained away.** The mechanism is exactly the
-one §4 flags before running: at a 171.7:1 `C_fn`/`C_fp` ratio, one missed
-ring dominates everything else in the formula. Validation happened to land on
-a perfect classification (fn = 0) purely because 31 validation rows is a small
-enough sample that zero misses is achievable; the held-out split, an
-independent draw of similar size, was not so fortunate — one ring
-(`rings_recovered` 7/8) slipped under the 0.18 threshold, and at `C_fn`
-68,399.84 that single miss outweighs everything else in the table combined.
-**This is not evidence the model is unreliable or that 0.18 is the wrong
-threshold** — a threshold is chosen once, on validation, precisely so it
-cannot be adjusted after seeing which held-out rows it gets wrong; it is
-evidence that a cost model this lopsided makes expected loss a high-variance
-statistic at this sample size, which is exactly why the sensitivity table
-above and the review-rate/flag-everything comparisons matter more than any
-single point estimate.
+**This run lands on the opposite failure mode from the last frozen record.**
+The Phase 12 run (superseded, see git history) reported a near-perfect
+validation split (fn=0, fp=0) with a catastrophic single missed ring on
+test. This run's validation confusion already has fp=29 (a 52% review rate,
+not a lucky perfect split), and the held-out split reproduces essentially the
+same shape: recall stays very high (0.9565) but precision is low (0.3793) --
+this scorer, post-fold-back, operates at "flag broadly, miss almost nothing"
+rather than "flag narrowly." That is a direct consequence of dropping
+`temporal_burst`: with one fewer signal available and four hard-negative
+types now competing for the remaining four non-zero weights, the
+loss-minimising validation threshold sits low (0.10), and it generalises to
+test in the same low-threshold, high-recall shape rather than showing the
+19x validation-to-test gap the prior run reported.
 
-**All three held-out false positives are family components. Zero are
-background.** Same structural finding as every prior run: the residual
-false-positive error is entirely the hard negatives the benchmark was built
-to produce. The one held-out false negative is a genuinely missed ring, not a
-hard-negative artifact — a different kind of residual error than prior runs
-reported, and the argument above for why it happened.
+**False positives are no longer purely a family-component phenomenon.** 27 of
+36 held-out false positives are family (or office/hostel/retail) components,
+but **9 are background** -- the first run in this project's history where a
+material share of the residual error is not a hard-negative artifact. This is
+a direct, reportable consequence of dropping `temporal_burst`: the signal
+that used to separate rings from *background* well (even though it barely
+separated rings from the hard negatives) is no longer part of the score at
+all.
 
-Against flag-everything on test (24,663.89 at a 100% review rate), the winner
-is actually **worse** this run (74,595.13 > 24,663.89) — the one missed ring's
-cost alone exceeds the entire flag-everything bill. This is the honest number,
-reported as the review-and-cost-model finding it is, not smoothed into a
-percentage that would misstate a loss as an improvement.
+**Against flag-everything on test** (109,190.85 at a 100% review rate), the
+winner is genuinely better this run: 92,263.55, a **15.5%** improvement --
+unlike the Phase 12 record, which lost to flag-everything outright.
 
 **No further read is permitted.** Any future comparison needs a new frozen record.

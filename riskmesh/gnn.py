@@ -63,6 +63,7 @@ from .costmodel import (
     DESIGN_SPLITS,
     MIN_HARD_NEGATIVES_IN_RANGE,
     MIN_POSITIVES_BELOW_MAX_NEGATIVE,
+    DesignSplitViolation,
     PanelGateFailure,
     gated_expected_loss,
     panel_verdict,
@@ -299,10 +300,11 @@ def select_gnn_model(cfg: Config, design: list[Candidate], graph: Graph,
     Feasibility is checked before expected loss, not alongside it: an
     infeasible candidate never receives a number to be compared against.
     """
-    assert all(c.split in DESIGN_SPLITS for c in design), (
-        "select_gnn_model received non-design candidates -- "
-        "this would be model fitting on held-out data"
-    )
+    if not all(c.split in DESIGN_SPLITS for c in design):
+        raise DesignSplitViolation(
+            "select_gnn_model received non-design candidates -- "
+            "this would be model fitting on held-out data"
+        )
     train = [c for c in design if c.split == FIT_SPLIT]
     assert train, "no train-split candidates to fit on"
 
@@ -414,17 +416,22 @@ def refit_final_model(cfg: Config, design: list[Candidate], graph: Graph,
     is disjoint from test throughout, before and after this refit. Fresh
     initialisation from `cfg.seed`, same as every fit in this module.
     """
-    assert all(c.split in DESIGN_SPLITS for c in design), (
-        "refit_final_model received non-design candidates"
-    )
+    if not all(c.split in DESIGN_SPLITS for c in design):
+        raise DesignSplitViolation("refit_final_model received non-design candidates")
     graphs = build_component_graphs(cfg, graph)
     return fit_model(cfg, hyperparameters, design, graphs)
 
 
 def evaluate_frozen_gnn_policy(cfg: Config, design: list[Candidate],
-                               test: list[Candidate], graph: Graph,
+                               candidates: list[Candidate], graph: Graph,
                                policy_path: Path) -> list[Candidate]:
     """Test rows -- available only once the winning configuration is on disk.
+
+    Takes the FULL candidate list and filters to the test split internally,
+    symmetric with `costmodel.evaluate_frozen_policy()` /
+    `abstention.evaluate_frozen_abstention_policy()`: a caller cannot hand
+    this function a pre-filtered test view, because there is no path through
+    it that reads `.split` before the frozen-record guards below have run.
 
     Refits the frozen hyperparameters on train+validation (§4.4 of
     `graphsage_protocol.md`) and scores the test rows with that refit. The
@@ -454,6 +461,7 @@ def evaluate_frozen_gnn_policy(cfg: Config, design: list[Candidate],
     hyperparameters = frozen["winner_hyperparameters"]
     model = refit_final_model(cfg, design, graph, hyperparameters)
     graphs = build_component_graphs(cfg, graph)
+    test = [c for c in candidates if c.split == "test"]
     return _score_with(model, test, graphs)
 
 
