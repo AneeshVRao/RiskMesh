@@ -162,7 +162,13 @@ export interface LadderRow {
 export interface ThresholdAnalysisResponse {
   config_fingerprint: string;
   band: { t_lo: number; t_hi: number };
-  costs: { false_negative: number; false_positive: number; manual_review: number };
+  costs: {
+    false_negative: number;
+    false_positive: number;
+    manual_review: number;
+    derivation: Record<string, string | number>;
+    inputs_from_data: Record<string, number>;
+  };
   ladder: LadderRow[];
   sweep: {
     computed_on: string;
@@ -170,7 +176,27 @@ export interface ThresholdAnalysisResponse {
     selected_threshold: number;
     grid: SweepRow[];
   };
-  comparison: Record<string, unknown>;
+  comparison: {
+    binary: {
+      threshold: number;
+      expected_loss: number;
+      tp: number;
+      fp: number;
+      fn: number;
+      tn: number;
+      review_rate: number;
+    };
+    three_way: {
+      expected_loss: number;
+      actions: { allow: number; review: number; escalate: number };
+      review_rate: number;
+      precision: number;
+      recall_escalate_only: number;
+      recall_including_review: number;
+      false_positive_rate_escalate_only: number;
+      note: string;
+    };
+  };
   search: {
     bands_considered: number;
     bands_refused_by_coverage: number;
@@ -179,7 +205,7 @@ export interface ThresholdAnalysisResponse {
     selected_on: string;
     validation_expected_loss: number;
   };
-  sensitivity: unknown;
+  sensitivity: { note: string } & Record<string, unknown>;
   sample_variance_note: string;
 }
 
