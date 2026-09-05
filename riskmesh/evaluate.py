@@ -284,10 +284,23 @@ def ring_recovery(cfg: Config, test: list[Candidate], labels: list[Label],
     }
 
 
+class TestSplitViolation(AssertionError):
+    """Raised when a test-only reader receives a non-test row.
+
+    Mirrors `costmodel.DesignSplitViolation` for the opposite direction: that
+    class guards a design-only function against a test row leaking in, this
+    guards a held-out-only reader against a design row leaking in. Subclasses
+    AssertionError so it is still caught by callers (and tests) that check
+    for the bare assert this replaced; the guard now also fires under
+    `python -O`, which strips `assert` statements.
+    """
+
+
 def evaluate(cfg: Config, test: list[Candidate], labels: list[Label],
              threshold: float) -> dict:
     """Held-out metrics at a frozen threshold. Never selects anything."""
-    assert all(c.split == "test" for c in test), "evaluate() got non-test candidates"
+    if not all(c.split == "test" for c in test):
+        raise TestSplitViolation("evaluate() got non-test candidates")
 
     primary = score_at(test, threshold)
     assert (primary["tp"] + primary["fp"] + primary["tn"] + primary["fn"]
@@ -364,7 +377,8 @@ def bootstrap_ci(cfg: Config, test: list[Candidate], threshold: float,
     not a defect of the method, and resample count is never raised to make a
     wide interval look tighter.
     """
-    assert all(c.split == "test" for c in test), "bootstrap_ci got non-test candidates"
+    if not all(c.split == "test" for c in test):
+        raise TestSplitViolation("bootstrap_ci got non-test candidates")
     n = len(test)
     point = score_at(test, threshold)
     rng = random.Random(f"{cfg.seed}:bootstrap")

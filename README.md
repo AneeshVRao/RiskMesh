@@ -37,6 +37,9 @@ python tests/test_ml.py             #  4 checks — XGBoost gate, freeze guard, 
 python tests/test_gnn.py            #  4 checks — GraphSAGE gate, freeze guard, determinism
 python tests/test_freeze.py         #  1 check  — riskmesh/freeze.py regenerates the
                                      #             committed weight-search record
+                                     #             (~12 min — ten full weight searches
+                                     #             over a 9-cell sensitivity grid; the
+                                     #             other four suites run in seconds)
 ```
 
 The pipeline and `test_riskmesh.py`/`test_freeze.py` need **CPython 3.10+ and

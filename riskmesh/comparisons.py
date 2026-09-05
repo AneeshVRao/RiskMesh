@@ -28,6 +28,7 @@ from .config import SIGNALS, Config
 from .costmodel import _renormalised, rescore
 from .evaluate import (
     Candidate,
+    TestSplitViolation,
     best_f1_with_direction,
     confusion,
     prf,
@@ -148,7 +149,8 @@ def _read_once(test: list[Candidate], values: dict[str, float],
     is at least internally consistent between its row-level field and its
     nested one.
     """
-    assert all(c.split == "test" for c in test), "_read_once got non-test candidates"
+    if not all(c.split == "test" for c in test):
+        raise TestSplitViolation("_read_once got non-test candidates")
     flags = [
         (values[c.component_id] >= cutoff if direction == ">="
          else values[c.component_id] <= cutoff, c.is_positive)

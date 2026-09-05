@@ -44,8 +44,18 @@ def test_01_weights_matches_committed_record(tmp: Path) -> None:
         f"{regenerated['sensitivity']['distinct_winners']!r} != committed "
         f"record's {committed['sensitivity']['distinct_winners']!r}"
     )
-    check("01 freeze_weights() reproduces the committed record's winner "
-          "and sensitivity.distinct_winners")
+    assert regenerated["winner_threshold"] == committed["winner_threshold"], (
+        f"freeze_weights() winner_threshold {regenerated['winner_threshold']!r} "
+        f"!= committed record's {committed['winner_threshold']!r}"
+    )
+    assert regenerated["winner_expected_loss"] == committed["winner_expected_loss"], (
+        "freeze_weights() winner_expected_loss "
+        f"{regenerated['winner_expected_loss']!r} != committed record's "
+        f"{committed['winner_expected_loss']!r}"
+    )
+    check("01 freeze_weights() reproduces the committed record's winner, "
+          "winner_threshold, winner_expected_loss, and "
+          "sensitivity.distinct_winners")
 
 
 def main() -> int:
