@@ -1,4 +1,413 @@
-# Audit -- weight-search protocol run, A_baseline retained, held-out read taken . 2026-08-25 (backfilled 2026-08-26)
+# Audit -- Tasks 1-8 of `integrity-and-scope-closure` complete, the audit ritual itself restored . 2026-09-05
+
+**This entry is being written now, as Task 9 of the same plan, specifically because no entry was
+written as any of Tasks 1-8 closed** -- the exact discipline lapse this file's own restoration
+exists to fix. It is therefore a reconstruction like every entry below it, not a same-day read
+taken during the work. Assembled 2026-09-05 from
+`.superpowers/sdd/integrity-and-scope-closure/progress.md` (the plan's ledger, which records
+every review, ruling and finding as it happened -- the closest thing to a contemporaneous record
+that exists), the `task-{1,2,3,4,6,7,8}-report.md` implementer reports (there is no Task 5 report;
+see below), and git history on this branch from `9c31f15` through `e9f3d6b` (2026-08-31 through
+2026-09-01). Every figure quoted was cross-checked against the current frozen records in
+`experiments/` and a live `out/`, config fingerprint `fdf4fc217347d36b`, confirmed in this session
+(`Config().fingerprint()` run directly, matching `out/eval_report.json`).
+
+## What was built
+
+Nine tasks against `.superpowers/plans/integrity-and-scope-closure.md`, closing prior audit
+findings #12, #15, #16, #18, #19 and (this entry) #23, plus PRD-compliance and panel-design gaps
+the original audit missed entirely (D4, D5, RISK-005 below):
+
+- **Task 1** (`9c31f15`..`d7bc37f`): `riskmesh/freeze.py`, regenerating all four frozen protocol
+  records deterministically; a new fifth test suite `tests/test_freeze.py`.
+- **Task 2** (`6242c44`..`684c748`): six bare `assert`s in the design-split guards converted to a
+  raised `DesignSplitViolation(AssertionError)` so they survive `python -O`; the artifacts
+  fingerprint map widened 7 -> 9 files; a false gate-provenance claim in `costmodel.py` corrected
+  (see below).
+- **Task 3** (`7421636`..`eeec047`): four new ring types (`ip`, `instrument`, `refund`, `hybrid`)
+  plus the population raise absorbed from Task 5; fingerprint `c3ee14627c2c2ce2` ->
+  `7314e7e534ea4b11`.
+- **Task 4** (`c860893`..`9a8405a`): three new hard-negative cluster types (`office`, `hostel`,
+  `retail`), `Label.cluster_type` and `Candidate.cluster_id` threaded through the API, closing
+  audit #16 (split isolation for clusters, not just rings); fingerprint `ee7ab3c7439b7dc8` ->
+  `28e054e8fa8436e9`.
+- **Task 5**: closed by controller ruling, no dispatch -- see below.
+- **Task 6** (`12c012a`..`0c3b61b`, 9 commits): all four protocols (weight, abstention, XGBoost,
+  GraphSAGE) re-frozen and re-run against the five-ring-type, four-hard-negative-type benchmark;
+  fingerprint folded to `fdf4fc217347d36b`.
+- **Task 7** (`b92191e`..`dab9d14`): XGBoost/GraphSAGE baseline rows, a 101-row threshold sweep,
+  and bootstrap confidence intervals added to `riskmesh/comparisons.py`; a live-console crash
+  fixed (see below).
+- **Task 8** (`fdf65cb`..`e9f3d6b`, 5 commits): `README.md`, `testing.md`, `experiments/README.md`,
+  `PRODUCT.md` and `implementation_plan.md` brought current against the Task 6/7 re-freeze; D1
+  closed with evidence; two new findings (D5, RISK-005) surfaced and documented rather than
+  patched.
+
+**Task 5 was closed without a dispatch.** Its substance (raising `target_txns` and the
+population) had already been folded into Task 3 by an earlier ruling, so the controller verified
+every one of its done-conditions directly against the post-Task-3 `out/` rather than spending an
+implementer seat re-deriving already-true facts (`progress.md`, Task 5 entry): 19,310 transactions
+(> 10,000, inside the PRD's 10-25k demo range), panel PASS, pbmn 0.7708 (>= 0.45 gate),
+hard-negatives-in-range 69 (>= 4), shared-device-only baseline F1 0.4961 (< 0.85 bound), largest
+component share 0.0043 (< 0.15 bound), every split holding both positives and unlabelled
+negatives. There is accordingly no `task-5-report.md`.
+
+## Compared against the plan
+
+`.superpowers/sdd/integrity-and-scope-closure/progress.md`'s preflight scan identified five
+cross-task conflicts and five per-task self-consistency risks before any implementer ran, and
+resolved each with a numbered ruling (R1-R5) before work started -- G4 (protocol frozen before any
+candidate is scored) is verified in the git log itself: every one of the four Task 6 re-freeze
+commits (`12c012a`, `478d323`, `2a5719d`, `e2bb0f0`) lands before its matching run commit
+(`08bbb6c`, `85a17fe`, `b5fcd21`, `63bc17a`) -- stronger than the per-protocol ordering the rule
+required, since all four freezes land before all four runs. All five suites (`test_riskmesh.py`,
+`test_ml.py`, `test_gnn.py`, `test_freeze.py`, `test_api.py`) were green at Task 8's close.
+
+## Corrections and defects surfaced -- reported plainly, because that is what this ritual is for
+
+This plan's own review loop caught controller-introduced errors at least four times across Tasks
+2, 3, 4 and 7. Each is stated here as what actually happened, not softened into "issues were
+resolved along the way."
+
+**Task 2 -- a false claim, corrected, and the first correction was itself imprecise.** The
+original whole-repo audit's most severe finding was that `costmodel.py`'s docstring falsely
+claimed the panel/difficulty gates were written before `select_weights()`'s real implementation,
+when in fact `git show 96ae30f:riskmesh/costmodel.py` showed both landing in the same commit
+(`9cafa71`). Task 2's implementer rewrote the provenance paragraph -- and review found that
+rewrite still imprecise: it had not checked what `select_weights()` actually *was* in `96ae30f`,
+only that the name existed. The controller verified directly (`git show
+96ae30f:riskmesh/costmodel.py`) that it was a deliberate stub raising `NotImplementedError("Not
+run. The protocol is frozen in weight_search_protocol.md and awaiting confirmation before any
+candidate is scored.")` -- meaning the search was structurally prevented from running before the
+freeze was confirmed, the opposite of what the imprecise correction implied was in doubt. A second
+fix round rewrote the paragraph to lead with the stub and state plainly that gate-vs-implementation
+ordering between the panel gate (present in `96ae30f`) and the two difficulty gates (added only in
+`9cafa71`, alongside the real implementation) is unprovable in either direction, rather than
+asserting either one. Two rounds to get one docstring paragraph honest -- exactly the review loop
+working as intended, not evidence it works on the first pass.
+
+**Tasks 3 and 4 -- the same controller spec defect, twice.** Task 3's brief described the
+refund-abuse ring type by behavioural mechanism only ("weak-to-absent infrastructure sharing").
+`graph.py` links components structurally (device/IP/instrument edges only; merchants deliberately
+never link), so all 12 refund rings reduced to graph singletons and produced **zero** scoreable
+candidates -- invisible to all 27 passing checks because none asserted that a declared ring type
+ever yields a positive candidate. Review caught it; the fix gave refund rings a structural
+instrument edge, raising `n_positive` from 40 to 47 with zero new random draws. Task 4 repeated the
+identical mistake in the same task: retail-chain clusters were specified as a merchant-convergence
+collision, but merchants do not link, so 4-8 of each cluster's 6-10 members were dropped as
+singletons (initial coverage 28%, only 2 of 10 candidates in the positive range). Review caught it
+again; the fix gave every member a shared instrument from a small pool, raising mean coverage to
+93.65%. A Global Constraint (G6b) was added to the plan after the second occurrence: any injected
+population needs an explicit structural edge or it exists only in `labels.csv`.
+
+**Task 7 -- an incoherent operating-point pairing, shipped, and caught downstream.** The
+controller's own brief stated "Tier 1's [numbers] are F1 0.75 and expected loss 92,263.55." Those
+two figures come from two different frozen records at two different thresholds:
+F1 0.75 is `baselines.json`'s `ring_score` row at its own F1-selected validation cutoff (0.22);
+92,263.55 is `weight_policy.json`'s `held_out` block at the cost-selected threshold (0.10), where
+F1 is actually 0.5432. The pairing reached the implementer's report and a test assertion before the
+implementer's own flagged concern surfaced it. The fix: every metric in the baselines table now
+carries the threshold and selection metric it was measured at as a field, and check 25 gained an
+adversarial assertion that `tier1_reference["f1"]` must **not** equal `ring_score`'s F1, so the
+mispairing cannot silently recur. A **separate** Critical was found in the same task, by a
+reviewer running the live stack in a browser rather than reading code: `mockups/api.js:647` sorted
+the new 7-row baseline table with `y.held_out.f1 - x.held_out.f1`; the new `xgboost_scorer` row has
+`held_out: null` by design (no feasible candidate, no read permitted), so the comparator threw
+`TypeError: Cannot read properties of null`. `initBenchmark()`'s top-level `.catch` swallowed it,
+and the console silently fell back to its pre-Task-7, hardcoded 5-row placeholder with an "API
+offline" banner, while the API itself served correct 7-row data underneath. Invisible to all five
+green Python suites, because nothing tests `mockups/api.js`. Fixed the same task (comparator treats
+`null` as sinking to the bottom, not throwing) rather than deferred to the eventual React rewrite,
+because `mockups/` is named "the live client" and the PRD's Fallback Demo Path depends on it.
+
+## D1 closed, D4 and D5 opened, RISK-005 filed -- the headline findings of Task 8's sweep
+
+**D1 (temporal_burst redundancy, open since Tier 0) is now closed with a real result, not a
+tie.** Task 6's re-run weight search found `E_drop_temporal` (zeros `temporal_burst`) beating the
+prior incumbent outright on validation expected loss (43,331.85 vs 57,601.30), clearing both
+difficulty gates with room to spare. Folded back per protocol into `Config()._default_weights()`;
+a second pass reached a fixed point (`A_baseline`, `D_drop_flagged`, `E_drop_temporal` now describe
+the identical vector). `temporal_burst` ships at weight 0.0000. The mechanism is not the one D1's
+own hedge anticipated (a second bursting ring type making the signal *more* useful) -- what was
+measured instead is a mixture effect: `temporal_burst` separates rings well against each hard-
+negative type individually but only weakly against all four combined at one global threshold.
+
+**D4 (new, disclosed rather than fixed): the shipped operating threshold is F1-selected, not
+loss-selected, contrary to a PRD Must-have.** Discovered during Task 7/8 prep, missed by the
+original audit, which verified a cost model existed and a threshold was frozen before the test
+read but never checked which metric the shipped threshold optimises. `out/threshold.json` selects
+by maximum F1 on validation (`"selection_metric": "f1"`, printed in the file); PRD.md's own worked
+example states plainly "We do not choose the threshold that maximizes F1." A genuinely loss-
+selected threshold already exists and is frozen (`weight_policy.json`'s `held_out` block, threshold
+0.10) -- the gap is that the pipeline's headline number and everything the console displays comes
+from the other procedure. By controller ruling, not fixed here: switching the selection metric
+would move every headline number a documentation sweep just wrote down a second time, and is
+scoped modelling/product work. Filed as `deferred_decisions.md` D4.
+
+**D5 (new, disclosed rather than fixed): no weight-search candidate re-enables `ip_sharing`.**
+`ip_sharing` was correctly zeroed under RISK-001 in Tier 0, before any IP-type ring existed. Task 3
+added a real shared-IP ring type; the five weight-search candidates (`A`-`E`) were declared before
+Task 3 existed and none re-introduces the signal (`A`/`D`/`E` zero it identically to the pre-
+Task-3 vector; `B`/`C` are refused by the difficulty gate before their weight on it matters). The
+measured cost, verified by grouping the current held-out test split by `ring_type`: `ip`-type
+rings are the scorer's one clear weak spot, 1 of 4 caught -- the worst recall of any ring type, and
+the only one where the naive `transaction_level` baseline does better. Filed as
+`deferred_decisions.md` D5.
+
+**RISK-005 (new): `device_sharing`, the largest weight in the scorer (0.3929), is mis-signed
+against two of four hard-negative types.** Surfaced during Task 8's documentation sweep and
+extended by controller investigation. `signal_sign_check`'s pooled ring-vs-all-negatives view
+reports it "ok" (delta +0.0468), but that pools 176 train+validation negatives together and masks
+the per-cluster-type picture:
+
+| cluster type | n | ring 0.1837 vs type | delta |
+|---|---|---|---|
+| family | 40 | 0.3523 | **-0.1686** (badly mis-signed) |
+| office | 10 | 0.2636 | **-0.0799** (mis-signed) |
+| hostel | 10 | 0.0000 | +0.1837 (fine) |
+| retail | 24 | 0.0000 | +0.1837 (fine) |
+
+`device_sharing` actively favours `family` and `office` households over rings, by design: both
+cluster types converge on up to 8 accounts on one device specifically to keep the device-only
+baseline honest. This is the **identical structural blind spot RISK-001 (`ip_sharing`) and
+RISK-004 (`instrument_sharing`) were**, now on the highest-weighted signal, undetected until a
+benchmark with four distinct hard-negative types existed to reveal it -- because
+`signal_sign_check` has only ever pooled all negatives together, never checked ring-vs-each-hard-
+negative-type. By controller ruling, escalated to the human partner and documented rather than
+patched: neither reweighting (no candidate in `A`-`E` targets `device_sharing` specifically) nor
+widening the panel check itself (a methodology change to `riskmesh/integrity.py`, out of this
+task's scope) was authorised as a side effect of a documentation task. Filed as `bugs.md`
+RISK-005, open.
+
+## The headline result: GraphSAGE ties Tier 1 on F1, beats it on expected loss
+
+At each model's own cost-selected operating point (like-for-like, the exact pairing error above
+made necessary to state explicitly): Tier 1 shipped at threshold 0.10, F1 0.5432, expected loss
+92,263.55; Tier 3's `G2_two_layer` (Task 6's re-run winner, up from `G1_single_layer`) at threshold
+0.03, F1 0.5412, expected loss 54,308.35. Verified directly against `experiments/weight_policy.json`
+and `experiments/graphsage_policy.json` in this session. F1 is effectively tied (0.002 apart);
+expected loss is **41.1% lower** ((92,263.55 - 54,308.35) / 92,263.55). This reverses the
+"simplest model wins" conclusion that held on the pre-Task-3 benchmark, where Tier 3's single
+feasible candidate (`G1_single_layer`) was worse than Tier 1 on both F1 (0.5000 vs 0.7778) and
+expected loss (83,579.43 vs 74,595.13). Tier 2 (XGBoost) still has no feasible candidate at either
+benchmark vintage, but by the **opposite mechanism**: originally `X1`-`X3` degenerated to constant
+predictors on a ~30-row training split (`positives_below_max_negative == 0` for the wrong reason);
+now, verified directly against `experiments/xgboost_policy.json` in this session, all four
+candidates are refused for genuine over-separation (`DifficultyGateFailure` / `PanelGateFailure`,
+`positives_below_max_negative` between 0.0435 and 0.2174 against the 0.45 floor) on a training set
+124 components deep. `graphsage_protocol.md` and `xgboost_protocol.md` both present this as mixed,
+not a win, in their own §8 sections (verified: GraphSAGE's write-up states outright "does not beat
+Tier 1 on F1 ... this is not evidence GraphSAGE generalises better").
+
+## Still open
+
+RISK-005, D4, D5 (above); D2 and RISK-002's underlying feature-level mis-signs (resolved by weight,
+not by fixing the feature -- see `bugs.md`); the `_build()` pipeline-setup block, now duplicated in
+five places, deferred rather than extracted because Task 1's reviewer judged the risk of touching
+`__main__.py`'s byte-for-byte reproducibility guarantee higher than the tidiness gain; nothing
+tests `mockups/api.js` in the permanent suite, which is why Task 7's UI crash was caught by a
+reviewer opening a browser rather than by any of the five green suites.
+
+---
+
+# Audit -- Tier 2 XGBoost and Tier 3 GraphSAGE, original protocol runs (pre-Task-6) . 2026-08-31 (backfilled 2026-09-05)
+
+**Backfill notice.** Not written at the time either protocol closed, same lapse as every other
+entry in this file before Task 9. Reconstructed 2026-09-05 from git history (`880ccfe` through
+`fc4650c`, all 2026-08-31) and `xgboost_protocol.md` / `graphsage_protocol.md`'s own current text,
+which documents both the original run described here and the Task 6 re-run described in the entry
+above -- both are read directly from those files' §8 sections, not recalled. These records are
+superseded by Task 6's re-run (see the entry above); they are reconstructed here because the
+original run is itself a checkpoint the plan requires an entry for, and because its numbers are
+the baseline the Task 6 re-run's "opposite mechanism" claim is measured against.
+
+## What was built
+
+`riskmesh/ml.py` (Tier 2, XGBoost) and `riskmesh/gnn.py` (Tier 3, hand-rolled GraphSAGE -- plain
+torch tensor ops, no torch_geometric/dgl). Both follow `weight_search_protocol.md`'s exact
+discipline: a fixed list of pre-declared candidates (four for XGBoost, three for GraphSAGE) rather
+than a hyperparameter search, the identical three `costmodel.py` feasibility gates reused
+unchanged, train-only fitting with a train+validation refit before any held-out read, and a
+protocol document (`xgboost_protocol.md`, `242d078`'s `graphsage_protocol.md`) committed and
+frozen before the implementation module existed. GraphSAGE's node features are deliberately
+structural only (one-hot type + degree, normalised by the matching global cap) rather than the
+linear scorer's 8 signals, so it answers a different question than XGBoost's over-same-evidence
+comparison.
+
+## Compared against the plan
+
+Matches `implementation_plan.md`'s "Why abstention comes before XGBoost" reasoning, which named
+the exact risk this stage tests for before it ran: "A gradient-boosted model has far more capacity
+[than a linear score] to find [an easier benchmark], and it will find it preferentially." That
+prediction held for XGBoost, in a different way than expected (see below).
+
+## Results, both read from the frozen records
+
+**XGBoost (`experiments/xgboost_policy.json` as originally frozen, commit `588d13b`).** All four
+candidates refused, no held-out read taken, no winner named. `X1_shallow`/`X2_moderate`/
+`X3_stumps` degenerated to a single constant prediction (`min_child_weight` never cleared on the
+~30-row training split available at that benchmark size, confirmed against each fitted booster
+directly) and tripped `positives_below_max_negative == 0` for a different reason than the gate was
+built to catch; `X4_unregularised` genuinely over-separated, exactly as it was included to
+demonstrate. Tier 1's F1 0.7778 / expected loss 74,595.13 (the Phase-12 RNG-fix numbers current at
+that point) stood unchanged. `tests/test_ml.py` (4 checks): the gate fires against the deliberately
+overfit `X4` candidate; `select_xgboost_model()` refuses a design view containing a test row;
+`evaluate_frozen_ml_policy()` raises `MLPolicyNotFrozen` before the freeze file exists; refitting a
+frozen configuration twice on identical data is bit-identical on the installed xgboost version.
+
+**GraphSAGE (`experiments/graphsage_policy.json` as originally frozen, commit `ede6272`).** Run
+against a freshly confirmed benchmark (`rm -rf out && python -m riskmesh` first). `G1_single_layer`
+PASS (pbmn 0.75, hard-neg 8) -- feasible, the winner; `G2_two_layer` and `G3_unregularised` both
+FAIL on over-separation (pbmn 0.00, hard-neg 0 for both). Unlike XGBoost, `G1` cleared the gate and
+received its one permitted held-out read: F1 0.5000, expected loss 83,579.43 -- both worse than
+Tier 1's frozen F1 0.7778 / 74,595.13. GraphSAGE did not beat Tier 1 at this benchmark vintage.
+`tests/test_gnn.py` (4 checks) mirrors `test_ml.py`'s shape, with a fallback assertion that the
+gate fires on *some* candidate if `G3_unregularised` ever stops tripping it by construction. Torch
+2.13.0+cpu, `manual_seed` + `use_deterministic_algorithms` for reproducibility.
+
+## Missing / orphaned
+
+None found. Both dependency additions (`numpy`/`xgboost` for Tier 2, `torch` for Tier 3) are
+confined to their own module; `python -m riskmesh` and `tests/test_riskmesh.py`'s zero-dependency
+guarantee is unaffected, verified by the `requirements.txt` diff at each commit touching only the
+new module's needs.
+
+## Still open at this point in history
+
+Neither model beat Tier 1. This is the state Task 6's re-run (see the entry above) overturned for
+GraphSAGE and confirmed by a different mechanism for XGBoost.
+
+---
+
+# Audit -- Phases 10-12: hybrid ring type, D3 cost-model double-charge fix, RNG-isolation fix . 2026-08-31 (backfilled 2026-09-05)
+
+**Backfill notice.** Not written at the time; reconstructed 2026-09-05 from git history (`912e4a2`,
+`431d23e`, `c1d7672`, `821a687`, all 2026-08-31) and `deferred_decisions.md` D3's own closure text.
+The pipeline was re-run as part of the Task 9 verification pass that wrote this entry
+(`Config().fingerprint()` and a spot-read of `out/eval_report.json`, matching the current
+`fdf4fc217347d36b` this file's newest entry above also cites), not re-run at the time each of these
+three commits landed -- there is no way to retroactively close that gap for this specific
+three-commit sequence the way the top entry of this file could for its own pair.
+
+## What was built
+
+**Phase 10 (`912e4a2`).** Two changes in one re-freeze cycle: (1) a hybrid pool-funded ring type
+-- a tunable fraction of shared-device rings (`p_ring_instrument_funded`, tuned to 0.7) fund every
+member through a small shared-instrument pool (`ring_instrument_pool_size`, tuned to 4) instead of
+the flat 2-3-sharer partial overlap. This is RISK-004's own rejected experiment E6, restarted per
+its closure note's explicit pointer, alongside a new always-on 8th signal
+`instrument_pool_concentration`. (2) The D3 cost-model fix: `derive_costs()` no longer builds
+`C_fp` with an embedded review-cost term, since the generic `(tp+fp)*C_review` term in
+`expected_loss()` already charges one review per flagged component -- the old formula charged an
+escalated false positive a review cost twice. `p_ring_instrument_funded=0.4` was tried first and
+failed the difficulty gate (pbmn 0.3125 against >= 0.45); tuned up to 0.7 per the project's
+"tune config, don't add realism" discipline until the panel passed (pbmn 0.5625, hard-neg 9).
+
+**Phase 11 (`431d23e`).** Closed D1, D2 and D3 together: re-ran the weight search and abstention
+protocol against the Phase 10 benchmark. The weight search selected `D_drop_flagged` (zeros
+`instrument_sharing` and `merchant_concentration`) over `A_baseline`, tied on validation expected
+loss (8,849.98) but winning the tie-break on a *sharper* `positives_below_max_negative` (0.625 vs
+0.5625) -- folded back into `Config()._default_weights()`, closing D2 (`instrument_sharing` now
+carries weight 0.00 as the shipped default, not a broken fallback -- the earlier zero-weight
+attempt in RISK-004's own record had broken the panel; this one improved its margin). The abstention
+re-run against the same benchmark selected `[0.14, 0.23)` -- non-degenerate in width but,
+per `abstention_protocol.md`'s own later retrospective (§8, written at Task 6), one of the runs that
+"widened `t_hi` modestly" rather than finding real work for Review to do, not the non-degenerate
+result that entry credits to Task 6.
+
+**Phase 12 (`c1d7672`, `821a687`).** An RNG-isolation bug: `_inject_rings`' Phase-10 branch drew
+`sharers`/`share_rng` only inside the non-hybrid `else` branch, making the shared random stream's
+consumption depend on `is_hybrid` -- the identical trap `experiment.py`'s own module docstring
+warns about (the E3 mechanism). Changing `p_ring_instrument_funded` therefore reshuffled unrelated
+downstream randomness (family details, background traffic) instead of isolating the change to
+which rings are hybrid. Fixed by drawing `sharers`/`share_rng` unconditionally every ring and
+giving the hybrid-vs-non-hybrid signup-day draw its own dedicated per-ring `Random` (`randint`'s
+rejection sampling consumes a variable number of underlying words depending on the range argument,
+so matching call counts alone does not isolate two branches with different bounds). Verified: two
+runs differing only in `p_ring_instrument_funded` now produce byte-identical family membership,
+first account id, and total transaction count. This changes generator output without moving the
+config fingerprint (the fingerprint hashes config fields, not generator code), so every frozen
+number downstream was stale; `c1d7672` re-ran both protocols end to end against the corrected
+benchmark (weight search: `A_baseline` wins outright in one pass, threshold 0.18, validation loss
+4,000.00, held-out 74,595.13; abstention: the free search now selects a **degenerate** band,
+`t_lo = t_hi = 0.18`, identical to the binary policy -- the validation split has neither a missed
+positive nor a false positive for Review to act on), and `821a687` re-derived every other stale
+number field-by-field against a fresh `out/` rather than hand-patching, including a
+"Held-out-F1-copied-into-Hard-neg-F1" bug in several `implementation_plan.md` table rows this same
+pass caught.
+
+## Compared against the plan
+
+Matches `implementation_plan.md`'s Phase 10-11 (renamed 10-12 after the RNG fix) sections and
+`deferred_decisions.md` D3's closure note. `bugs.md` RISK-004's forward note is the direct pointer
+this phase followed ("If Tier 1 or Tier 2 adds a funding-network ring type... this signal should be
+revisited from E6's design").
+
+## Gaps found by this backfill
+
+None beyond the absent audit entry itself, which this entry closes. The RNG-isolation bug was
+already found and fixed within this same commit sequence (`c1d7672`), not left for this backfill
+to discover -- it is recorded here as a checkpoint event, not a new finding.
+
+## Missing / orphaned
+
+None. `run_e6`'s design (accounts-per-instrument, funding pool) is exactly what Phase 10's hybrid
+mechanism implements; nothing from the E6 record was left unused or duplicated.
+
+---
+
+# Audit -- abstention band frozen, non-degenerate Review policy, single held-out read . 2026-08-26 (backfilled 2026-09-05)
+
+**Backfill notice.** Not written at the time; reconstructed 2026-09-05 from git history (`8f58520`)
+and `abstention_protocol.md`'s own §8/§8b sections. This entry's numbers describe the band as
+originally frozen on 2026-08-26, against the same Tier 1 benchmark the top-of-file
+weight-search entry (`96ae30f`..`d819b56`, 2026-08-25) was frozen against -- they are superseded by
+Task 6's re-freeze, described in this file's newest entry above, the same way that entry's own
+weight-search numbers are.
+
+## What was built
+
+`riskmesh/abstention.py`: a three-way allow/review/escalate policy layered on top of the already-
+frozen `A_baseline` scorer. The scorer, its seven weights, and the binary threshold (0.23 at the
+time) are left untouched -- F1 0.8000 / expected loss 9,392.92 stand exactly as the weight-search
+entry above recorded them. Mechanism: two thresholds (`t_lo`, `t_hi`), both freely searched over
+the full grid rather than pinning 0.23 as the Allow boundary -- the free search landed on 0.23 on
+its own, a result rather than a built-in constraint. `MAX_REVIEW_RATE = 0.25` declared before any
+band was scored and enforced structurally by `ReviewBandGateFailure`, mirroring
+`costmodel.py`'s own discipline exactly. `evaluate_frozen_abstention_policy()` raises
+`AbstentionPolicyNotFrozen` unless the exact frozen band is the one being read -- same
+freeze-then-single-read shape as `select_weights()`.
+
+## Compared against the plan
+
+Selected band: `t_lo 0.23`, `t_hi 0.33`. Matches `implementation_plan.md`'s "Plan: argue abstention
+before XGBoost from the held-out evidence" (commit `d819b56`), which frames this stage's purpose
+correctly: establishing a three-way policy and its cost before handing a higher-capacity model
+(XGBoost) more room to find an easier benchmark, per `bugs.md` L2's own warning.
+
+## Gaps found by this backfill
+
+None found in the technical record. The one gap is procedural -- no audit entry existed for this
+stage until now, which is what this entry closes.
+
+## Missing / orphaned
+
+None. The record is superseded, twice over before Task 6, but not orphaned -- it is provenance for
+the abstention mechanism's first real run, kept the same way E1-E6 are kept for the weight search.
+The supersession chain, stated in full since no single downstream doc states all four points
+together: this run (`t_lo 0.23`/`t_hi 0.33`, 2026-08-26) -> Phase 10/11's re-run against the hybrid-
+ring benchmark (`t_lo 0.14`/`t_hi 0.23`, see the Phases 10-12 entry above) -> Phase 12's re-run
+after the RNG-isolation fix, which collapsed to the degenerate `t_lo = t_hi = 0.18` (identical to
+the binary policy, same entry above) -> Task 6's re-run, `t_lo 0.10`/`t_hi 0.20`, which
+`abstention_protocol.md` credits as "the first run in this project's history where the free search
+does not collapse to the binary threshold" -- a claim made against the runs its own current text
+still names (Phase 10/11 and Phase 12), not against this original 2026-08-26 run, whose numbers had
+already been overwritten twice by the time that sentence was written and are not part of what it is
+comparing against.
+
+---
+
+
 
 **Backfill notice.** This entry and the one below it (RISK-004 closure) were not
 written at the time of their ritual close, breaking the per-phase discipline
