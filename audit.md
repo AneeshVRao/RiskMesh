@@ -407,7 +407,7 @@ comparing against.
 
 ---
 
-
+# Audit -- weight-search protocol run, A_baseline retained, held-out read taken . 2026-08-25 (backfilled 2026-08-26)
 
 **Backfill notice.** This entry and the one below it (RISK-004 closure) were not
 written at the time of their ritual close, breaking the per-phase discipline
