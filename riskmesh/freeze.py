@@ -222,14 +222,30 @@ def _per_action_scores(test: list[Candidate], t_lo: float, t_hi: float) -> dict[
 
 
 def _sample_variance_note(t_lo: float, t_hi: float, val_tp: int, val_fp: int,
-                          val_fn: int, val_tn: int, threshold: float) -> str:
+                          val_fn: int, val_tn: int, threshold: float,
+                          n_test: int | None = None, review_rate: float | None = None,
+                          loss_delta_vs_binary: float | None = None,
+                          improvement_pct: float | None = None) -> str:
     if t_lo != t_hi:
         return (
             f"The band search this run selected a non-degenerate Review band "
-            f"[{t_lo:.2f}, {t_hi:.2f}). freeze.py's narrative template covers "
-            "only the degenerate (t_lo == t_hi) case observed when this module "
-            "was written -- this is a new result and should be written up by "
-            "hand rather than trusted verbatim from this placeholder."
+            f"[{t_lo:.2f}, {t_hi:.2f}), read once against {n_test} held-out test "
+            f"components: {review_rate:.1%} of them landed in Review, and the "
+            f"band beats the binary policy on these same rows by "
+            f"{abs(loss_delta_vs_binary):,.2f} expected loss ({improvement_pct}% "
+            "lower). Both that figure and the separate 41.1% expected-loss "
+            "improvement GraphSAGE reports over Tier 1 (graphsage_protocol.md "
+            "§5) are single point estimates on the same n=112 test split, "
+            "not distributions -- treat them as estimates with real but bounded "
+            "uncertainty at this sample size, not as precise deltas. The bound is "
+            "concrete, not hand-waved: the percentile-bootstrap CIs already "
+            "computed for Tier 1's F1 on this same 112-component split (README, "
+            "“95%-CI”) show a one- or two-component swing in the "
+            "resample moving point estimates by roughly ±0.17-0.18 -- the "
+            "same small-n mechanism applies here, since this band's read shares "
+            "the identical test set and was likewise taken once, not resampled. "
+            "Report this band's numbers as a central estimate on 112 components, "
+            "not as a guarantee that a different draw lands the same way."
         )
     return (
         f"The band search this run selected t_lo == t_hi == {t_lo:.2f} -- a "
@@ -335,6 +351,13 @@ def _abstention_held_out(test: list[Candidate], t_lo: float, t_hi: float,
         "sample_variance_note": _sample_variance_note(
             t_lo, t_hi, winner_row["tp"], winner_row["fp"], winner_row["fn"],
             winner_row["tn"], binary_threshold,
+            n_test=three["n"], review_rate=three["review_rate"],
+            loss_delta_vs_binary=round(three["expected_loss"] - binary["expected_loss"], 2),
+            improvement_pct=(
+                round((binary["expected_loss"] - three["expected_loss"])
+                      / binary["expected_loss"] * 100, 1)
+                if binary["expected_loss"] else 0.0
+            ),
         ),
         "d3_sensitivity": _d3_sensitivity(
             t_lo, t_hi, binary["expected_loss"], three["expected_loss"]

@@ -173,16 +173,22 @@ actually found).
 
 **0.25 is a business-policy choice, not a data fact.** Nothing in this
 benchmark derives it; it is a judgement about how much analyst throughput a
-review band may reasonably consume. It is set well above what the design-time
-exploration found the unconstrained optimum to actually need (0% of
-validation, 0% of design this run — the selected band is degenerate, see §8),
-so it does not bind on this run. It exists
-as a structural backstop against a *different* result on a future run, a
-different generator draw, or a harder ring type — not because today's numbers
-demanded it. If it needs to move, that is a decision for whoever revisits this
-protocol, made explicitly, the same way `MIN_HARD_NEGATIVES_IN_RANGE` and
-`MIN_POSITIVES_BELOW_MAX_NEGATIVE` are absolute rather than a margin from
-whatever the incumbent currently does.
+review band may reasonably consume. On this run it comes close to binding
+rather than sitting slack: the winning band's design (train+validation)
+review rate is **24.11%** against the 25% cap — 0.89 points of headroom —
+and the gate is doing real work across the grid, not standing guard unused.
+Of the 5,151 `(t_lo, t_hi)` pairs tried, **1,716 (about a third of the grid)
+were refused by this gate** before the expected-loss sweep ever saw them
+(§8); the winning band, `[0.10, 0.20)`, is genuinely non-degenerate (width
+0.10, `t_lo != t_hi`), not the zero-width collapse this section described in
+earlier runs (see §8, "Outcome — a genuine, non-degenerate Review band"). It
+exists as a structural backstop against a *different* result on a future
+run, a different generator draw, or a harder ring type — and on this run
+that backstop is close enough to the actual result that a modest change to
+the input data could make it bind outright. If it needs to move, that is a
+decision for whoever revisits this protocol, made explicitly, the same way
+`MIN_HARD_NEGATIVES_IN_RANGE` and `MIN_POSITIVES_BELOW_MAX_NEGATIVE` are
+absolute rather than a margin from whatever the incumbent currently does.
 
 ---
 
