@@ -9,8 +9,10 @@ endpoint changes; this directory is purely a new client.
 
 Vite + React 19 + TypeScript + Tailwind v4 (`@tailwindcss/vite`) +
 `react-router-dom` + `@phosphor-icons/react`. Every dependency is pinned to
-an exact version in `package.json` (see root `.superpowers/sdd/integrity-and-scope-closure/task-10-report.md`
-for the rationale on each pin). No animation library, no global state
+an exact version in `package.json` -- notably TypeScript at 5.9.3 rather than
+the newly-registered 7.0.2 native rewrite, too fresh to trust for a project
+this size; see `audit.md`'s Task 10 entry for the rest of the pin rationale.
+No animation library, no global state
 library, no data-fetching library -- local `useState`/`useEffect` plus a
 ~35-line `useFetch` hook cover every screen.
 

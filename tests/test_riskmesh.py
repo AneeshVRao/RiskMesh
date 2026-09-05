@@ -827,6 +827,9 @@ def test_27_bootstrap_ci_reproducible_and_reported_honestly(run_a: dict, run_b: 
     for name, m in ci_a["metrics"].items():
         assert m["ci_low"] <= m["point_estimate"] <= m["ci_high"], (name, m)
         assert m["width"] == round(m["ci_high"] - m["ci_low"], 4)
+    # Deliberately a literal: this catches a regression in component FORMATION
+    # (e.g. a graph.py bug) that a config-fingerprint match cannot detect --
+    # same justification as test_api.py's len(a.components) == 336 check.
     assert ci_a["n_components"] == 112, ci_a["n_components"]
     # Honesty check, not a tightness requirement: the PRD explicitly allows a
     # wide interval to be the finding at this sample size -- this asserts the

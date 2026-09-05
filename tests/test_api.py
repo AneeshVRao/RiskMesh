@@ -46,6 +46,10 @@ def test_01_artifacts_load_and_agree(a: Artifacts) -> None:
     # Same treatment Task 3 gave the transaction-count check (cfg.target_txns
     # instead of a literal).
     assert a.fingerprint == Config().fingerprint(), (a.fingerprint, Config().fingerprint())
+    # Deliberately a literal, not dynamic like the fingerprint check above: the
+    # fingerprint pins config INPUTS, but a matching fingerprint says nothing
+    # about component FORMATION (e.g. a graph.py union-find bug) -- this catches
+    # a regression a config-fingerprint match cannot detect, so it stays pinned.
     assert len(a.components) == 336, len(a.components)
     check(f"01 artifacts load; all {len(_FINGERPRINTED)} fingerprinted files "
           f"agree with the current config ({a.fingerprint})")

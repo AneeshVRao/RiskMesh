@@ -1,20 +1,137 @@
+# Audit -- Task 10, the React investigator console, 28 files . 2026-09-05 (backfilled 2026-09-05)
+
+**This entry is being written now, as part of the final whole-branch review fix wave, specifically
+because Task 9 restored the audit ritual and correctly wrote an entry for Tasks 1-8, but Task 10
+(the largest single addition on this branch) shipped after it with no entry of its own** -- the
+same discipline lapse Task 9 exists to fix, recurring immediately for the one task best positioned
+to need it. Reconstructed, like every "(backfilled)" entry in this file, from the implementer's own
+Task 10 implementation report and task brief -- session-local planning artifacts, not committed to
+git, so not cited here by path -- cross-referenced against git history `bc04231`..`fac1b3c`
+(2026-09-05). Every figure quoted was cross-checked against that report and, where a plain count was
+checkable independently, against `git diff --stat` run directly in this session.
+
+## What was built
+
+Six commit groups plus a same-day review-fix round, all confined to a single new top-level
+directory:
+
+- **`732da00`..`0cdbf2d`** (Task 10, groups 1-5): scaffolded a React console under `frontend/` and
+  built its four PRD Primary Screens -- Risk Control Center (`ControlCenter.tsx`), Ring Details /
+  Investigator (`Investigator.tsx` + `RingGraph.tsx` + `ActionBar.tsx` + `ExplainPanel.tsx` +
+  `AuditTrail.tsx`), Threshold & Cost Analysis (`Threshold.tsx`), Evaluation / Benchmark
+  (`Benchmark.tsx`).
+- **`9ea6487`** (group 6): build verification, `frontend/README.md`, run instructions.
+- **`fac1b3c`** (same-day review fix): three rendering gaps found and closed -- see below.
+- **Stack decision**: Vite 8.2.2 + React 19.2.8 + TypeScript 5.9.3 + Tailwind v4 (`@tailwindcss/vite`,
+  the Vite plugin form, not PostCSS) + `react-router-dom` 7.18.3 + `@phosphor-icons/react` 2.1.10,
+  every version exact-pinned. TypeScript deliberately pinned to 5.9.3 rather than the
+  newly-registered 7.0.2 native rewrite -- too fresh to trust for a project this size; every other
+  pin is simply the exact version current when Task 10 landed. Four runtime dependencies total
+  (`react`, `react-dom`, `react-router-dom`, `@phosphor-icons/react`); no animation library, no
+  global state library, no data-fetching library -- a single ~40-line `useFetch` hook covers every
+  screen's load/error/reload need. `git diff --stat bc04231..fac1b3c -- frontend/` (re-run in this
+  session): 28 files changed, 4,041 insertions, of which 1,677 lines are the generated
+  `package-lock.json` -- roughly 2,400 hand-written lines across app code and config.
+- **The ported graph**: `RingGraph.tsx` reproduces `mockups/api.js`'s `renderGraph()` column math,
+  cubic-bezier edge formula, edge-thickness-by-transaction-count formula, and alt-text sentence
+  construction verbatim; only the rendering mechanism changed (JSX element construction in place of
+  `innerHTML` string-building). No behavioral deviation from the original was found or introduced.
+- **No backend change of any kind.** `git diff --stat bc04231..HEAD` (per the report, re-verified in
+  this session) shows every changed file under `frontend/`; nothing under `riskmesh/`, `tests/`,
+  `experiments/`, `requirements.txt`, or any pre-existing `.md` was touched by Task 10 itself.
+  `mockups/` was deliberately kept, not retired -- the task brief's done-condition required the four
+  screens to render against the live API, not a feature-parity audit against `mockups/`'s own five
+  Playwright verify scripts, and `mockups/index.html`'s landing page has no React equivalent in
+  scope.
+
+## The one Important finding, and two sibling gaps volunteered in the same round
+
+Coordinator review of Task 10 found **one Important finding**: `Threshold.tsx`'s sweep table
+rendered only `false_positive_rate`/`false_negative_rate`, silently dropping the count half of the
+six PRD-named sweep columns even though `SweepRow` already typed both `false_positive_count`/
+`false_negative_count` and the API already returned both. Root cause was plain omission -- the
+adjacent "Reviews" column already used the correct `{count} ({rate})` pattern; it simply was not
+copied to the FP/FN columns. Fixed by applying that exact pattern to both.
+
+Per the coordinator's request, the implementer then audited the other three screens for the same
+class of gap -- a typed field the API returns and `mockups/` renders, that this port silently
+dropped -- rather than a general re-audit, and volunteered two more:
+
+- **`AuditTrail.tsx`** was missing `config_fingerprint` and the evidence snapshot's `summary.size`/
+  `summary.n_txns`, both rendered by `mockups/api.js`'s `renderAudit()`. Fixed with one added line.
+- **`Benchmark.tsx`** never rendered `/benchmark`'s `secondary` (account-level) metrics block at
+  all, only `primary` (component-level) -- `testing.md` names both as required. Fixed with one added
+  paragraph and a concrete TypeScript type for `secondary` in place of `Record<string, unknown>`.
+
+(`Threshold.tsx` also gained a paragraph rendering `costs.inputs_from_data`, the same class of gap,
+found in the same pass.)
+
+All three fixes were re-verified live against the running API, not just read back from the diff:
+the sweep table's first row rendering `77 (100.00%)` / `0 (0.00%)` with headers reading "FP
+count/rate" / "FN count/rate"; a freshly recorded audit entry rendering `cfg fdf4fc217347d36b` and
+`9 accounts · 97 txns` inline; the Benchmark secondary block rendering `precision 0.6269 · recall
+0.7568 · F1 0.6857 · FP rate 16.13% · tp/fp/tn/fn 84/50/260/27`. `npm run build` clean after the
+fix (89.03KB gzipped, up from 88.70KB).
+
+## Live-verification method
+
+Not a code read: the implementer drove the running app with the Claude Browser tool against both
+the Vite dev server and, for performance numbers, the `vite preview` production build, backend
+started separately (`python -m uvicorn riskmesh.api.main:app --port 8000`, on-disk artifacts,
+config fingerprint `fdf4fc217347d36b`). Three methods stand out:
+
+- **Network-traced writes.** The Investigator's "Watch" action was confirmed via
+  `read_network_requests` and DOM inspection to be a real `POST /rings/{id}/review` followed by the
+  server's re-read of `/rings/{id}/evidence` -- the button disabled itself because the server's
+  fresh audit array contained the action, not because of client-side state set at click time.
+- **An `/explain`-failure monkey-patch.** `window.fetch` was monkey-patched in the live page to
+  reject any request containing `/explain`, then a different component was opened client-side. The
+  panel's degraded text was extracted directly from the DOM ("Explanation unavailable —
+  deterministic evidence below is unaffected"), while the graph, score, and evidence table were
+  confirmed to render normally alongside it -- structurally impossible for `/explain` to gate the
+  rest of the screen, not merely "handled gracefully" by convention.
+- **A line-by-line graph-port diff against the original**, comparing `RingGraph.tsx` against
+  `mockups/api.js`'s `renderGraph()` formula by formula (column math, edge curve, edge thickness,
+  alt-text), not just a visual screenshot match.
+
+Performance was measured via the Resource Timing API (`performance.getEntriesByType('resource')`)
+against the production build, after an earlier wall-clock-polling measurement was found to be
+inflated by `setTimeout` throttling in the automated browser tool's background tab -- a
+measurement-methodology correction made and disclosed within the same task, not carried forward
+uncorrected. Risk Control Center's three parallel fetches completed by 144ms (target 3s);
+Investigator's evidence read completed by 139ms with `/explain` completing independently at 200ms
+(target 2s).
+
+## Still open
+
+Nothing new. `mockups/` retirement remains an explicit non-decision (see Task 10's own report,
+"mockups/ retirement recommendation") -- neither this task nor Task 8 decided to deprecate it, so
+the README, corrected in this same review-fix wave, describes both clients rather than implying one
+is superseded. `frontend/README.md` also cited a session-local planning-artifact path that dangles
+on a clean clone (nothing under `.superpowers/` ships with the repo); corrected in this same
+review-fix wave to describe the source in prose instead.
+
+---
+
 # Audit -- Tasks 1-8 of `integrity-and-scope-closure` complete, the audit ritual itself restored . 2026-09-05
 
 **This entry is being written now, as Task 9 of the same plan, specifically because no entry was
 written as any of Tasks 1-8 closed** -- the exact discipline lapse this file's own restoration
 exists to fix. It is therefore a reconstruction like every entry below it, not a same-day read
-taken during the work. Assembled 2026-09-05 from
-`.superpowers/sdd/integrity-and-scope-closure/progress.md` (the plan's ledger, which records
-every review, ruling and finding as it happened -- the closest thing to a contemporaneous record
-that exists), the `task-{1,2,3,4,6,7,8}-report.md` implementer reports (there is no Task 5 report;
-see below), and git history on this branch from `9c31f15` through `e9f3d6b` (2026-08-31 through
+taken during the work. Assembled 2026-09-05 from the plan's own review ledger (a session-local
+planning artifact, not committed to git, which records every review, ruling and finding as it
+happened -- the closest thing to a contemporaneous record that exists), the per-task implementer
+reports for Tasks 1, 2, 3, 4, 6, 7 and 8 (same status; there is no Task 5 report, see below), and
+git history on this branch from `9c31f15` through `e9f3d6b` (2026-08-31 through
 2026-09-01). Every figure quoted was cross-checked against the current frozen records in
 `experiments/` and a live `out/`, config fingerprint `fdf4fc217347d36b`, confirmed in this session
 (`Config().fingerprint()` run directly, matching `out/eval_report.json`).
 
 ## What was built
 
-Nine tasks against `.superpowers/plans/integrity-and-scope-closure.md`, closing prior audit
+Nine tasks against the `integrity-and-scope-closure` plan (a session-local planning document, not
+committed to git -- see the git log on this branch, `9c31f15` through `e9f3d6b`, for the actual
+work it describes), closing prior audit
 findings #12, #15, #16, #18, #19 and (this entry) #23, plus PRD-compliance and panel-design gaps
 the original audit missed entirely (D4, D5, RISK-005 below):
 
@@ -54,7 +171,7 @@ negatives. There is accordingly no `task-5-report.md`.
 
 ## Compared against the plan
 
-`.superpowers/sdd/integrity-and-scope-closure/progress.md`'s preflight scan identified five
+The plan's own review ledger records a preflight scan that identified five
 cross-task conflicts and five per-task self-consistency risks before any implementer ran, and
 resolved each with a numbered ruling (R1-R5) before work started -- G4 (protocol frozen before any
 candidate is scored) is verified in the git log itself: every one of the four Task 6 re-freeze
