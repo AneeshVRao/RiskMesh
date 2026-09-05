@@ -393,20 +393,38 @@ def _inject_rings(
     mechanism that always converges on everything is separable by a single
     rule, and a benchmark a single rule solves measures nothing.
 
-    RNG isolation. Every draw on the shared `rng` below (`size`,
-    `base_refund_rate`, `bursts`, `is_hybrid_funded`, the `sharers` sample) runs
-    UNCONDITIONALLY, once per ring, in the same order and over the same-width
-    range regardless of which of the five types that ring index is -- only
-    which mechanism's code path actually USES the result differs. Every
-    mechanism-specific decoration (which attribute converges, at what rate, on
-    which pool) is drawn from a `random.Random` dedicated to that ring and that
-    mechanism, so it can never perturb `rng` at all. The one thing that still
-    needs care even on a dedicated stream: `rng.choice(acct.instruments)` and
+    RNG isolation -- scope: holds for an individual config knob varied at a
+    FIXED ring-type mix; does NOT currently hold across a change to the
+    ring-type mix itself (a known, accepted, pre-existing gap -- see below).
+    Every draw on the shared `rng` below (`size`, `base_refund_rate`, `bursts`,
+    `is_hybrid_funded`, the `sharers` sample) runs UNCONDITIONALLY, once per
+    ring, in the same order and over the same-width range regardless of which
+    of the five types that ring index is -- only which mechanism's code path
+    actually USES the result differs. Every mechanism-specific decoration
+    (which attribute converges, at what rate, on which pool) is drawn from a
+    `random.Random` dedicated to that ring and that mechanism, so it can never
+    perturb `rng` at all. The one thing that still needs care even on a
+    dedicated stream: `rng.choice(acct.instruments)` and
     `rng.choice(acct.merchants)` run later, on the SHARED stream, during
     emission -- and `_randbelow`'s rejection sampling spends words on a list's
-    LENGTH, not its content. So every mechanism below REPLACES a list's
-    contents (from its own dedicated stream) without ever changing how many
-    elements it has.
+    LENGTH, not its content. `acct.merchants` is always replaced
+    length-preserving (the refund branch's `[merch_rng.choice(pool) for _ in
+    acct.merchants]` below). `acct.instruments` is NOT: the device type's
+    non-pool-funded branch and the refund type's weak-overlap branch both
+    `.append()` a shared instrument onto each of their `sharers`' lists, one
+    element longer than before, on purpose (see the comment there) -- this is
+    a real, accepted length change, not an oversight. At a FIXED ring-type
+    mix this is still isolated per individual knob, because the accounts
+    doing the appending and their count are unchanged. But it means the total
+    number of "appended-by-one" accounts in the population depends on how
+    many device- and refund-type rings exist -- so changing the ring-TYPE
+    MIX (not a knob within one type) does perturb how many words downstream
+    `rng.choice(acct.instruments)` calls consume during emission, and
+    `_pick_device`'s own pre-existing branch-dependent second draw compounds
+    that into a small (<=0.093%) drift in cluster transaction content and
+    total transaction count. Out of scope to fix here (Task 3 ruling):
+    `_pick_device`'s branching predates this module's ring types and touches
+    every background and family account, not just rings.
     """
     periods = list(cfg.split_boundaries)
     plan = _ring_type_plan(cfg)
