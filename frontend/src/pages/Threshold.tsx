@@ -78,6 +78,13 @@ export function Threshold() {
             </tr>
           </tfoot>
         </table>
+        <p className="p-2.5 text-[11px] leading-relaxed text-ink-2">
+          Inputs read from data: median ring exposure{" "}
+          <b className="num">{fmt.money(t.costs.inputs_from_data.median_ring_exposure)}</b>, median negative exposure{" "}
+          <b className="num">{fmt.money(t.costs.inputs_from_data.median_negative_exposure)}</b>, across{" "}
+          <b className="num">{t.costs.inputs_from_data.n_positive}</b> positive and{" "}
+          <b className="num">{t.costs.inputs_from_data.n_negative}</b> negative components on train+validation.
+        </p>
       </section>
 
       <div className="grid grid-cols-12 gap-2">
@@ -235,8 +242,8 @@ export function Threshold() {
                 <th className="border-b border-line px-2 py-1 text-left">Threshold</th>
                 <th className="border-b border-line px-2 py-1">Precision</th>
                 <th className="border-b border-line px-2 py-1">Recall</th>
-                <th className="border-b border-line px-2 py-1">FP rate</th>
-                <th className="border-b border-line px-2 py-1">FN rate</th>
+                <th className="border-b border-line px-2 py-1">FP count/rate</th>
+                <th className="border-b border-line px-2 py-1">FN count/rate</th>
                 <th className="border-b border-line px-2 py-1">Reviews</th>
                 <th className="border-b border-line px-2 py-1">Expected loss</th>
               </tr>
@@ -255,8 +262,12 @@ export function Threshold() {
                   </td>
                   <td className="num px-2 py-1">{fmt.f4(row.precision)}</td>
                   <td className="num px-2 py-1">{fmt.f4(row.recall)}</td>
-                  <td className="num px-2 py-1">{fmt.pct2(row.false_positive_rate)}</td>
-                  <td className="num px-2 py-1">{fmt.pct2(row.false_negative_rate)}</td>
+                  <td className="num px-2 py-1">
+                    {row.false_positive_count} ({fmt.pct2(row.false_positive_rate)})
+                  </td>
+                  <td className="num px-2 py-1">
+                    {row.false_negative_count} ({fmt.pct2(row.false_negative_rate)})
+                  </td>
                   <td className="num px-2 py-1">
                     {row.manual_reviews} ({fmt.pct1(row.manual_review_rate)})
                   </td>

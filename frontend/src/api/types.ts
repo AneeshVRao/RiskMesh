@@ -253,7 +253,19 @@ export interface BenchmarkResponse {
   config_fingerprint: string;
   band: { t_lo: number; t_hi: number };
   primary: Record<string, number>;
-  secondary: Record<string, unknown>;
+  secondary: {
+    unit: string;
+    scored_accounts: number;
+    tp: number;
+    fp: number;
+    tn: number;
+    fn: number;
+    precision: number;
+    recall: number;
+    f1: number;
+    false_positive_rate: number;
+    note: string;
+  };
   ground_truth_rule: string;
   split: Record<string, unknown>;
   panel: {

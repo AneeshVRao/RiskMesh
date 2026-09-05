@@ -27,10 +27,12 @@ export function AuditTrail({ audit }: { audit: AuditRecord[] }) {
             {!a.agreed_with_system && (
               <span className="text-red">overrode system {a.system_action}</span>
             )}
+            <span className="num ml-auto text-ink-3">cfg {a.config_fingerprint}</span>
           </div>
           <div className="num text-ink-3">
-            evidence snapshot · {a.evidence_snapshot.signals?.length ?? 0} signals · sha{" "}
-            {a.evidence_sha256.slice(0, 12)}
+            evidence snapshot · {a.evidence_snapshot.signals?.length ?? 0} signals ·{" "}
+            {String(a.evidence_snapshot.summary?.size ?? "?")} accounts ·{" "}
+            {String(a.evidence_snapshot.summary?.n_txns ?? "?")} txns · sha {a.evidence_sha256.slice(0, 12)}
           </div>
         </li>
       ))}

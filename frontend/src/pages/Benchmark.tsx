@@ -63,6 +63,17 @@ export function Benchmark() {
         <b className="text-ink">Ground truth rule:</b> {b.ground_truth_rule}
       </p>
 
+      <p className="border border-line-2 bg-fill p-2.5 text-[11px] leading-relaxed text-ink-2">
+        <b className="text-ink">Secondary metric ({b.secondary.unit}-level, {fmt.int(b.secondary.scored_accounts)} scored):</b>{" "}
+        precision <b className="num">{fmt.f4(b.secondary.precision)}</b> · recall{" "}
+        <b className="num">{fmt.f4(b.secondary.recall)}</b> · F1 <b className="num">{fmt.f4(b.secondary.f1)}</b> · FP rate{" "}
+        <b className="num">{fmt.pct2(b.secondary.false_positive_rate)}</b> · tp/fp/tn/fn{" "}
+        <b className="num">
+          {b.secondary.tp}/{b.secondary.fp}/{b.secondary.tn}/{b.secondary.fn}
+        </b>
+        . {b.secondary.note}
+      </p>
+
       {/* Integrity panel checks */}
       <section className="border border-line bg-bg">
         <h2 className="border-b border-line bg-ink px-2.5 py-1 text-[11px] font-semibold text-white">
