@@ -16,9 +16,21 @@ const API = "http://127.0.0.1:8000";
 // Everything on screen must trace to the frozen record. Pull the API's own
 // answers first, then assert the rendered DOM against them.
 const api = Object.fromEntries(await Promise.all(
-  ["/metrics", "/threshold-analysis", "/rings", "/benchmark",
-   "/rings/c_a00533/evidence"].map(async (p) => [p, await (await fetch(API + p)).json()])
+  ["/metrics", "/threshold-analysis", "/rings", "/benchmark"]
+    .map(async (p) => [p, await (await fetch(API + p)).json()])
 ));
+
+// Control Center opens on the top-ranked component (rings[0]) and
+// Investigator opens on the top flagged one (flagged[0]) -- same rules
+// api.js's initControlCenter/initInvestigator use. The frozen dataset's
+// ranking changes on every re-freeze, so the id has to be discovered here
+// too, never hardcoded (see tests/test_api.py's convention for the same).
+const topId = api["/rings"].rings[0].component_id;
+const flaggedId = api["/rings"].rings.filter((r) => r.action !== "allow")[0].component_id;
+const [ccEvidence, invEvidence] = await Promise.all(
+  [topId, flaggedId].map((id) =>
+    fetch(`${API}/rings/${encodeURIComponent(id)}/evidence`).then((r) => r.json()))
+);
 
 const money = (v) => Number(v).toLocaleString("en-US",
   { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -77,7 +89,7 @@ const txt = (p, sel) => p.textContent(sel).then((t) => (t || "").trim());
   eq("C_fn", cost[1], money(t.costs.false_negative));
   eq("C_fp", cost[2], money(t.costs.false_positive));
   const ledger = await p.locator("table.ev tr").count();
-  eq("evidence rows", ledger, api["/rings/c_a00533/evidence"].decomposition.signals.length);
+  eq("evidence rows", ledger, ccEvidence.decomposition.signals.length);
   console.log(`   banner: ${await txt(p, "#api-status")}`);
   await p.close();
 }
@@ -86,7 +98,7 @@ const txt = (p, sel) => p.textContent(sel).then((t) => (t || "").trim());
 {
   console.log("\nInvestigator (investigator.html)");
   const p = await open("investigator.html");
-  const ev = api["/rings/c_a00533/evidence"], r = api["/rings"];
+  const ev = invEvidence, r = api["/rings"];
   const flagged = r.rings.filter((x) => x.action !== "allow");
   eq("picker entries", await p.locator(".pick a").count(), flagged.length);
   const rows = await p.locator("#ledger-body tr").count();
